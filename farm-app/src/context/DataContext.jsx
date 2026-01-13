@@ -1,5 +1,6 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getDoc } from '../lib/sheets';
+import { cloud } from '../lib/cloud';
 
 const DataContext = createContext();
 
@@ -26,29 +27,22 @@ export const DataProvider = ({ children }) => {
         const load = async () => {
             setLoading(true);
             try {
-                // Try Local Storage First for speed/offline
+                // 1. Load Local
                 const localData = localStorage.getItem('farm_data');
                 if (localData) {
                     setData(JSON.parse(localData));
                 }
 
-                // Attempt Google Sheets Connection
-                // NOTE: This will fail if credentials aren't set up, which is expected.
-                // We handle that gracefully.
-                try {
-                    const doc = await getDoc();
-                    if (doc) {
-                        // If successful, read rows and update state
-                        // TODO: Implement read logic here when sheets are set up
-                        // For now, we rely on Local Storage mock for the "Add" experience
-                        setIsOffline(false);
-                    } else {
-                        setIsOffline(true);
-                    }
-                } catch (e) {
-                    console.warn("Google Sheets connection failed (expected if no creds):", e);
+                // 2. Load Cloud (if configured)
+                if (cloud.isConfigured) {
+                    // TODO: Implement full sync/read
+                    // For now, we assume local is master for Demo, 
+                    // but we will enable Write-Through to Cloud
+                    setIsOffline(false);
+                } else {
                     setIsOffline(true);
                 }
+
             } catch (err) {
                 setError(err);
             } finally {
@@ -65,50 +59,77 @@ export const DataProvider = ({ children }) => {
 
         // 2. Save to Local Storage
         localStorage.setItem('farm_data', JSON.stringify(newData));
-
-        // 3. Save to Google Sheets (TODO)
-        if (!isOffline) {
-            // syncToSheets(newData);
-        }
     };
 
     // --- ACTIONS ---
 
-    const addBatch = (batch) => {
+    const addBatch = async (batch) => {
         const newBatch = {
             ...batch,
-            id: `B-${Date.now().toString().slice(-4)}`, // Simple ID gen
+            id: `B - ${Date.now().toString().slice(-4)} `, // Simple ID gen
             expenses: [],
             animals: []
         };
-        saveData({ ...data, batches: [...data.batches, newBatch] });
+        const newData = { ...data, batches: [...data.batches, newBatch] };
+        saveData(newData);
+
+        if (!isOffline) {
+            // Mapping to Sheet Columns: ID, Name, Type, StartDate, Status
+            await cloud.appendRow('Batches', [
+                newBatch.id, newBatch.name, newBatch.type, newBatch.startDate, newBatch.status
+            ]);
+        }
     };
 
-    const addExpense = (expense) => {
+    const addExpense = async (expense) => {
         const newExpense = {
             ...expense,
-            id: `E-${Date.now().toString().slice(-4)}`,
+            id: `E - ${Date.now().toString().slice(-4)} `,
         };
-        saveData({ ...data, expenses: [...data.expenses, newExpense] });
+        const newData = { ...data, expenses: [...data.expenses, newExpense] };
+        saveData(newData);
+
+        if (!isOffline) {
+            // Columns: ID, Date, Category, Description, Amount, PaidTo
+            await cloud.appendRow('Expenses', [
+                newExpense.id, newExpense.date, newExpense.category, newExpense.description, newExpense.amount, newExpense.paidTo
+            ]);
+        }
     };
 
-    const addEmployee = (employee) => {
+    const addEmployee = async (employee) => {
         const newEmp = {
             ...employee,
-            id: `EMP-${Date.now().toString().slice(-4)}`,
+            id: `EMP - ${Date.now().toString().slice(-4)} `,
         };
-        saveData({ ...data, employees: [...data.employees, newEmp] });
+        const newData = { ...data, employees: [...data.employees, newEmp] };
+        saveData(newData);
+
+        if (!isOffline) {
+            // Columns: ID, Name, Role, Phone, Salary, Status
+            await cloud.appendRow('Employees', [
+                newEmp.id, newEmp.name, newEmp.role, newEmp.phone, newEmp.salary, newEmp.status
+            ]);
+        }
     };
 
-    const addCrop = (crop) => {
+    const addCrop = async (crop) => {
         const newCrop = {
             ...crop,
-            id: `C-${Date.now().toString().slice(-4)}`
+            id: `C - ${Date.now().toString().slice(-4)} `
         };
-        saveData({ ...data, crops: [...data.crops, newCrop] });
+        const newData = { ...data, crops: [...data.crops, newCrop] };
+        saveData(newData);
+
+        if (!isOffline) {
+            await cloud.appendRow('Crops', [
+                newCrop.id, newCrop.name, newCrop.variety, newCrop.plantedDate, newCrop.status
+            ]);
+        }
     }
 
-    // Helper to add animals/expenses TO A BATCH
+    // Helper to add animals/expenses TO A BATCH (Complex nested update)
+    // For now, this is Local-Only until we define the "Animals" sheet relation
     const updateBatch = (batchId, updates) => {
         const updatedBatches = data.batches.map(b =>
             b.id === batchId ? { ...b, ...updates } : b

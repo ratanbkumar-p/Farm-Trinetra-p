@@ -51,8 +51,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             // Better to have conditional rendering or generic styles.
             >
                 <div className="flex h-20 items-center justify-center border-b border-gray-100">
-                    <h1 className="text-2xl font-bold text-farm-green font-sans" style={{ color: '#2E7D32' }}>
-                        Farm<span className="text-farm-brown" style={{ color: '#795548' }}>TNF</span>
+                    <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
+                        TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
                     </h1>
                 </div>
 
