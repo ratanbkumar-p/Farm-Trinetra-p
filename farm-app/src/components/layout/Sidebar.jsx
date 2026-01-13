@@ -50,7 +50,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     </h1>
                     <button
                         onClick={toggleSidebar}
-                        className="md:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-full focus:outline-none"
+                        className="md:hidden p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-full focus:outline-none ring-2 ring-red-100"
+                        title="Close Menu"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                     </button>
