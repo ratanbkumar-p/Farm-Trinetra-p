@@ -8,10 +8,8 @@ const Layout = () => {
 
     return (
         <div className="flex min-h-screen bg-gray-50 text-gray-900 font-sans">
-            {/* Sidebar - Hidden on mobile by default, handled by internal logic or simple CSS */}
-            <div className={`fixed inset-y-0 z-50 transition-transform transform md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <Sidebar isOpen={true} toggleSidebar={() => setSidebarOpen(false)} />
-            </div>
+            {/* Sidebar - Handles its own responsive state */}
+            <Sidebar isOpen={isSidebarOpen} toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
