@@ -44,10 +44,16 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     isOpen ? "translate-x-0" : "-translate-x-full"
                 )}
             >
-                <div className="flex h-20 items-center justify-center border-b border-gray-100">
+                <div className="flex h-20 items-center justify-between px-6 border-b border-gray-100">
                     <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
                         TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
                     </h1>
+                    <button
+                        onClick={toggleSidebar}
+                        className="md:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-full focus:outline-none"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                    </button>
                 </div>
 
                 <nav className="mt-6 px-4 space-y-2">

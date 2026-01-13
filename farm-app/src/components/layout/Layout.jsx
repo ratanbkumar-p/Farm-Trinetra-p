@@ -21,7 +21,7 @@ const Layout = () => {
                     >
                         <Menu className="w-6 h-6" />
                     </button>
-                    <span className="ml-4 text-xl font-bold text-green-700">Farm TNF</span>
+                    <span className="ml-4 text-xl font-bold text-farm-green">Trinetra Farms</span>
                 </header>
 
                 <main className="flex-1 overflow-auto p-4 md:p-8">
