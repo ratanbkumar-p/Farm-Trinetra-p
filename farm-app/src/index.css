@@ -1,0 +1,51 @@
+@import "tailwindcss";
+/**
+ * Since we are using Tailwind 4 (from user install), we might need the new directive:
+ * @import "tailwindcss";
+ * BUT the user command installed tailwindcss@latest which is v4?
+ * Wait, wait. package.json usually gives v3 unless specified.
+ * Let me check package.json version line again.
+ * "tailwindcss": "^4.1.18" -> YES IT IS VERSION 4!
+ * 
+ * In v4, we don't need tailwind.config.js or postcss.config.js usually if using the vite plugin.
+ * But we are using the standard Setup.
+ * For v4, the CSS file should just be `@import "tailwindcss";`.
+ * And the config is often auto-detected or merged.
+ * 
+ * CAUTION: create-vite might not have set up the v4 PostCSS plugin.
+ * The safe bet is to use the v4 CSS import.
+ */
+
+@import "tailwindcss";
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  
+  /* Material Elevation Shadows */
+  --shadow-1: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #F5F5F5;
+  color: #212121;
+}
+
+/* Scrollbar styling for that 'premium' feel */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #BDBDBD;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9E9E9E;
+}
