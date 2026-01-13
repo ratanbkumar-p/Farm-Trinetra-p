@@ -67,7 +67,7 @@ const Dashboard = () => {
                 className="flex flex-col md:flex-row md:items-end justify-between gap-4"
             >
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Farm Overview <span className="text-sm font-normal text-gray-400">v1.1 (Mobile Fix)</span></h1>
+                    <h1 className="text-3xl font-bold text-gray-900">Farm Overview <span className="text-sm font-normal text-green-600 bg-green-50 px-2 py-1 rounded-full">v1.2 (Live)</span></h1>
                     <p className="text-gray-500 mt-1">Welcome back, here's what's happening at Farm TNF.</p>
                 </div>
                 <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl shadow-lg shadow-green-200 transition-all font-medium">
