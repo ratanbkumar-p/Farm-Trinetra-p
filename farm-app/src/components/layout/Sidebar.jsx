@@ -1,24 +1,20 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
     LayoutDashboard,
     Settings,
     Sprout,
     Milk,
     Wallet,
-    Users
+    Users,
+    X,
+    LogOut
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-const sidebarVariants = {
-    open: { x: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } },
-    closed: { x: '-100%', transition: { type: 'spring', stiffness: 300, damping: 30 } },
-};
-
 const Sidebar = ({ isOpen, toggleSidebar }) => {
     const links = [
-        { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
+        { name: 'Farm Overview', icon: LayoutDashboard, path: '/' },
         { name: 'Livestock', icon: Milk, path: '/livestock' },
         { name: 'Agriculture', icon: Sprout, path: '/agriculture' },
         { name: 'Expenses', icon: Wallet, path: '/expenses' },
@@ -26,61 +22,77 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { name: 'Settings', icon: Settings, path: '/settings' },
     ];
 
+    const NavContent = () => (
+        <>
+            <div className="flex h-20 items-center px-6 border-b border-gray-100 justify-between">
+                <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
+                    TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
+                </h1>
+                {/* Mobile Close Button (Visible only inside mobile drawer) */}
+                <button
+                    onClick={toggleSidebar}
+                    className="md:hidden p-2 -mr-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                >
+                    <X className="w-6 h-6" />
+                </button>
+            </div>
+
+            <nav className="flex-1 px-4 space-y-2 py-6 overflow-y-auto">
+                {links.map((link) => (
+                    <NavLink
+                        key={link.path}
+                        to={link.path}
+                        className={({ isActive }) =>
+                            cn(
+                                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
+                                "font-medium text-gray-600 hover:bg-green-50 hover:text-green-700",
+                                isActive && "bg-green-100 text-green-800 shadow-sm font-semibold"
+                            )
+                        }
+                        onClick={() => {
+                            if (window.innerWidth < 768) toggleSidebar();
+                        }}
+                    >
+                        <link.icon className="w-5 h-5" />
+                        {link.name}
+                    </NavLink>
+                ))}
+            </nav>
+
+            <div className="p-4 border-t border-gray-100">
+                <button className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors">
+                    <LogOut className="w-5 h-5" />
+                    <span className="font-medium">Sign Out</span>
+                </button>
+            </div>
+        </>
+    );
+
     return (
         <>
-            {/* Mobile Overlay */}
-            {isOpen && (
+            {/* --- MOBILE DRAWER (Overlay) --- */}
+            <div className={cn(
+                "fixed inset-0 z-[60] md:hidden transition-opacity duration-300",
+                isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+            )}>
+                {/* Backdrop */}
                 <div
-                    className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                     onClick={toggleSidebar}
                 />
-            )
-            }
 
-            <aside
-                className={cn(
-                    "fixed top-0 left-0 z-50 h-screen w-64 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out",
-                    "md:translate-x-0 md:static md:block border-r border-gray-200",
+                {/* Drawer Panel */}
+                <div className={cn(
+                    "absolute top-0 bottom-0 left-0 w-[280px] bg-white shadow-2xl transition-transform duration-300 ease-out",
                     isOpen ? "translate-x-0" : "-translate-x-full"
-                )}
-            >
-                {/* Desktop Header: Logo */}
-                <div className="hidden md:flex h-20 items-center justify-center border-b border-gray-100">
-                    <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
-                        TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
-                    </h1>
+                )}>
+                    <NavContent />
                 </div>
+            </div>
 
-                {/* Mobile Header: Explicit CLOSE Button Row */}
-                <div className="md:hidden flex h-16 items-center px-4 bg-red-50 border-b border-red-100">
-                    <button
-                        onClick={toggleSidebar}
-                        className="w-full flex items-center justify-center gap-2 text-red-700 font-bold py-2 rounded-lg active:bg-red-100"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                        CLOSE MENU
-                    </button>
-                </div>
-
-                <nav className="mt-6 px-4 space-y-2">
-                    {links.map((link) => (
-                        <NavLink
-                            key={link.path}
-                            to={link.path}
-                            className={({ isActive }) =>
-                                cn(
-                                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300",
-                                    "text-gray-600 hover:bg-green-50 hover:text-green-700",
-                                    isActive && "bg-green-100 text-green-800 shadow-sm font-semibold"
-                                )
-                            }
-                            onClick={() => toggleSidebar()} // Close on navigation on mobile
-                        >
-                            <link.icon className="w-5 h-5" />
-                            {link.name}
-                        </NavLink>
-                    ))}
-                </nav>
+            {/* --- DESKTOP SIDEBAR (Static) --- */}
+            <aside className="hidden md:flex flex-col w-64 h-screen bg-white border-r border-gray-200 sticky top-0">
+                <NavContent />
             </aside>
         </>
     );
