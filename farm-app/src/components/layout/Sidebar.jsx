@@ -44,16 +44,21 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     isOpen ? "translate-x-0" : "-translate-x-full"
                 )}
             >
-                <div className="flex h-20 items-center justify-between px-6 border-b border-gray-100">
+                {/* Desktop Header: Logo */}
+                <div className="hidden md:flex h-20 items-center justify-center border-b border-gray-100">
                     <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
                         TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
                     </h1>
+                </div>
+
+                {/* Mobile Header: Explicit CLOSE Button Row */}
+                <div className="md:hidden flex h-16 items-center px-4 bg-red-50 border-b border-red-100">
                     <button
                         onClick={toggleSidebar}
-                        className="md:hidden p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-full focus:outline-none ring-2 ring-red-100"
-                        title="Close Menu"
+                        className="w-full flex items-center justify-center gap-2 text-red-700 font-bold py-2 rounded-lg active:bg-red-100"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                        CLOSE MENU
                     </button>
                 </div>
 
