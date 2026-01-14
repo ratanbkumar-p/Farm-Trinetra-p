@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, TrendingDown, Filter, Calendar, Trash2 } from 'lucide-react';
+import { Plus, TrendingDown, Filter, Calendar, Trash2, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
@@ -62,13 +62,22 @@ const Expenses = () => {
 
     // Calculate total expenses for current month
     const currentMonth = new Date().getMonth();
-    const totalExpenses = data.expenses
+
+    // 1. Regular Expenses
+    const regularExpenses = data.expenses
         .filter(e => new Date(e.date).getMonth() === currentMonth)
         .reduce((sum, e) => sum + (e.amount || 0), 0);
 
-    // Calculate yearly expenses monthly contribution
+    // 2. Yearly Expenses (Monthly Portion)
     const yearlyMonthly = (data.yearlyExpenses || [])
         .reduce((sum, e) => sum + (e.monthlyAmount || Math.round(e.amount / 12) || 0), 0);
+
+    // 3. Employee Salaries (Monthly)
+    const monthlySalaries = (data.employees || [])
+        .filter(e => e.status === 'Active')
+        .reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
+
+    const totalMonthlyExpenses = regularExpenses + yearlyMonthly + monthlySalaries;
 
     // Filter expenses by batch
     const filteredExpenses = filterBatchId === 'all'
@@ -141,14 +150,25 @@ const Expenses = () => {
 
             {activeTab === 'regular' ? (
                 <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
                             <div className="p-3 bg-red-50 rounded-xl text-red-600">
                                 <TrendingDown className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-sm text-gray-500">Monthly Expenses</p>
-                                <h3 className="text-xl font-bold text-gray-800">₹ {totalExpenses.toLocaleString()}</h3>
+                                <p className="text-sm text-gray-500">Total Monthly</p>
+                                <h3 className="text-xl font-bold text-gray-800">₹ {totalMonthlyExpenses.toLocaleString()}</h3>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                            <div className="p-3 bg-orange-50 rounded-xl text-orange-600">
+                                <Users className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-500">Staff Salaries</p>
+                                <h3 className="text-xl font-bold text-orange-600">₹ {monthlySalaries.toLocaleString()}</h3>
                             </div>
                         </div>
 
@@ -157,8 +177,8 @@ const Expenses = () => {
                                 <Calendar className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-sm text-gray-500">Yearly (Monthly Split)</p>
-                                <h3 className="text-xl font-bold text-blue-600">₹ {yearlyMonthly.toLocaleString()}/mo</h3>
+                                <p className="text-sm text-gray-500">Yearly Split</p>
+                                <h3 className="text-xl font-bold text-blue-600">₹ {yearlyMonthly.toLocaleString()}</h3>
                             </div>
                         </div>
 

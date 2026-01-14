@@ -142,7 +142,9 @@ export const DataProvider = ({ children }) => {
     };
 
     const addEmployee = async (employee) => {
-        const id = generateId('EMP');
+        // Fix: Employee ID max 4 chars (e.g., E123)
+        const rand = Math.floor(Math.random() * 900) + 100; // 100-999
+        const id = `E${rand}`;
         const newEmployee = {
             ...employee,
             createdAt: new Date().toISOString()

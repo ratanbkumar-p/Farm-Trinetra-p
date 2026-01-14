@@ -10,7 +10,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const Livestock = () => {
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, sellSelectedAnimals } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, sellSelectedAnimals, addExpense } = useData();
     const { canEdit } = useAuth();
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
@@ -26,7 +26,6 @@ const Livestock = () => {
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [isSellModalOpen, setIsSellModalOpen] = useState(false);
     const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
-    const [isEditMode, setIsEditMode] = useState(false);
 
     // Animal Edit State
     const [editingAnimalId, setEditingAnimalId] = useState(null);
@@ -80,7 +79,7 @@ const Livestock = () => {
 
         // Yearly expenses split by 12
         const yearlyMonthly = (data.yearlyExpenses || [])
-            .reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
+            .reduce((sum, e) => sum + (Number(e.monthlyAmount) || Math.round(Number(e.amount) / 12) || 0), 0);
 
         return regularUnlinked + yearlyMonthly;
     }, [data.expenses, data.yearlyExpenses]);
@@ -129,15 +128,24 @@ const Livestock = () => {
                 // Edit existing animal logic would go here
             } else {
                 // Add new animals
-                const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => ({
-                    id: `${selectedBatch.name.substring(0, 3).toUpperCase()}-${Date.now()}-${i + 1}`,
-                    gender: animalForm.gender,
-                    weight: animalForm.weight,
-                    purchaseCost: Number(animalForm.cost),
-                    status: animalForm.status,
-                    entryDate: new Date().toISOString().split('T')[0],
-                    weightHistory: [{ date: new Date().toISOString().split('T')[0], weight: Number(animalForm.weight) }]
-                }));
+                // FIX: Short ID generation (Max 6 chars)
+                // Format: TypeInitial + '-' + 4 random alphanumeric
+                const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
+                    const typeInitial = selectedBatch.type.charAt(0).toUpperCase();
+                    // Generate 4 random chars
+                    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+                    const shortId = `${typeInitial}-${random}`;
+
+                    return {
+                        id: shortId,
+                        gender: animalForm.gender,
+                        weight: animalForm.weight,
+                        purchaseCost: Number(animalForm.cost),
+                        status: animalForm.status,
+                        entryDate: new Date().toISOString().split('T')[0],
+                        weightHistory: [{ date: new Date().toISOString().split('T')[0], weight: Number(animalForm.weight) }]
+                    };
+                });
 
                 const updatedAnimals = [...(selectedBatch.animals || []), ...newAnimals];
                 updateBatch(selectedBatch.id, { animals: updatedAnimals });
@@ -154,12 +162,18 @@ const Livestock = () => {
         }
     };
 
-    const handleExpenseSubmit = (e) => {
+    const handleExpenseSubmit = async (e) => {
         e.preventDefault();
         if (selectedBatch) {
-            const newExpense = { ...expenseForm, date: new Date().toISOString().split('T')[0] };
-            const updatedExpenses = [...(selectedBatch.expenses || []), newExpense];
-            updateBatch(selectedBatch.id, { expenses: updatedExpenses });
+            // FIX: Use addExpense from context to ensure it syncs to global expenses
+            // The context function handles adding to 'expenses' collection AND updating the 'batch' document
+            await addExpense({
+                ...expenseForm,
+                amount: Number(expenseForm.amount), // Ensure number
+                category: expenseForm.type, // Map type to category
+                batchId: selectedBatch.id,
+                date: new Date().toISOString().split('T')[0]
+            });
         }
         setIsExpenseModalOpen(false);
         setExpenseForm({ type: 'Feed', description: '', amount: '' });
@@ -175,9 +189,6 @@ const Livestock = () => {
 
     // Selective Sell Handler
     const openSellModal = () => {
-        // Here we could implement the selection logic, but for now we sell all 'Active' by default or show selection
-        // For simplicity in this iteration, let's keep the bulk sell logic but accessible via modal
-
         // Calculate suggested price
         const financials = calculateBatchFinancials(selectedBatch);
         const activeAnimals = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
@@ -313,12 +324,9 @@ const Livestock = () => {
 
     // --- RENDER: MAIN LIST ---
     if (!selectedBatch) {
-        // ... (Keep existing Main List Render Logic - simplified for rewrite)
-        // Since I'm overwriting, I must include the full code for main list view too.
-
         if (mainTab === 'sold') {
             return (
-                <div className="space-y-6">
+                <div className="space-y-6 mb-20">
                     <div className="flex justify-between items-center">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">Sold Animals</h1>
@@ -382,7 +390,7 @@ const Livestock = () => {
 
         if (mainTab === 'deceased') {
             return (
-                <div className="space-y-6">
+                <div className="space-y-6 mb-20">
                     <div className="flex justify-between items-center">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">Deceased Animals</h1>
@@ -439,7 +447,7 @@ const Livestock = () => {
 
         // Active Batches View
         return (
-            <div className="space-y-6">
+            <div className="space-y-6 mb-20">
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Livestock Batches</h1>
@@ -480,24 +488,30 @@ const Livestock = () => {
                                     <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">{f.activeAnimals} Active</span>
                                 </div>
                                 <div className="space-y-2 text-sm">
+                                    {/* FIX: Include Total Bought Cost */}
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Bought Cost</span>
+                                        <span className="font-medium">₹ {Math.round(f.totalAnimalCost).toLocaleString()}</span>
+                                    </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Total Invested</span>
                                         <span className="font-medium">₹ {Math.round(f.totalInvested).toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-gray-500">Allocated Expense</span>
+                                        <span className="text-gray-500">Allocated Exp</span>
                                         <span className="font-medium text-amber-600">₹ {(f.allocatedExpense || 0).toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Sold</span>
                                         <span className="font-medium text-blue-600">{f.soldAnimals} (₹{f.soldRevenue?.toLocaleString() || 0})</span>
                                     </div>
-                                    {settings.ownerMode && (
-                                        <div className="flex justify-between pt-2 border-t border-gray-100">
-                                            <span className="text-gray-500">Min. Sell Price</span>
-                                            <span className="font-bold text-green-600">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
-                                        </div>
-                                    )}
+                                    {/* FIX: Always show Min Sell Price as requested, or keep tied to ownerMode if user prefers. 
+                                        User said "Total bough cost and minimum selling price as per expenses should be there in the batches".
+                                        I will remove ownerMode check for this to ensure it's visible. */}
+                                    <div className="flex justify-between pt-2 border-t border-gray-100">
+                                        <span className="text-gray-500">Min. Sell Price</span>
+                                        <span className="font-bold text-green-600">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
+                                    </div>
                                 </div>
                             </motion.div>
                         );
@@ -517,6 +531,7 @@ const Livestock = () => {
                                 <option value="Goat">Goat</option>
                                 <option value="Sheep">Sheep</option>
                                 <option value="Poultry">Poultry</option>
+                                <option value="Cow">Cow</option>
                             </select>
                         </div>
                         <div>
@@ -538,7 +553,7 @@ const Livestock = () => {
     const activeAnimals = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 mb-20">
             {/* Header & Back */}
             <button onClick={() => setSelectedBatchId(null)} className="flex items-center text-gray-500 hover:text-gray-800 font-medium">
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back to Batches
@@ -564,12 +579,11 @@ const Livestock = () => {
                     </div>
                     <p className="text-gray-500">{selectedBatch.type} • {selectedBatch.animals?.length || 0} Animals • {financials.daysActive} Days Active</p>
                 </div>
-                {settings.ownerMode && (
-                    <div className="text-right">
-                        <p className="text-sm text-gray-500">Minimum Sell Price</p>
-                        <h2 className="text-3xl font-bold text-green-600">₹ {Math.round(financials.minSellPrice).toLocaleString()}</h2>
-                    </div>
-                )}
+                {/* Always show Min Sell Price in details too */}
+                <div className="text-right">
+                    <p className="text-sm text-gray-500">Minimum Sell Price</p>
+                    <h2 className="text-3xl font-bold text-green-600">₹ {Math.round(financials.minSellPrice).toLocaleString()}</h2>
+                </div>
             </div>
 
             {/* Detail Tabs */}
@@ -594,6 +608,7 @@ const Livestock = () => {
                         <div className="flex gap-2 mb-2 flex-wrap">
                             <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Active: {financials.activeAnimals}</span>
                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Sold: {financials.soldAnimals}</span>
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Total Bought Cost: ₹{financials.totalAnimalCost.toLocaleString()}</span>
                         </div>
 
                         <Table
@@ -803,28 +818,22 @@ const Livestock = () => {
                                     onChange={() => toggleAnimalSelection(a.id)}
                                     className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                                 />
-                                <span className="text-sm font-medium">{a.id}</span>
-                                <span className="text-xs text-gray-400">{a.weight}kg</span>
+                                <div>
+                                    <span className="font-medium text-gray-800">{a.id}</span>
+                                    <span className="text-gray-500 text-sm ml-2">({a.gender}, {a.weight}kg)</span>
+                                </div>
                             </label>
                         ))}
                     </div>
-                    <div className="text-right text-xs text-gray-500">{selectedAnimalsToSell.length} selected</div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Sale Price Per Animal (₹)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Sold Price per Animal</label>
                         <input required type="number" value={sellForm.pricePerAnimal} onChange={e => setSellForm({ ...sellForm, pricePerAnimal: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
-                    </div>
-
-                    <div className="bg-green-50 p-3 rounded-lg">
-                        <p className="text-sm text-green-800 font-bold flex justify-between">
-                            <span>Total Revenue:</span>
-                            <span>₹ {(selectedAnimalsToSell.length * Number(sellForm.pricePerAnimal)).toLocaleString()}</span>
-                        </p>
                     </div>
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Confirm Sale</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm Sale</button>
                     </div>
                 </form>
             </Modal>

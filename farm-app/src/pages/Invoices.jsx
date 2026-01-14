@@ -64,7 +64,7 @@ const Invoices = () => {
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        doc.text('Farm Management Invoice', 20, 33);
+        doc.text('Invoice', 20, 33);
 
         // Invoice Info
         doc.setTextColor(0, 0, 0);
