@@ -1,31 +1,30 @@
 import React, { useState } from 'react';
-import { Plus, Leaf, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel } from 'lucide-react';
-import Table from '../components/ui/Table';
+import { Plus, Apple, ArrowLeft, Edit2, Trash2, Wallet, Shovel } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useData } from '../context/DataContext';
 import { motion } from 'framer-motion';
 
 const LABOR_TYPES = [
-    'Sowing',
-    'Rotoring/Tilling',
-    'Weeding',
+    'Planting',
+    'Pruning',
     'Watering',
+    'Fertilizing',
     'Harvesting',
     'Other'
 ];
 
-const Agriculture = () => {
-    const { data, addCrop, updateCrop, addCropSale, addCropExpense } = useData();
-    const [selectedCropId, setSelectedCropId] = useState(null);
+const Fruits = () => {
+    const { data, addFruit, updateFruit, addFruitSale, addExpense } = useData();
+    const [selectedFruitId, setSelectedFruitId] = useState(null);
 
     // Modals
-    const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+    const [isFruitModalOpen, setIsFruitModalOpen] = useState(false);
     const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
     const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
 
     // Forms
-    const [cropForm, setCropForm] = useState({
+    const [fruitForm, setFruitForm] = useState({
         name: '',
         variety: '',
         seedCost: '',
@@ -42,12 +41,13 @@ const Agriculture = () => {
 
     const [laborForm, setLaborForm] = useState({
         date: new Date().toISOString().split('T')[0],
-        laborType: 'Sowing',
+        laborType: 'Planting',
         description: '',
         amount: ''
     });
 
-    const selectedCrop = data.crops.find(c => c.id === selectedCropId);
+    const fruits = data.fruits || [];
+    const selectedFruit = fruits.find(f => f.id === selectedFruitId);
 
     // Calculate stats
     const getTotalStats = () => {
@@ -55,14 +55,14 @@ const Agriculture = () => {
         let totalLaborCost = 0;
         let totalRevenue = 0;
 
-        data.crops.forEach(crop => {
-            totalSeedCost += Number(crop.seedCost) || 0;
-            totalRevenue += (crop.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+        fruits.forEach(fruit => {
+            totalSeedCost += Number(fruit.seedCost) || 0;
+            totalRevenue += (fruit.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
         });
 
-        // Get labor costs from expenses linked to crops
+        // Get labor costs from expenses linked to fruits
         data.expenses.forEach(exp => {
-            if (exp.cropId) {
+            if (exp.fruitId) {
                 totalLaborCost += Number(exp.amount) || 0;
             }
         });
@@ -73,11 +73,11 @@ const Agriculture = () => {
         return { totalSeedCost, totalLaborCost, totalExpenditure, totalRevenue, margin };
     };
 
-    const getCropStats = (crop) => {
-        const seedCost = Number(crop.seedCost) || 0;
-        const revenue = (crop.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+    const getFruitStats = (fruit) => {
+        const seedCost = Number(fruit.seedCost) || 0;
+        const revenue = (fruit.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
         const laborCost = data.expenses
-            .filter(e => e.cropId === crop.id)
+            .filter(e => e.fruitId === fruit.id)
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
         const totalCost = seedCost + laborCost;
         const margin = revenue - totalCost;
@@ -95,12 +95,12 @@ const Agriculture = () => {
     };
 
     // Handlers
-    const openCropModal = (crop = null) => {
-        if (crop) {
-            setCropForm(crop);
+    const openFruitModal = (fruit = null) => {
+        if (fruit) {
+            setFruitForm(fruit);
             setIsEditMode(true);
         } else {
-            setCropForm({
+            setFruitForm({
                 name: '',
                 variety: '',
                 seedCost: '',
@@ -109,22 +109,22 @@ const Agriculture = () => {
             });
             setIsEditMode(false);
         }
-        setIsCropModalOpen(true);
+        setIsFruitModalOpen(true);
     };
 
-    const handleCropSubmit = (e) => {
+    const handleFruitSubmit = (e) => {
         e.preventDefault();
         if (isEditMode) {
-            updateCrop(cropForm.id, cropForm);
+            updateFruit(fruitForm.id, fruitForm);
         } else {
-            addCrop(cropForm);
+            addFruit(fruitForm);
         }
-        setIsCropModalOpen(false);
+        setIsFruitModalOpen(false);
     };
 
     const handleSaleSubmit = (e) => {
         e.preventDefault();
-        addCropSale(selectedCrop.id, saleForm);
+        addFruitSale(selectedFruit.id, saleForm);
         setIsSaleModalOpen(false);
         setSaleForm({
             date: new Date().toISOString().split('T')[0],
@@ -136,38 +136,39 @@ const Agriculture = () => {
 
     const handleLaborSubmit = (e) => {
         e.preventDefault();
-        addCropExpense(selectedCrop.id, {
+        addExpense({
             date: laborForm.date,
-            laborType: laborForm.laborType,
-            description: laborForm.description,
+            category: laborForm.laborType,
+            description: `${selectedFruit?.name || 'Fruit'}: ${laborForm.description || laborForm.laborType}`,
             amount: Number(laborForm.amount),
-            paidTo: 'Labor'
+            paidTo: 'Labor',
+            fruitId: selectedFruit.id
         });
         setIsLaborModalOpen(false);
         setLaborForm({
             date: new Date().toISOString().split('T')[0],
-            laborType: 'Sowing',
+            laborType: 'Planting',
             description: '',
             amount: ''
         });
     };
 
-    // --- CROP LIST VIEW ---
-    if (!selectedCrop) {
+    // --- FRUIT LIST VIEW ---
+    if (!selectedFruit) {
         return (
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Agriculture Management</h1>
-                        <p className="text-gray-500 mt-1">Track crops, labor costs, and revenue.</p>
+                        <h1 className="text-3xl font-bold text-gray-900">🍎 Fruits Management</h1>
+                        <p className="text-gray-500 mt-1">Track fruit trees/plants, labor costs, and revenue.</p>
                     </div>
                     <button
-                        onClick={() => openCropModal()}
-                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-medium"
+                        onClick={() => openFruitModal()}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-red-200 transition-all font-medium"
                     >
                         <Plus className="w-5 h-5" />
-                        Add Crop
+                        Add Fruit
                     </button>
                 </div>
 
@@ -187,7 +188,7 @@ const Agriculture = () => {
                         transition={{ delay: 0.1 }}
                         className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
                     >
-                        <p className="text-xs text-gray-500 uppercase">Seeds Cost</p>
+                        <p className="text-xs text-gray-500 uppercase">Plants Cost</p>
                         <p className="text-lg font-bold">₹ {stats.totalSeedCost.toLocaleString()}</p>
                     </motion.div>
                     <motion.div
@@ -221,47 +222,47 @@ const Agriculture = () => {
                     </motion.div>
                 </div>
 
-                {/* Crops Grid */}
+                {/* Fruits Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {data.crops.length > 0 ? (
-                        data.crops.map(crop => {
-                            const cropStats = getCropStats(crop);
+                    {fruits.length > 0 ? (
+                        fruits.map(fruit => {
+                            const fruitStats = getFruitStats(fruit);
                             return (
                                 <motion.div
                                     whileHover={{ y: -5 }}
-                                    key={crop.id}
-                                    onClick={() => setSelectedCropId(crop.id)}
+                                    key={fruit.id}
+                                    onClick={() => setSelectedFruitId(fruit.id)}
                                     className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all"
                                 >
                                     <div className="flex justify-between items-start mb-4">
                                         <div className="flex items-center gap-2">
-                                            <Leaf className="w-5 h-5 text-green-500" />
+                                            <Apple className="w-5 h-5 text-red-500" />
                                             <div>
-                                                <h3 className="text-xl font-bold text-gray-800">{crop.name}</h3>
-                                                <span className="text-sm text-gray-500">{crop.variety}</span>
+                                                <h3 className="text-xl font-bold text-gray-800">{fruit.name}</h3>
+                                                <span className="text-sm text-gray-500">{fruit.variety}</span>
                                             </div>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${getStatusColor(crop.status)}`}>
-                                            {crop.status}
+                                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${getStatusColor(fruit.status)}`}>
+                                            {fruit.status}
                                         </span>
                                     </div>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between">
                                             <span className="text-gray-500">Planted</span>
-                                            <span className="font-medium">{crop.plantedDate}</span>
+                                            <span className="font-medium">{fruit.plantedDate}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">Seed Cost</span>
-                                            <span className="font-medium">₹ {cropStats.seedCost.toLocaleString()}</span>
+                                            <span className="text-gray-500">Plant Cost</span>
+                                            <span className="font-medium">₹ {fruitStats.seedCost.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-gray-500">Revenue</span>
-                                            <span className="font-medium text-green-600">₹ {cropStats.revenue.toLocaleString()}</span>
+                                            <span className="font-medium text-green-600">₹ {fruitStats.revenue.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between pt-2 border-t border-gray-100">
                                             <span className="text-gray-500">Margin</span>
-                                            <span className={`font-bold ${cropStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                ₹ {cropStats.margin.toLocaleString()}
+                                            <span className={`font-bold ${fruitStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                ₹ {fruitStats.margin.toLocaleString()}
                                             </span>
                                         </div>
                                     </div>
@@ -270,48 +271,48 @@ const Agriculture = () => {
                         })
                     ) : (
                         <div className="col-span-full text-center py-12 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                            <Leaf className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                            <p>No crops found. Add one to get started!</p>
+                            <Apple className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <p>No fruits found. Add one to get started!</p>
                         </div>
                     )}
                 </div>
 
-                {/* Add/Edit Crop Modal */}
-                <Modal isOpen={isCropModalOpen} onClose={() => setIsCropModalOpen(false)} title={isEditMode ? "Edit Crop" : "Add New Crop"}>
-                    <form onSubmit={handleCropSubmit} className="space-y-4">
+                {/* Add/Edit Fruit Modal */}
+                <Modal isOpen={isFruitModalOpen} onClose={() => setIsFruitModalOpen(false)} title={isEditMode ? "Edit Fruit" : "Add New Fruit"}>
+                    <form onSubmit={handleFruitSubmit} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Crop Name</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Fruit Name</label>
                                 <input
                                     required
                                     type="text"
-                                    placeholder="e.g., Tomato"
-                                    value={cropForm.name}
-                                    onChange={e => setCropForm({ ...cropForm, name: e.target.value })}
-                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                    placeholder="e.g., Mango"
+                                    value={fruitForm.name}
+                                    onChange={e => setFruitForm({ ...fruitForm, name: e.target.value })}
+                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Variety</label>
                                 <input
                                     type="text"
-                                    placeholder="e.g., Roma"
-                                    value={cropForm.variety}
-                                    onChange={e => setCropForm({ ...cropForm, variety: e.target.value })}
-                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                    placeholder="e.g., Alphonso"
+                                    value={fruitForm.variety}
+                                    onChange={e => setFruitForm({ ...fruitForm, variety: e.target.value })}
+                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                                 />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Seed Cost (₹)</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Plant Cost (₹)</label>
                                 <input
                                     required
                                     type="number"
                                     placeholder="0"
-                                    value={cropForm.seedCost}
-                                    onChange={e => setCropForm({ ...cropForm, seedCost: e.target.value })}
-                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                    value={fruitForm.seedCost}
+                                    onChange={e => setFruitForm({ ...fruitForm, seedCost: e.target.value })}
+                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                                 />
                             </div>
                             <div>
@@ -319,25 +320,25 @@ const Agriculture = () => {
                                 <input
                                     required
                                     type="date"
-                                    value={cropForm.plantedDate}
-                                    onChange={e => setCropForm({ ...cropForm, plantedDate: e.target.value })}
-                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                    value={fruitForm.plantedDate}
+                                    onChange={e => setFruitForm({ ...fruitForm, plantedDate: e.target.value })}
+                                    className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                                 />
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                             <select
-                                value={cropForm.status}
-                                onChange={e => setCropForm({ ...cropForm, status: e.target.value })}
-                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                value={fruitForm.status}
+                                onChange={e => setFruitForm({ ...fruitForm, status: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                             >
                                 <option value="Growing">Growing</option>
                                 <option value="Harvested">Harvested</option>
                             </select>
                         </div>
-                        <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                            {isEditMode ? 'Update Crop' : 'Add Crop'}
+                        <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
+                            {isEditMode ? 'Update Fruit' : 'Add Fruit'}
                         </button>
                     </form>
                 </Modal>
@@ -345,56 +346,56 @@ const Agriculture = () => {
         );
     }
 
-    // --- CROP DETAIL VIEW ---
-    const cropStats = getCropStats(selectedCrop);
-    const cropExpenses = data.expenses.filter(e => e.cropId === selectedCrop.id);
+    // --- FRUIT DETAIL VIEW ---
+    const fruitStats = getFruitStats(selectedFruit);
+    const fruitExpenses = data.expenses.filter(e => e.fruitId === selectedFruit.id);
 
     return (
         <div className="space-y-6">
             {/* Back Button */}
-            <button onClick={() => setSelectedCropId(null)} className="flex items-center text-gray-500 hover:text-gray-800 font-medium">
-                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Crops
+            <button onClick={() => setSelectedFruitId(null)} className="flex items-center text-gray-500 hover:text-gray-800 font-medium">
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Fruits
             </button>
 
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="flex items-center gap-3">
-                    <Leaf className="w-8 h-8 text-green-500" />
+                    <Apple className="w-8 h-8 text-red-500" />
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">{selectedCrop.name}</h1>
-                        <p className="text-gray-500">{selectedCrop.variety} • Planted: {selectedCrop.plantedDate}</p>
+                        <h1 className="text-3xl font-bold text-gray-900">{selectedFruit.name}</h1>
+                        <p className="text-gray-500">{selectedFruit.variety} • Planted: {selectedFruit.plantedDate}</p>
                     </div>
-                    <button onClick={() => openCropModal(selectedCrop)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                    <button onClick={() => openFruitModal(selectedFruit)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
                         <Edit2 className="w-4 h-4" />
                     </button>
                 </div>
-                <span className={`px-4 py-2 rounded-xl text-sm font-bold h-fit ${getStatusColor(selectedCrop.status)}`}>
-                    {selectedCrop.status}
+                <span className={`px-4 py-2 rounded-xl text-sm font-bold h-fit ${getStatusColor(selectedFruit.status)}`}>
+                    {selectedFruit.status}
                 </span>
             </div>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 uppercase">Seed Cost</p>
-                    <p className="text-lg font-bold">₹ {cropStats.seedCost.toLocaleString()}</p>
+                    <p className="text-xs text-gray-500 uppercase">Plant Cost</p>
+                    <p className="text-lg font-bold">₹ {fruitStats.seedCost.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Labor Cost</p>
-                    <p className="text-lg font-bold text-orange-600">₹ {cropStats.laborCost.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-orange-600">₹ {fruitStats.laborCost.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Total Cost</p>
-                    <p className="text-lg font-bold text-red-600">₹ {cropStats.totalCost.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-red-600">₹ {fruitStats.totalCost.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Revenue</p>
-                    <p className="text-lg font-bold text-green-600">₹ {cropStats.revenue.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-green-600">₹ {fruitStats.revenue.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Margin</p>
-                    <p className={`text-lg font-bold ${cropStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ₹ {cropStats.margin.toLocaleString()}
+                    <p className={`text-lg font-bold ${fruitStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ₹ {fruitStats.margin.toLocaleString()}
                     </p>
                 </div>
             </div>
@@ -414,8 +415,8 @@ const Agriculture = () => {
                         </button>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        {(selectedCrop.sales || []).length > 0 ? (
-                            (selectedCrop.sales || []).map((sale, i) => (
+                        {(selectedFruit.sales || []).length > 0 ? (
+                            (selectedFruit.sales || []).map((sale, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
                                     <div>
                                         <p className="font-medium text-gray-800">{sale.date}</p>
@@ -444,8 +445,8 @@ const Agriculture = () => {
                         </button>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        {cropExpenses.length > 0 ? (
-                            cropExpenses.map((exp, i) => (
+                        {fruitExpenses.length > 0 ? (
+                            fruitExpenses.map((exp, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
                                     <div>
                                         <p className="font-medium text-gray-800">{exp.category}</p>
@@ -496,7 +497,7 @@ const Agriculture = () => {
                                 <option value="kg">kg</option>
                                 <option value="quintal">Quintal</option>
                                 <option value="pieces">Pieces</option>
-                                <option value="bundles">Bundles</option>
+                                <option value="dozen">Dozen</option>
                             </select>
                         </div>
                     </div>
@@ -569,43 +570,43 @@ const Agriculture = () => {
                 </form>
             </Modal>
 
-            {/* Edit Crop Modal (reused) */}
-            <Modal isOpen={isCropModalOpen} onClose={() => setIsCropModalOpen(false)} title="Edit Crop">
-                <form onSubmit={handleCropSubmit} className="space-y-4">
+            {/* Edit Fruit Modal (reused) */}
+            <Modal isOpen={isFruitModalOpen} onClose={() => setIsFruitModalOpen(false)} title="Edit Fruit">
+                <form onSubmit={handleFruitSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Crop Name</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Fruit Name</label>
                             <input
                                 required
                                 type="text"
-                                value={cropForm.name}
-                                onChange={e => setCropForm({ ...cropForm, name: e.target.value })}
-                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                value={fruitForm.name}
+                                onChange={e => setFruitForm({ ...fruitForm, name: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Variety</label>
                             <input
                                 type="text"
-                                value={cropForm.variety}
-                                onChange={e => setCropForm({ ...cropForm, variety: e.target.value })}
-                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                                value={fruitForm.variety}
+                                onChange={e => setFruitForm({ ...fruitForm, variety: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                             />
                         </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                         <select
-                            value={cropForm.status}
-                            onChange={e => setCropForm({ ...cropForm, status: e.target.value })}
-                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                            value={fruitForm.status}
+                            onChange={e => setFruitForm({ ...fruitForm, status: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                         >
                             <option value="Growing">Growing</option>
                             <option value="Harvested">Harvested</option>
                         </select>
                     </div>
-                    <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                        Update Crop
+                    <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
+                        Update Fruit
                     </button>
                 </form>
             </Modal>
@@ -613,5 +614,4 @@ const Agriculture = () => {
     );
 };
 
-export default Agriculture;
-
+export default Fruits;

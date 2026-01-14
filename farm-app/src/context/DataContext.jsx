@@ -12,8 +12,10 @@ export const useData = () => {
 const INITIAL_DATA = {
     batches: [],
     expenses: [],
+    yearlyExpenses: [],
     employees: [],
     crops: [],
+    fruits: [],
 };
 
 export const DataProvider = ({ children }) => {
@@ -61,12 +63,23 @@ export const DataProvider = ({ children }) => {
         localStorage.setItem('farm_data', JSON.stringify(newData));
     };
 
+    // Helper to generate simple IDs
+    const generateSimpleId = (type, name) => {
+        const typeCodes = { Goat: 'go', Sheep: 'sh', Chicken: 'ch', Cow: 'co' };
+        const typeCode = typeCodes[type] || 'xx';
+        const cleanName = (name || 'batch').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6);
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = String(now.getFullYear()).slice(-2);
+        return `${typeCode}${cleanName}${month}${year}`;
+    };
+
     // --- ACTIONS ---
 
     const addBatch = async (batch) => {
         const newBatch = {
             ...batch,
-            id: `B - ${Date.now().toString().slice(-4)} `, // Simple ID gen
+            id: generateSimpleId(batch.type, batch.name),
             expenses: [],
             animals: []
         };
@@ -86,13 +99,35 @@ export const DataProvider = ({ children }) => {
             ...expense,
             id: `E - ${Date.now().toString().slice(-4)} `,
         };
-        const newData = { ...data, expenses: [...data.expenses, newExpense] };
+
+        let newData = { ...data, expenses: [...data.expenses, newExpense] };
+
+        // If expense is linked to a batch, also add it to that batch's expenses array
+        if (expense.batchId) {
+            const updatedBatches = data.batches.map(b => {
+                if (b.id === expense.batchId) {
+                    return {
+                        ...b,
+                        expenses: [...(b.expenses || []), {
+                            id: newExpense.id,
+                            type: expense.category,
+                            description: expense.description,
+                            amount: newExpense.amount,
+                            date: expense.date
+                        }]
+                    };
+                }
+                return b;
+            });
+            newData = { ...newData, batches: updatedBatches };
+        }
+
         saveData(newData);
 
         if (!isOffline) {
-            // Columns: ID, Date, Category, Description, Amount, PaidTo
+            // Columns: ID, Date, Category, Description, Amount, PaidTo, BatchId
             await cloud.appendRow('Expenses', [
-                newExpense.id, newExpense.date, newExpense.category, newExpense.description, newExpense.amount, newExpense.paidTo
+                newExpense.id, newExpense.date, newExpense.category, newExpense.description, newExpense.amount, newExpense.paidTo, newExpense.batchId || ''
             ]);
         }
     };
@@ -116,17 +151,56 @@ export const DataProvider = ({ children }) => {
     const addCrop = async (crop) => {
         const newCrop = {
             ...crop,
-            id: `C - ${Date.now().toString().slice(-4)} `
+            id: `C - ${Date.now().toString().slice(-4)} `,
+            sales: [],
+            expenses: []
         };
         const newData = { ...data, crops: [...data.crops, newCrop] };
         saveData(newData);
 
         if (!isOffline) {
             await cloud.appendRow('Crops', [
-                newCrop.id, newCrop.name, newCrop.variety, newCrop.plantedDate, newCrop.status
+                newCrop.id, newCrop.name, newCrop.variety, newCrop.plantedDate, newCrop.seedCost, newCrop.status
             ]);
         }
-    }
+    };
+
+    // Update a crop
+    const updateCrop = (cropId, updates) => {
+        const updatedCrops = data.crops.map(c =>
+            c.id === cropId ? { ...c, ...updates } : c
+        );
+        saveData({ ...data, crops: updatedCrops });
+    };
+
+    // Add a sale to a crop
+    const addCropSale = (cropId, sale) => {
+        const updatedCrops = data.crops.map(c => {
+            if (c.id === cropId) {
+                return {
+                    ...c,
+                    sales: [...(c.sales || []), {
+                        id: `S - ${Date.now().toString().slice(-4)}`,
+                        ...sale
+                    }]
+                };
+            }
+            return c;
+        });
+        saveData({ ...data, crops: updatedCrops });
+    };
+
+    // Add expense to a crop (and also to global expenses)
+    const addCropExpense = async (cropId, expense) => {
+        const crop = data.crops.find(c => c.id === cropId);
+        const expenseWithCrop = {
+            ...expense,
+            cropId,
+            category: expense.laborType || expense.category,
+            description: `${crop?.name || 'Crop'}: ${expense.description || expense.laborType}`
+        };
+        await addExpense(expenseWithCrop);
+    };
 
     // Helper to add animals/expenses TO A BATCH (Complex nested update)
     // For now, this is Local-Only until we define the "Animals" sheet relation
@@ -137,6 +211,74 @@ export const DataProvider = ({ children }) => {
         saveData({ ...data, batches: updatedBatches });
     };
 
+    // Delete an animal from a batch
+    const deleteAnimalFromBatch = (batchId, animalId) => {
+        const updatedBatches = data.batches.map(b => {
+            if (b.id === batchId) {
+                return {
+                    ...b,
+                    animals: (b.animals || []).filter(a => a.id !== animalId)
+                };
+            }
+            return b;
+        });
+        saveData({ ...data, batches: updatedBatches });
+    };
+
+    // Add yearly expense (like land lease) - automatically divided into monthly
+    const addYearlyExpense = async (yearlyExpense) => {
+        const newYearlyExpense = {
+            ...yearlyExpense,
+            id: `YE - ${Date.now().toString().slice(-4)}`,
+            monthlyAmount: Math.round(Number(yearlyExpense.amount) / 12)
+        };
+        const newData = { ...data, yearlyExpenses: [...(data.yearlyExpenses || []), newYearlyExpense] };
+        saveData(newData);
+    };
+
+    // Delete yearly expense
+    const deleteYearlyExpense = (expenseId) => {
+        const updatedExpenses = (data.yearlyExpenses || []).filter(e => e.id !== expenseId);
+        saveData({ ...data, yearlyExpenses: updatedExpenses });
+    };
+
+    // Add fruit (similar to crop)
+    const addFruit = async (fruit) => {
+        const newFruit = {
+            ...fruit,
+            id: `F - ${Date.now().toString().slice(-4)}`,
+            sales: [],
+            expenses: []
+        };
+        const newData = { ...data, fruits: [...(data.fruits || []), newFruit] };
+        saveData(newData);
+    };
+
+    // Update fruit
+    const updateFruit = (fruitId, updates) => {
+        const updatedFruits = (data.fruits || []).map(f =>
+            f.id === fruitId ? { ...f, ...updates } : f
+        );
+        saveData({ ...data, fruits: updatedFruits });
+    };
+
+    // Add sale to fruit
+    const addFruitSale = (fruitId, sale) => {
+        const updatedFruits = (data.fruits || []).map(f => {
+            if (f.id === fruitId) {
+                return {
+                    ...f,
+                    sales: [...(f.sales || []), {
+                        id: `FS - ${Date.now().toString().slice(-4)}`,
+                        ...sale
+                    }]
+                };
+            }
+            return f;
+        });
+        saveData({ ...data, fruits: updatedFruits });
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -145,9 +287,18 @@ export const DataProvider = ({ children }) => {
             isOffline,
             addBatch,
             addExpense,
+            addYearlyExpense,
+            deleteYearlyExpense,
             addEmployee,
             addCrop,
-            updateBatch
+            updateCrop,
+            addCropSale,
+            addCropExpense,
+            addFruit,
+            updateFruit,
+            addFruitSale,
+            updateBatch,
+            deleteAnimalFromBatch
         }}>
             {children}
         </DataContext.Provider>

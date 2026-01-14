@@ -8,7 +8,8 @@ import {
     Wallet,
     Users,
     X,
-    LogOut
+    LogOut,
+    Apple
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -16,7 +17,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     const links = [
         { name: 'Farm Overview', icon: LayoutDashboard, path: '/' },
         { name: 'Livestock', icon: Milk, path: '/livestock' },
-        { name: 'Agriculture', icon: Sprout, path: '/agriculture' },
+        { name: 'Vegetables', icon: Sprout, path: '/vegetables' },
+        { name: 'Fruits', icon: Apple, path: '/fruits' },
         { name: 'Expenses', icon: Wallet, path: '/expenses' },
         { name: 'Employees', icon: Users, path: '/employees' },
         { name: 'Settings', icon: Settings, path: '/settings' },
