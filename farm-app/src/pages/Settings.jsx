@@ -1,11 +1,9 @@
 import React from 'react';
-import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
-import { Save, Lock, Unlock, DollarSign, Users, Shield, Eye, ShieldCheck } from 'lucide-react';
+import { Users, Shield, Eye, ShieldCheck, UserPlus } from 'lucide-react';
 
 const Settings = () => {
-    const { settings, updateSetting, updateConsumptionRate } = useSettings();
-    const { user, isSuperAdmin, isAdmin, allUsers, updateUserRole } = useAuth();
+    const { user, isSuperAdmin, isAdmin, allUsers, updateUserRole, userRole } = useAuth();
 
     const getRoleBadge = (role) => {
         switch (role) {
@@ -26,17 +24,41 @@ const Settings = () => {
         }
     };
 
+    // Check super admin by email directly
+    const currentUserIsSuperAdmin = user?.email?.toLowerCase() === 'bratankumar93@gmail.com';
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Farm Settings</h1>
-                    <p className="text-gray-500 mt-1">Configure global cost variables and application modes.</p>
+                    <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+                    <p className="text-gray-500 mt-1">Manage users and app configuration.</p>
+                </div>
+            </div>
+
+            {/* Current User Info */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4">Your Account</h3>
+                <div className="flex items-center gap-4">
+                    {user?.photoURL ? (
+                        <img src={user.photoURL} alt={user.displayName} className="w-14 h-14 rounded-full border-2 border-green-200" />
+                    ) : (
+                        <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xl">
+                            {user?.displayName?.charAt(0) || user?.email?.charAt(0) || '?'}
+                        </div>
+                    )}
+                    <div>
+                        <p className="font-medium text-gray-800 text-lg">{user?.displayName || 'User'}</p>
+                        <p className="text-gray-500">{user?.email}</p>
+                        <div className="mt-1">
+                            {getRoleBadge(currentUserIsSuperAdmin ? 'super_admin' : userRole)}
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* User Management - Super Admin Only */}
-            {isSuperAdmin && (
+            {currentUserIsSuperAdmin && (
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-purple-100">
                     <div className="flex items-center gap-2 mb-4">
                         <div className="p-2 bg-purple-100 rounded-lg">
@@ -48,7 +70,7 @@ const Settings = () => {
                     <p className="text-sm text-gray-500 mb-4">Manage user roles. Admins can edit data, Viewers can only view.</p>
 
                     <div className="space-y-3">
-                        {allUsers.map(u => (
+                        {allUsers.length > 0 ? allUsers.map(u => (
                             <div key={u.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                                 <div className="flex items-center gap-3">
                                     {u.photoURL ? (
@@ -78,110 +100,41 @@ const Settings = () => {
                                     )}
                                 </div>
                             </div>
-                        ))}
-                        {allUsers.length === 0 && (
-                            <p className="text-center text-gray-400 py-4">No users have logged in yet.</p>
+                        )) : (
+                            <div className="text-center py-8 text-gray-400">
+                                <UserPlus className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                <p>No other users have logged in yet.</p>
+                                <p className="text-sm">Share the app link with your team!</p>
+                            </div>
                         )}
                     </div>
                 </div>
             )}
 
-            {/* Owner Mode Toggle */}
-            {isAdmin && (
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-xl ${settings.ownerMode ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
-                            {settings.ownerMode ? <Unlock className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800">Owner Mode</h3>
-                            <p className="text-sm text-gray-500">Reveal sensitive financial data (True Cost, Profit Margins).</p>
-                        </div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={settings.ownerMode}
-                            onChange={(e) => updateSetting('ownerMode', e.target.checked)}
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                    </label>
-                </div>
-            )}
-
-            {/* Global Cost Variables - Admin Only */}
-            {isAdmin && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <DollarSign className="w-5 h-5 text-green-600" />
-                            <h3 className="font-bold text-gray-800">Cost Parameters</h3>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Standard Feed Cost (₹/kg)</label>
-                            <input
-                                type="number"
-                                value={settings.feedCostPerUnit}
-                                onChange={(e) => updateSetting('feedCostPerUnit', parseFloat(e.target.value))}
-                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-green-500/20 outline-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Daily Labor Cost (Total ₹)</label>
-                            <input
-                                type="number"
-                                value={settings.dailyLaborCost}
-                                onChange={(e) => updateSetting('dailyLaborCost', parseFloat(e.target.value))}
-                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-green-500/20 outline-none"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">Divided equally among all animals daily.</p>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Target Profit Margin (%)</label>
-                            <input
-                                type="number"
-                                value={settings.marginPercentage}
-                                onChange={(e) => updateSetting('marginPercentage', parseFloat(e.target.value))}
-                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-green-500/20 outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Users className="w-5 h-5 text-blue-600" />
-                            <h3 className="font-bold text-gray-800">Feed Consumption Multipliers</h3>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-4">Relative to 1 unit (e.g., if Goat is 1, Cow might be 10).</p>
-
-                        {Object.entries(settings.consumptionRates).map(([type, rate]) => (
-                            <div key={type} className="flex items-center justify-between">
-                                <label className="text-sm font-medium text-gray-700">{type}</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={rate}
-                                    onChange={(e) => updateConsumptionRate(type, e.target.value)}
-                                    className="w-24 px-3 py-1.5 bg-gray-50 rounded-lg border-none focus:ring-2 focus:ring-blue-500/20 outline-none text-right"
-                                />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Viewer Message */}
-            {!isAdmin && (
+            {/* Viewer Info */}
+            {!currentUserIsSuperAdmin && (
                 <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 text-center">
                     <Eye className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                    <h3 className="font-medium text-gray-600">View Only Access</h3>
-                    <p className="text-sm text-gray-500 mt-1">Contact the super admin to request edit permissions.</p>
+                    <h3 className="font-medium text-gray-600">
+                        {isAdmin ? 'Admin Access' : 'View Only Access'}
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                        {isAdmin
+                            ? 'You can view and edit data. Contact super admin for user management.'
+                            : 'Contact the super admin to request edit permissions.'}
+                    </p>
                 </div>
             )}
+
+            {/* App Info */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-2">About</h3>
+                <div className="text-sm text-gray-500 space-y-1">
+                    <p><strong>App:</strong> Trinetra Farms Management</p>
+                    <p><strong>Version:</strong> 2.0</p>
+                    <p><strong>Super Admin:</strong> bratankumar93@gmail.com</p>
+                </div>
+            </div>
         </div>
     );
 };

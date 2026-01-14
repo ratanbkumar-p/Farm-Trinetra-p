@@ -1,84 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Super admin email
-    function isSuperAdmin() {
-      return request.auth != null && 
-        request.auth.token.email == 'bratankumar93@gmail.com';
-    }
-    
-    // Check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Check if user is admin or super admin
-    function isAdmin() {
-      return isAuthenticated() && (
-        isSuperAdmin() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
-      );
-    }
-    
-    // Users collection
-    match /users/{userId} {
-      // Anyone authenticated can read users
-      allow read: if isAuthenticated();
-      // Users can update their own lastLogin, super admin can update roles
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (
-        request.auth.uid == userId ||
-        isSuperAdmin()
-      );
-    }
-    
-    // Settings collection - super admin only for writes
-    match /settings/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin();
-    }
-    
-    // Data collections - admins can write, all authenticated can read
-    match /batches/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /expenses/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /yearlyExpenses/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /employees/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /crops/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /fruits/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /invoices/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    // Weight records - separate collection for better organization
-    match /weightRecords/{document} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    // Allow all authenticated users to read and write all collections
+    // This is simple and works for a private farm management app
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }
