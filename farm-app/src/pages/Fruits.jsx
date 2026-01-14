@@ -1,21 +1,43 @@
 import React, { useState } from 'react';
 import { Plus, Apple, ArrowLeft, Edit2, Trash2, Wallet, Shovel } from 'lucide-react';
 import Modal from '../components/ui/Modal';
-import { useData } from '../context/DataContext';
-import { motion } from 'framer-motion';
-
-const LABOR_TYPES = [
-    'Planting',
-    'Pruning',
-    'Watering',
-    'Fertilizing',
-    'Harvesting',
-    'Other'
-];
+import { useAuth } from '../context/AuthContext';
 
 const Fruits = () => {
-    const { data, addFruit, updateFruit, addFruitSale, addExpense } = useData();
-    const [selectedFruitId, setSelectedFruitId] = useState(null);
+    const { data, addFruit, updateFruit, deleteFruit, addFruitSale, addExpense } = useData();
+    const { isSuperAdmin } = useAuth();
+    // ... existing code ...
+
+    const handleDeleteFruit = async () => {
+        if (!isSuperAdmin) return;
+        if (window.confirm('Are you sure you want to delete this fruit? This action cannot be undone.')) {
+            await deleteFruit(selectedFruit.id);
+            setSelectedFruitId(null);
+        }
+    };
+
+    // ... inside render ...
+    {/* Header */ }
+    <div className="flex flex-col md:flex-row justify-between gap-6">
+        <div className="flex items-center gap-3">
+            <Apple className="w-8 h-8 text-red-500" />
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">{selectedFruit.name}</h1>
+                <p className="text-gray-500">{selectedFruit.variety} • Planted: {selectedFruit.plantedDate}</p>
+            </div>
+            <button onClick={() => openFruitModal(selectedFruit)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                <Edit2 className="w-4 h-4" />
+            </button>
+            {isSuperAdmin && (
+                <button onClick={handleDeleteFruit} className="p-2 text-red-300 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors" title="Delete Fruit">
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            )}
+        </div>
+        <span className={`px-4 py-2 rounded-xl text-sm font-bold h-fit ${getStatusColor(selectedFruit.status)}`}>
+            {selectedFruit.status}
+        </span>
+    </div>
 
     // Modals
     const [isFruitModalOpen, setIsFruitModalOpen] = useState(false);

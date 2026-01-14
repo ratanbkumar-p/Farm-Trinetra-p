@@ -60,7 +60,23 @@ const StatCard = ({ title, value, trend, trendValue, icon: Icon, color, index, c
 
 const Dashboard = () => {
     const { data } = useData();
-    const [timeRange, setTimeRange] = useState('6M'); // '6M' or '1Y'
+    const [timeRange, setTimeRange] = useState('6M'); // For Chart: '6M' or '1Y'
+    const [periodFilter, setPeriodFilter] = useState('month'); // For Totals: 'month', 'quarter', 'year', 'all'
+
+    // Helper to check if date falls in filter period
+    const isInPeriod = (dateStr) => {
+        if (!dateStr) return false;
+        if (periodFilter === 'all') return true;
+
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMonths = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+
+        if (periodFilter === 'month') return diffMonths === 0;
+        if (periodFilter === 'quarter') return diffMonths >= 0 && diffMonths < 3;
+        if (periodFilter === 'year') return diffMonths >= 0 && diffMonths < 12;
+        return false;
+    };
 
     // Get comprehensive stats by type
     const getStatsByType = () => {
@@ -80,20 +96,26 @@ const Dashboard = () => {
                 soldCount += animals.filter(a => a.status === 'Sold').length;
 
                 // Revenue comes from SOLD animals
-                revenue += animals.filter(a => a.status === 'Sold').reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
+                // FIX: Apply Period Filter to Revenue
+                animals.filter(a => a.status === 'Sold').forEach(a => {
+                    if (isInPeriod(a.soldDate)) {
+                        revenue += (Number(a.soldPrice) || 0);
+                    }
+                });
             });
 
             // Calculate expenses linked to batches of this type
             const batchIds = typeBatches.map(b => b.id);
-            expenses += data.expenses
+            data.expenses
                 .filter(e => batchIds.includes(e.batchId))
-                .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+                .forEach(e => {
+                    // FIX: Apply Period Filter to Expenses
+                    if (isInPeriod(e.date)) {
+                        expenses += (Number(e.amount) || 0);
+                    }
+                });
 
-            // Add bought costs of ALL animals in these batches (active, sold, or deceased) as an expense/investment
-            typeBatches.forEach(batch => {
-                const animals = batch.animals || [];
-                expenses += animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-            });
+            // REMOVED: Adding bought costs as expense (User requested exclusion)
 
             stats[type] = {
                 active: activeCount,
@@ -108,9 +130,13 @@ const Dashboard = () => {
         let vegRevenue = 0;
         let vegExpenses = 0;
         data.crops.forEach(crop => {
-            vegRevenue += (crop.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+            (crop.sales || []).forEach(s => {
+                if (isInPeriod(s.date)) vegRevenue += (Number(s.amount) || 0);
+            });
         });
-        vegExpenses += data.expenses.filter(e => e.cropId).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        data.expenses.filter(e => e.cropId).forEach(e => {
+            if (isInPeriod(e.date)) vegExpenses += (Number(e.amount) || 0);
+        });
 
         stats['Vegetables'] = {
             active: data.crops.filter(c => c.status === 'Growing').length,
@@ -124,9 +150,13 @@ const Dashboard = () => {
         let fruitRevenue = 0;
         let fruitExpenses = 0;
         (data.fruits || []).forEach(fruit => {
-            fruitRevenue += (fruit.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+            (fruit.sales || []).forEach(s => {
+                if (isInPeriod(s.date)) fruitRevenue += (Number(s.amount) || 0);
+            });
         });
-        fruitExpenses += data.expenses.filter(e => e.fruitId).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        data.expenses.filter(e => e.fruitId).forEach(e => {
+            if (isInPeriod(e.date)) fruitExpenses += (Number(e.amount) || 0);
+        });
 
         stats['Fruits'] = {
             active: (data.fruits || []).filter(f => f.status === 'Growing').length,
@@ -157,7 +187,7 @@ const Dashboard = () => {
             }
         });
 
-        // Add crops/fruits to revenue/expenses but NOT active animals count
+        // Add crops/fruits to revenue/expenses
         ['Vegetables', 'Fruits'].forEach(type => {
             const s = statsByType[type];
             if (s) {
@@ -166,31 +196,51 @@ const Dashboard = () => {
             }
         });
 
-        // Add general expenses (not linked to any batch or crop)
-        const generalExpenses = data.expenses
+        // Add general expenses (not linked)
+        data.expenses
             .filter(e => !e.batchId && !e.cropId && !e.fruitId)
-            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-        totalExpenses += generalExpenses;
+            .forEach(e => {
+                if (isInPeriod(e.date)) {
+                    totalExpenses += (Number(e.amount) || 0);
+                }
+            });
 
-        const yearlyExpensesMonthly = (data.yearlyExpenses || [])
-            .reduce((sum, e) => sum + (Number(e.monthlyAmount) || Math.round(Number(e.amount) / 12) || 0), 0);
+        // Yearly Expenses Logic based on Filter
+        const yearlyTotal = (data.yearlyExpenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        const yearlyMonthly = (data.yearlyExpenses || []).reduce((sum, e) => sum + (Number(e.monthlyAmount) || Math.round(Number(e.amount) / 12) || 0), 0);
 
-        const yearlyExpensesTotal = (data.yearlyExpenses || [])
-            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        if (periodFilter === 'month') {
+            totalExpenses += yearlyMonthly;
+        } else if (periodFilter === 'quarter') {
+            totalExpenses += (yearlyMonthly * 3);
+        } else if (periodFilter === 'year' || periodFilter === 'all') {
+            // For year, add full amount. For 'all', technically should be prorated but let's add full yearly.
+            totalExpenses += yearlyTotal;
+        }
 
-        // Incorporate full yearly amount into total expenses for "All Time" view/Current projection?
-        // Let's stick to adding just the monthly part if we consider "Current Month" view, but this is "Total Overview".
-        // Let's just add the yearly total.
-        totalExpenses += yearlyExpensesTotal;
+        // 3. Employee Salaries (Monthly) - User requested inclusion
+        // Calculate total monthly salary bill
+        const monthlySalaries = (data.employees || [])
+            .filter(e => e.status === 'Active')
+            .reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
+
+        if (periodFilter === 'month') {
+            totalExpenses += monthlySalaries;
+        } else if (periodFilter === 'quarter') {
+            totalExpenses += (monthlySalaries * 3);
+        } else if (periodFilter === 'year') {
+            totalExpenses += (monthlySalaries * 12);
+        }
+        if (periodFilter === 'all') {
+            totalExpenses += (monthlySalaries * 12);
+        }
 
         return {
             revenue: totalRevenue,
             expenses: totalExpenses,
             active: totalActiveAnimals,
             profit: totalRevenue - totalExpenses,
-            generalExpenses,
-            yearlyExpensesMonthly,
-            yearlyExpensesTotal
+            yearlyExpensesMonthly
         };
     };
 
@@ -240,18 +290,17 @@ const Dashboard = () => {
                 }
             });
 
-            // Animal Purchases (Investment)
-            data.batches.forEach(b => {
-                (b.animals || []).forEach(a => {
-                    if (a.entryDate && a.entryDate.startsWith(monthKey)) {
-                        expense += Number(a.purchaseCost) || 0;
-                    }
-                });
-            });
+            // Removed: Animal Purchases (Investment) from Operational Expenses Chart
 
             // Add Monthly portion of Yearlies
             // Assuming they apply every month
             expense += totals.yearlyExpensesMonthly;
+
+            // Add Monthly Salaries
+            const monthlySalaries = (data.employees || [])
+                .filter(e => e.status === 'Active')
+                .reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
+            expense += monthlySalaries;
 
             result.push({
                 name: monthName,
@@ -277,7 +326,7 @@ const Dashboard = () => {
 
             <div className="space-y-2">
                 <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">Bought Cost</span>
+                    <span className="text-gray-500">Expenses</span>
                     <span className="font-medium text-gray-900">₹ {Math.round(stats.expenses).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
@@ -303,6 +352,14 @@ const Dashboard = () => {
                 className="flex flex-col md:flex-row md:items-center justify-between gap-4"
             >
                 <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+
+                {/* Global Period Filter */}
+                <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
+                    <button onClick={() => setPeriodFilter('month')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${periodFilter === 'month' ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:text-gray-50'}`}>Month</button>
+                    <button onClick={() => setPeriodFilter('quarter')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${periodFilter === 'quarter' ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:bg-gray-50'}`}>Quarter</button>
+                    <button onClick={() => setPeriodFilter('year')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${periodFilter === 'year' ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:bg-gray-50'}`}>Year</button>
+                    <button onClick={() => setPeriodFilter('all')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${periodFilter === 'all' ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:bg-gray-50'}`}>All Time</button>
+                </div>
             </motion.div>
 
             {/* Stats Grid */}
@@ -316,11 +373,13 @@ const Dashboard = () => {
                 />
                 <StatCard
                     index={1}
-                    title="Total Expenses"
+                    title="Operational Expenses"
                     value={`₹ ${Math.round(totals.expenses).toLocaleString()}`}
                     icon={Activity}
                     color="bg-red-100 text-red-600"
-                />
+                >
+                    <p className="text-xs text-gray-400 mt-1">*Excludes animal purchase cost (Investment)</p>
+                </StatCard>
                 <StatCard
                     index={2}
                     title="Active Animals"
@@ -339,7 +398,27 @@ const Dashboard = () => {
                 />
             </div>
 
-            {/* Financial Performance Chart */}
+            {/* Breakdown Section - MOVED UP */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+            >
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">Operational Breakdown</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <TypeRow name="🐐 Goat" stats={statsByType.Goat} color="text-amber-700" />
+                    <TypeRow name="🐑 Sheep" stats={statsByType.Sheep} color="text-gray-700" />
+                    <TypeRow name="🐔 Chicken" stats={statsByType.Chicken} color="text-orange-700" />
+                    <TypeRow name="🐄 Cow" stats={statsByType.Cow} color="text-purple-700" />
+                    <TypeRow name="🌱 Vegetables" stats={statsByType.Vegetables} color="text-green-700" />
+                    <TypeRow name="🍎 Fruits" stats={statsByType.Fruits} color="text-red-600" />
+                </div>
+            </motion.div>
+
+            {/* Financial Performance Chart - MOVED DOWN */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -347,7 +426,7 @@ const Dashboard = () => {
                 className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"
             >
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-gray-800">Financial Performance</h3>
+                    <h3 className="text-lg font-bold text-gray-800">Financial Performance (Trend)</h3>
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         <button
                             onClick={() => setTimeRange('6M')}
@@ -385,61 +464,9 @@ const Dashboard = () => {
                                 formatter={(value) => [`₹ ${value.toLocaleString()}`, '']}
                             />
                             <Area type="monotone" dataKey="income" stroke="#2E7D32" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" name="Income" />
-                            <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" name="Expense" />
+                            <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" name="Operational Exp" />
                         </AreaChart>
                     </ResponsiveContainer>
-                </div>
-            </motion.div>
-
-            {/* Breakdown Section - Always Visible */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-            >
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-gray-800">Breakdown by Type</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    <TypeRow name="🐐 Goat" stats={statsByType.Goat} color="text-amber-700" />
-                    <TypeRow name="🐑 Sheep" stats={statsByType.Sheep} color="text-gray-700" />
-                    <TypeRow name="🐔 Chicken" stats={statsByType.Chicken} color="text-orange-700" />
-                    <TypeRow name="🐄 Cow" stats={statsByType.Cow} color="text-purple-700" />
-                    <TypeRow name="🌱 Vegetables" stats={statsByType.Vegetables} color="text-green-700" />
-                    <TypeRow name="🍎 Fruits" stats={statsByType.Fruits} color="text-red-600" />
-
-                    {totals.yearlyExpensesMonthly > 0 && (
-                        <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <span className="font-bold text-lg text-blue-700">📅 Yearly</span>
-                                <span className="text-xs bg-white text-blue-600 px-2 py-1 rounded border border-blue-200">
-                                    Recurring
-                                </span>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-sm text-blue-600">Monthly Avg: <span className="font-bold">₹ {totals.yearlyExpensesMonthly.toLocaleString()}</span></p>
-                                <p className="text-xs text-blue-400">Total Annual: ₹ {totals.yearlyExpensesTotal.toLocaleString()}</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {totals.generalExpenses > 0 && (
-                        <div className="p-4 rounded-xl bg-gray-100 border border-gray-200 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <span className="font-bold text-lg text-gray-700">📋 General</span>
-                                <span className="text-xs bg-white text-gray-600 px-2 py-1 rounded border border-gray-200">
-                                    Unallocated
-                                </span>
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-500">Expenses</span>
-                                    <span className="font-bold text-red-500">₹ {Math.round(totals.generalExpenses).toLocaleString()}</span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </motion.div>
         </div>

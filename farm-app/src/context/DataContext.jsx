@@ -78,9 +78,26 @@ export const DataProvider = ({ children }) => {
     // --- ACTIONS ---
 
     const addBatch = async (batch) => {
-        const id = generateSimpleId(batch.type, batch.name);
+        // Generate Sequential ID: Type-Number (e.g., Goat-1)
+        const typePrefix = batch.type;
+        const existingTypeBatches = data.batches.filter(b => b.type === typePrefix);
+
+        // Find max number
+        let maxNum = 0;
+        existingTypeBatches.forEach(b => {
+            const parts = b.id.split('-');
+            if (parts.length === 2 && !isNaN(parts[1])) {
+                const num = parseInt(parts[1]);
+                if (num > maxNum) maxNum = num;
+            }
+        });
+
+        const nextNum = maxNum + 1;
+        const id = `${typePrefix}-${nextNum}`;
+
         const newBatch = {
             ...batch,
+            id, // Explicitly set ID
             expenses: [],
             animals: [],
             createdAt: new Date().toISOString()
@@ -102,8 +119,10 @@ export const DataProvider = ({ children }) => {
 
     const addExpense = async (expense) => {
         const id = generateId('E');
+        // Ensure batchId is preserved in the global expense document
         const newExpense = {
             ...expense,
+            batchId: expense.batchId || null,
             createdAt: new Date().toISOString()
         };
 
@@ -147,6 +166,7 @@ export const DataProvider = ({ children }) => {
         const id = `E${rand}`;
         const newEmployee = {
             ...employee,
+            status: 'Active', // Default status
             createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, 'employees', id), newEmployee);
@@ -200,6 +220,14 @@ export const DataProvider = ({ children }) => {
             createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, 'fruits', id), newFruit);
+    };
+
+    const deleteCrop = async (id) => {
+        await deleteDoc(doc(db, 'crops', id));
+    };
+
+    const deleteFruit = async (id) => {
+        await deleteDoc(doc(db, 'fruits', id));
     };
 
     const updateFruit = async (fruitId, updates) => {
@@ -292,10 +320,12 @@ export const DataProvider = ({ children }) => {
             addEmployee,
             addCrop,
             updateCrop,
+            deleteCrop,
             addCropSale,
             addCropExpense,
             addFruit,
             updateFruit,
+            deleteFruit,
             addFruitSale,
             updateBatch,
             deleteAnimalFromBatch,

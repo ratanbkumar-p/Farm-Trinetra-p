@@ -128,16 +128,32 @@ const Livestock = () => {
                 // Edit existing animal logic would go here
             } else {
                 // Add new animals
-                // FIX: Short ID generation (Max 6 chars)
-                // Format: TypeInitial + '-' + 4 random alphanumeric
+                // FIX: Sequential IDs (e.g. Goat-1, Goat-2)
+                const type = selectedBatch.type;
+
+                // Find all existing animals of this type across ALL batches
+                const allAnimalsOfType = data.batches
+                    .filter(b => b.type === type)
+                    .flatMap(b => b.animals || []);
+
+                let maxNum = 0;
+                allAnimalsOfType.forEach(a => {
+                    // Check if ID matches pattern Type-Number
+                    if (a.id && a.id.startsWith(type + '-')) {
+                        const parts = a.id.split('-');
+                        if (parts.length === 2) {
+                            const num = parseInt(parts[1]);
+                            if (!isNaN(num) && num > maxNum) maxNum = num;
+                        }
+                    }
+                });
+
                 const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
-                    const typeInitial = selectedBatch.type.charAt(0).toUpperCase();
-                    // Generate 4 random chars
-                    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-                    const shortId = `${typeInitial}-${random}`;
+                    maxNum++;
+                    const sequentialId = `${type}-${maxNum}`;
 
                     return {
-                        id: shortId,
+                        id: sequentialId,
                         gender: animalForm.gender,
                         weight: animalForm.weight,
                         purchaseCost: Number(animalForm.cost),
@@ -199,7 +215,7 @@ const Livestock = () => {
         }
 
         const avgCostPerAnimal = activeAnimals.length > 0 ? financials.totalInvested / activeAnimals.length : 0;
-        const suggestedPrice = Math.round(avgCostPerAnimal * (1 + 20 / 100)); // Default 20% margin
+        const suggestedPrice = Math.round(financials.minSellPrice); // Use min sell price as baseline
 
         setSellForm({
             pricePerAnimal: suggestedPrice,
@@ -279,6 +295,13 @@ const Livestock = () => {
         // Only explicit expenses are counted
         const totalFeedCost = 0;
 
+        // Allocated Expense (Global Expenses + Salaries / Total Animals * Batch Animals)
+        // We use monthlyGeneralExpenses calculated in the component (via useMemo)
+        // Wait, calculateBatchFinancials is a function, not a hook. 
+        // It needs access to `expensePerAnimal`.
+        // Since `expensePerAnimal` is calculated in the component body, we should pass it or use it implicitly if inside component.
+        // It is inside component `Livestock`. Yes.
+
         const allocatedExpense = animals.length * expensePerAnimal; // Simple allocation based on total headcount history
 
         // Total Investment
@@ -293,8 +316,13 @@ const Livestock = () => {
 
         // Min Sell Price
         const marginMultiplier = 1 + (Number(settings.marginPercentage) || 20) / 100;
-        const costPerHead = activeAnimals.length > 0 ? totalInvested / animals.length : 0;
-        const minSellPrice = costPerHead * marginMultiplier;
+        const totalPerAnimalCost = animals.length > 0 ? totalInvested / animals.length : 0;
+        const minSellPrice = totalPerAnimalCost * marginMultiplier;
+
+        // Detailed breakdowns for UI
+        const specificExpensePerAnimal = animals.length > 0 ? totalSpecificExpenses / animals.length : 0;
+        const purchaseCostPerAnimal = animals.length > 0 ? totalAnimalCost / animals.length : 0;
+        const allocatedPerAnimal = expensePerAnimal;
 
         return {
             totalInvested,
@@ -308,7 +336,12 @@ const Livestock = () => {
             deceasedAnimals: deceasedAnimals.length,
             soldRevenue,
             soldProfit,
-            deceasedLoss
+            deceasedLoss,
+            // Per Animal Stats
+            totalPerAnimalCost,
+            specificExpensePerAnimal,
+            purchaseCostPerAnimal,
+            allocatedPerAnimal
         };
     };
 
@@ -501,6 +534,10 @@ const Livestock = () => {
                                         <span className="text-gray-500">Allocated Exp</span>
                                         <span className="font-medium text-amber-600">₹ {(f.allocatedExpense || 0).toLocaleString()}</span>
                                     </div>
+                                    <div className="flex justify-between border-t border-gray-100 pt-1 mt-1 border-dashed">
+                                        <span className="text-gray-500 text-xs">Cost/Animal</span>
+                                        <span className="font-medium text-xs">₹ {Math.round(f.totalPerAnimalCost).toLocaleString()}</span>
+                                    </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">Sold</span>
                                         <span className="font-medium text-blue-600">{f.soldAnimals} (₹{f.soldRevenue?.toLocaleString() || 0})</span>
@@ -510,7 +547,10 @@ const Livestock = () => {
                                         I will remove ownerMode check for this to ensure it's visible. */}
                                     <div className="flex justify-between pt-2 border-t border-gray-100">
                                         <span className="text-gray-500">Min. Sell Price</span>
-                                        <span className="font-bold text-green-600">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
+                                        <div className="text-right">
+                                            <span className="font-bold text-green-600 block">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
+                                            <span className="text-[10px] text-gray-400 block">(inc. {Number(settings.marginPercentage) || 20}% margin)</span>
+                                        </div>
                                     </div>
                                 </div>
                             </motion.div>
@@ -541,6 +581,82 @@ const Livestock = () => {
                         <div className="flex justify-end gap-3 mt-6">
                             <button type="button" onClick={() => setIsBatchModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
                             <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Create Batch</button>
+                        </div>
+                    </form>
+                </Modal>
+
+                {/* SELL MODAL - UPGRADED */}
+                <Modal isOpen={isSellModalOpen} onClose={() => setIsSellModalOpen(false)} title="Sell Animals">
+                    <form onSubmit={handleSellSubmit} className="space-y-6">
+                        {/* Financial breakdown for the deal */}
+                        {selectedBatch && (
+                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm space-y-2">
+                                <h4 className="font-bold text-blue-800 border-b border-blue-200 pb-2 mb-2">Cost Breakdown per Animal</h4>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Purchase Cost:</span>
+                                    <span>₹ {Math.round(calculateBatchFinancials(selectedBatch).purchaseCostPerAnimal).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Batch Expenses:</span>
+                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).specificExpensePerAnimal).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Allocated (Staff/General):</span>
+                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).allocatedPerAnimal).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between pt-2 border-t border-blue-200 font-bold">
+                                    <span className="text-blue-800">Total Cost Basis:</span>
+                                    <span>₹ {Math.round(calculateBatchFinancials(selectedBatch).totalPerAnimalCost).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between pt-1 font-bold">
+                                    <span className="text-green-700">Suggested Price (+{settings.marginPercentage}%):</span>
+                                    <span className="text-green-700">₹ {Math.round(calculateBatchFinancials(selectedBatch).minSellPrice).toLocaleString()}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price Per Animal (₹)</label>
+                            <input
+                                required
+                                type="number"
+                                value={sellForm.pricePerAnimal}
+                                onChange={e => setSellForm({ ...sellForm, pricePerAnimal: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg font-bold text-green-700 outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                                {(Number(sellForm.pricePerAnimal) - calculateBatchFinancials(selectedBatch).totalPerAnimalCost) >= 0
+                                    ? <span className="text-green-600">Profit: ₹ {Math.round(Number(sellForm.pricePerAnimal) - calculateBatchFinancials(selectedBatch).totalPerAnimalCost)} per animal</span>
+                                    : <span className="text-red-500">Loss: ₹ {Math.round(Number(sellForm.pricePerAnimal) - calculateBatchFinancials(selectedBatch).totalPerAnimalCost)} per animal</span>
+                                }
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Select Animals to Sell ({selectedAnimalsToSell.length})</label>
+                            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                                {(selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').map(animal => (
+                                    <label key={animal.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedAnimalsToSell.includes(animal.id)}
+                                            onChange={() => toggleAnimalSelection(animal.id)}
+                                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                        />
+                                        <div className="flex-1 flex justify-between">
+                                            <span className="font-medium text-gray-700">{animal.id}</span>
+                                            <span className="text-sm text-gray-500">{animal.weight}kg • {animal.gender}</span>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                            <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                Confirm Sale (₹ {(Number(sellForm.pricePerAnimal) * selectedAnimalsToSell.length).toLocaleString()})
+                            </button>
                         </div>
                     </form>
                 </Modal>
@@ -583,6 +699,7 @@ const Livestock = () => {
                 <div className="text-right">
                     <p className="text-sm text-gray-500">Minimum Sell Price</p>
                     <h2 className="text-3xl font-bold text-green-600">₹ {Math.round(financials.minSellPrice).toLocaleString()}</h2>
+                    <p className="text-xs text-gray-400">Total Cost Basis: ₹ {Math.round(financials.totalPerAnimalCost).toLocaleString()}</p>
                 </div>
             </div>
 
@@ -599,16 +716,20 @@ const Livestock = () => {
                     <div className="lg:col-span-2 space-y-4">
                         <div className="flex justify-between items-center">
                             <h3 className="font-bold text-gray-800">Animal List</h3>
-                            <button onClick={() => openAnimalModal()} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-100 transition-colors">
-                                <Plus className="w-4 h-4" /> Add Animals
-                            </button>
+                            <div className="flex gap-2">
+                                <span className="text-sm text-gray-500 self-center">Showing {activeAnimals.length} Active</span>
+                                <button onClick={() => openAnimalModal()} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-100 transition-colors">
+                                    <Plus className="w-4 h-4" /> Add Animals
+                                </button>
+                            </div>
                         </div>
 
                         {/* Stats Pills */}
                         <div className="flex gap-2 mb-2 flex-wrap">
                             <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Active: {financials.activeAnimals}</span>
                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Sold: {financials.soldAnimals}</span>
-                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Total Bought Cost: ₹{financials.totalAnimalCost.toLocaleString()}</span>
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Inv: ₹{financials.totalInvested.toLocaleString()}</span>
+                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Avg Cost: ₹{Math.round(financials.totalPerAnimalCost).toLocaleString()}</span>
                         </div>
 
                         <Table
@@ -654,8 +775,12 @@ const Livestock = () => {
                                 <div className="p-8 text-center text-gray-400"><p>No specific expenses recorded.</p></div>
                             )}
                             <div className="p-4 bg-amber-50 flex justify-between items-center border-t border-amber-100">
-                                <div><p className="font-medium text-amber-800">Allocated General</p><p className="text-xs text-amber-600">Shared farm expenses</p></div>
-                                <span className="font-bold text-amber-700">- ₹{financials.allocatedExpense || 0}</span>
+                                <div><p className="font-medium text-amber-800">Allocated (Staff/General)</p><p className="text-xs text-amber-600">Shared farm expenses</p></div>
+                                <span className="font-bold text-amber-700">- ₹ {Math.round(financials.allocatedExpense || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-100">
+                                <div><p className="font-medium text-gray-800">Total Expenses</p></div>
+                                <span className="font-bold text-red-600">- ₹ {Math.round((financials.operationalCost || 0) + (financials.allocatedExpense || 0)).toLocaleString()}</span>
                             </div>
                         </div>
                     </div>

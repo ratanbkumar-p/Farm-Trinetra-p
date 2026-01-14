@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 
 const Settings = () => {
     const { user, isSuperAdmin, isAdmin, allUsers, allowedUsers, updateUserRole, userRole, inviteUser, removeInvite } = useAuth();
+    const { theme, setTheme } = useTheme();
 
     // Modal State
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -208,9 +210,30 @@ const Settings = () => {
             )}
 
             {/* App Info */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-2">About</h3>
-                <div className="text-sm text-gray-500 space-y-1">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2">Appearance</h3>
+                <div className="flex gap-4 mt-3">
+                    {['light', 'dark', 'system'].map((mode) => (
+                        <button
+                            key={mode}
+                            onClick={() => setTheme(mode)}
+                            className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 transition-all ${theme === mode
+                                ? 'border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                                : 'border-gray-200 hover:bg-gray-50 text-gray-600 dark:border-gray-700 dark:hover:bg-gray-700 dark:text-gray-300'
+                                }`}
+                        >
+                            {mode === 'light' && <span className="text-lg">☀️</span>}
+                            {mode === 'dark' && <span className="text-lg">🌙</span>}
+                            {mode === 'system' && <span className="text-lg">💻</span>}
+                            <span className="capitalize font-medium">{mode}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2">About</h3>
+                <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
                     <p><strong>App:</strong> Trinetra Farms Management</p>
                     <p><strong>Version:</strong> 2.1</p>
                     <p><strong>Super Admin:</strong> bratankumar93@gmail.com</p>

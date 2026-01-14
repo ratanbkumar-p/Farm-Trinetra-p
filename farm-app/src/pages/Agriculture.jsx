@@ -2,21 +2,43 @@ import React, { useState } from 'react';
 import { Plus, Leaf, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { useData } from '../context/DataContext';
-import { motion } from 'framer-motion';
-
-const LABOR_TYPES = [
-    'Sowing',
-    'Rotoring/Tilling',
-    'Weeding',
-    'Watering',
-    'Harvesting',
-    'Other'
-];
+import { useAuth } from '../context/AuthContext';
 
 const Agriculture = () => {
-    const { data, addCrop, updateCrop, addCropSale, addCropExpense } = useData();
-    const [selectedCropId, setSelectedCropId] = useState(null);
+    const { data, addCrop, updateCrop, deleteCrop, addCropSale, addCropExpense } = useData();
+    const { isSuperAdmin } = useAuth();
+    // ... existing code ...
+
+    const handleDeleteCrop = async () => {
+        if (!isSuperAdmin) return;
+        if (window.confirm('Are you sure you want to delete this crop? This action cannot be undone.')) {
+            await deleteCrop(selectedCrop.id);
+            setSelectedCropId(null);
+        }
+    };
+
+    // ... inside render ...
+    {/* Header */ }
+    <div className="flex flex-col md:flex-row justify-between gap-6">
+        <div className="flex items-center gap-3">
+            <Leaf className="w-8 h-8 text-green-500" />
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">{selectedCrop.name}</h1>
+                <p className="text-gray-500">{selectedCrop.variety} • Planted: {selectedCrop.plantedDate}</p>
+            </div>
+            <button onClick={() => openCropModal(selectedCrop)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                <Edit2 className="w-4 h-4" />
+            </button>
+            {isSuperAdmin && (
+                <button onClick={handleDeleteCrop} className="p-2 text-red-300 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors" title="Delete Crop">
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            )}
+        </div>
+        <span className={`px-4 py-2 rounded-xl text-sm font-bold h-fit ${getStatusColor(selectedCrop.status)}`}>
+            {selectedCrop.status}
+        </span>
+    </div>
 
     // Modals
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
