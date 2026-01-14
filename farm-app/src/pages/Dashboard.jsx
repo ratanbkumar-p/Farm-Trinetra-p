@@ -240,7 +240,7 @@ const Dashboard = () => {
             expenses: totalExpenses,
             active: totalActiveAnimals,
             profit: totalRevenue - totalExpenses,
-            yearlyExpensesMonthly
+            yearlyExpensesMonthly: yearlyMonthly
         };
     };
 
