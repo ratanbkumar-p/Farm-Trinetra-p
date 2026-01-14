@@ -231,6 +231,52 @@ export const DataProvider = ({ children }) => {
         await deleteDoc(doc(db, 'invoices', invoiceId));
     };
 
+    // Delete batch
+    const deleteBatch = async (batchId) => {
+        await deleteDoc(doc(db, 'batches', batchId));
+    };
+
+    // Add weight record for an animal
+    const addWeightRecord = async (batchId, animalId, weight, date) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedAnimals = batch.animals.map(a => {
+                if (a.id === animalId) {
+                    const weightHistory = a.weightHistory || [];
+                    return {
+                        ...a,
+                        weight: weight, // Update current weight
+                        weightHistory: [...weightHistory, {
+                            date: date || new Date().toISOString().split('T')[0],
+                            weight: Number(weight)
+                        }]
+                    };
+                }
+                return a;
+            });
+            await updateDoc(doc(db, 'batches', batchId), { animals: updatedAnimals });
+        }
+    };
+
+    // Sell selected animals with specific price
+    const sellSelectedAnimals = async (batchId, animalIds, pricePerAnimal) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedAnimals = batch.animals.map(a => {
+                if (animalIds.includes(a.id)) {
+                    return {
+                        ...a,
+                        status: 'Sold',
+                        soldPrice: pricePerAnimal,
+                        soldDate: new Date().toISOString().split('T')[0]
+                    };
+                }
+                return a;
+            });
+            await updateDoc(doc(db, 'batches', batchId), { animals: updatedAnimals });
+        }
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -252,7 +298,10 @@ export const DataProvider = ({ children }) => {
             updateBatch,
             deleteAnimalFromBatch,
             addInvoice,
-            deleteInvoice
+            deleteInvoice,
+            deleteBatch,
+            addWeightRecord,
+            sellSelectedAnimals
         }}>
             {children}
         </DataContext.Provider>

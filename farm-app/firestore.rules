@@ -1,32 +1,45 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is authenticated
+    // Super admin email
+    function isSuperAdmin() {
+      return request.auth != null && 
+        request.auth.token.email == 'bratankumar93@gmail.com';
+    }
+    
+    // Check if user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // Helper function to check if user is admin
-    // Admin emails are stored in /settings/admins document
+    // Check if user is admin or super admin
     function isAdmin() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/settings/admins) &&
-        request.auth.token.email in get(/databases/$(database)/documents/settings/admins).data.emails;
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
+      );
     }
     
-    // Settings collection - only admins can write
+    // Users collection
+    match /users/{userId} {
+      // Anyone authenticated can read users
+      allow read: if isAuthenticated();
+      // Users can update their own lastLogin, super admin can update roles
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isSuperAdmin()
+      );
+    }
+    
+    // Settings collection - super admin only for writes
     match /settings/{document} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
     
-    // Users collection - users can read/write their own doc
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    // All other collections - authenticated users can read, only admins can write
+    // Data collections - admins can write, all authenticated can read
     match /batches/{document} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
@@ -58,6 +71,12 @@ service cloud.firestore {
     }
     
     match /invoices/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Weight records - separate collection for better organization
+    match /weightRecords/{document} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }

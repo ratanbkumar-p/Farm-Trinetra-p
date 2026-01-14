@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, googleProvider, db } from '../lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -9,66 +9,79 @@ export const useAuth = () => {
     return useContext(AuthContext);
 };
 
-// Default admin emails - can be updated in Firestore settings/admins document
-const DEFAULT_ADMINS = [
-    'ratankumar@example.com',  // Will be replaced with actual admin emails
-];
+// Super Admin - has all permissions and can manage users
+const SUPER_ADMIN_EMAIL = 'bratankumar93@gmail.com';
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
-    const [isAdmin, setIsAdmin] = useState(false);
+    const [userRole, setUserRole] = useState(null); // 'super_admin', 'admin', 'viewer'
     const [loading, setLoading] = useState(true);
-    const [adminEmails, setAdminEmails] = useState(DEFAULT_ADMINS);
+    const [allUsers, setAllUsers] = useState([]);
 
-    // Load admin list from Firestore
+    // Listen for all users (for user management)
     useEffect(() => {
-        const loadAdmins = async () => {
-            try {
-                const adminsDoc = await getDoc(doc(db, 'settings', 'admins'));
-                if (adminsDoc.exists()) {
-                    const data = adminsDoc.data();
-                    if (data.emails && Array.isArray(data.emails)) {
-                        setAdminEmails(data.emails);
-                    }
-                }
-            } catch (error) {
-                console.log('Using default admin list');
+        const unsubscribe = onSnapshot(
+            collection(db, 'users'),
+            (snapshot) => {
+                const users = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                setAllUsers(users);
+            },
+            (error) => {
+                console.log('Error loading users:', error);
             }
-        };
-        loadAdmins();
+        );
+        return () => unsubscribe();
     }, []);
 
     // Listen for auth state changes
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
-            if (currentUser) {
-                // Check if user is admin
-                const isUserAdmin = adminEmails.some(
-                    email => email.toLowerCase() === currentUser.email?.toLowerCase()
-                );
-                setIsAdmin(isUserAdmin);
 
-                // Save user to Firestore for tracking
+            if (currentUser) {
+                // Determine role
+                let role = 'viewer'; // Default role
+
+                // Check if super admin
+                if (currentUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+                    role = 'super_admin';
+                } else {
+                    // Check Firestore for user role
+                    try {
+                        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                        if (userDoc.exists() && userDoc.data().role) {
+                            role = userDoc.data().role;
+                        }
+                    } catch (error) {
+                        console.log('Error fetching user role:', error);
+                    }
+                }
+
+                setUserRole(role);
+
+                // Save/update user in Firestore
                 try {
                     await setDoc(doc(db, 'users', currentUser.uid), {
                         email: currentUser.email,
                         displayName: currentUser.displayName,
                         photoURL: currentUser.photoURL,
                         lastLogin: new Date().toISOString(),
-                        isAdmin: isUserAdmin
+                        role: role
                     }, { merge: true });
                 } catch (error) {
                     console.error('Error saving user:', error);
                 }
             } else {
-                setIsAdmin(false);
+                setUserRole(null);
             }
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [adminEmails]);
+    }, []);
 
     // Sign in with Google
     const signInWithGoogle = async () => {
@@ -91,12 +104,30 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Update user role (super admin only)
+    const updateUserRole = async (userId, newRole) => {
+        if (userRole !== 'super_admin') {
+            throw new Error('Only super admin can change roles');
+        }
+        await setDoc(doc(db, 'users', userId), { role: newRole }, { merge: true });
+    };
+
+    // Permission helpers
+    const isSuperAdmin = userRole === 'super_admin';
+    const isAdmin = userRole === 'super_admin' || userRole === 'admin';
+    const canEdit = isAdmin;
+
     const value = {
         user,
-        isAdmin,
+        userRole,
         loading,
+        allUsers,
+        isSuperAdmin,
+        isAdmin,
+        canEdit,
         signInWithGoogle,
-        logout
+        logout,
+        updateUserRole
     };
 
     return (

@@ -1,28 +1,42 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, DollarSign, TrendingUp } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, DollarSign, TrendingUp, Scale, Check } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Livestock = () => {
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, sellSelectedAnimals } = useData();
+    const { canEdit } = useAuth();
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
     // Main Tab for Livestock view: 'active' | 'sold' | 'deceased'
     const [mainTab, setMainTab] = useState('active');
+
+    // Batch Detail Tab: 'animals' | 'expenses' | 'weight'
+    const [batchTab, setBatchTab] = useState('animals');
 
     // Modals State
     const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
     const [isAnimalModalOpen, setIsAnimalModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [isSellModalOpen, setIsSellModalOpen] = useState(false);
+    const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
 
     // Animal Edit State
     const [editingAnimalId, setEditingAnimalId] = useState(null);
+
+    // Selective Sell State
+    const [selectedAnimalsToSell, setSelectedAnimalsToSell] = useState([]);
+
+    // Weight tracking state
+    const [selectedAnimalForWeight, setSelectedAnimalForWeight] = useState(null);
+    const [weightForm, setWeightForm] = useState({ weight: '', date: new Date().toISOString().split('T')[0] });
 
     // Forms State
     const [batchForm, setBatchForm] = useState({ name: '', type: 'Goat', startDate: '', status: 'Raising' });
@@ -43,10 +57,7 @@ const Livestock = () => {
 
     // Sell Modal State
     const [sellForm, setSellForm] = useState({
-        quantity: 1,
-        marginPercent: 20,
-        pricePerAnimal: 0,
-        totalPrice: 0
+        pricePerAnimal: 0
     });
 
     // --- DERIVED DATA ---

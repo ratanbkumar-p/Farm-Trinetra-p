@@ -16,7 +16,7 @@ import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
-    const { user, isAdmin, logout } = useAuth();
+    const { user, isAdmin, canEdit, isSuperAdmin, logout } = useAuth();
 
     const links = [
         { name: 'Farm Overview', icon: LayoutDashboard, path: '/' },
