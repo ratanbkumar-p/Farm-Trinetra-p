@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to all collections
+    // This is suitable for a private app with 7-8 known users
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
