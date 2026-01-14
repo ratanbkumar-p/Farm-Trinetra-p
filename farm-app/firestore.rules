@@ -1,10 +1,65 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write access to all collections
-    // This is suitable for a private app with 7-8 known users
-    match /{document=**} {
-      allow read, write: if true;
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    // Admin emails are stored in /settings/admins document
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/settings/admins) &&
+        request.auth.token.email in get(/databases/$(database)/documents/settings/admins).data.emails;
+    }
+    
+    // Settings collection - only admins can write
+    match /settings/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Users collection - users can read/write their own doc
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // All other collections - authenticated users can read, only admins can write
+    match /batches/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /expenses/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /yearlyExpenses/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /employees/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /crops/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /fruits/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /invoices/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

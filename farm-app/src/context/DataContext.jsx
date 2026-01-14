@@ -40,6 +40,7 @@ export const DataProvider = ({ children }) => {
         employees: [],
         crops: [],
         fruits: [],
+        invoices: [],
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -48,7 +49,7 @@ export const DataProvider = ({ children }) => {
     useEffect(() => {
         const unsubscribes = [];
 
-        const collections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits'];
+        const collections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices'];
 
         collections.forEach(collName => {
             const unsubscribe = onSnapshot(
@@ -216,6 +217,20 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    // Invoice functions
+    const addInvoice = async (invoice) => {
+        const id = generateId('INV');
+        const newInvoice = {
+            ...invoice,
+            createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'invoices', id), newInvoice);
+    };
+
+    const deleteInvoice = async (invoiceId) => {
+        await deleteDoc(doc(db, 'invoices', invoiceId));
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -235,7 +250,9 @@ export const DataProvider = ({ children }) => {
             updateFruit,
             addFruitSale,
             updateBatch,
-            deleteAnimalFromBatch
+            deleteAnimalFromBatch,
+            addInvoice,
+            deleteInvoice
         }}>
             {children}
         </DataContext.Provider>

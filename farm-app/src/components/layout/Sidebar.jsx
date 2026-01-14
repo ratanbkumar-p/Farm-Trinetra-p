@@ -9,20 +9,33 @@ import {
     Users,
     X,
     LogOut,
-    Apple
+    Apple,
+    FileText
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useAuth } from '../../context/AuthContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
+    const { user, isAdmin, logout } = useAuth();
+
     const links = [
         { name: 'Farm Overview', icon: LayoutDashboard, path: '/' },
         { name: 'Livestock', icon: Milk, path: '/livestock' },
         { name: 'Vegetables', icon: Sprout, path: '/vegetables' },
         { name: 'Fruits', icon: Apple, path: '/fruits' },
         { name: 'Expenses', icon: Wallet, path: '/expenses' },
+        { name: 'Invoices', icon: FileText, path: '/invoices' },
         { name: 'Employees', icon: Users, path: '/employees' },
         { name: 'Settings', icon: Settings, path: '/settings' },
     ];
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (error) {
+            console.error('Logout failed:', error);
+        }
+    };
 
     const NavContent = () => (
         <>
@@ -30,7 +43,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                 <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
                     TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
                 </h1>
-                {/* Mobile Close Button (Visible only inside mobile drawer) */}
+                {/* Mobile Close Button */}
                 <button
                     onClick={toggleSidebar}
                     className="md:hidden p-2 -mr-2 text-gray-500 hover:bg-gray-100 rounded-full"
@@ -38,6 +51,36 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     <X className="w-6 h-6" />
                 </button>
             </div>
+
+            {/* User Info */}
+            {user && (
+                <div className="px-4 py-4 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                        {user.photoURL ? (
+                            <img
+                                src={user.photoURL}
+                                alt={user.displayName}
+                                className="w-10 h-10 rounded-full border-2 border-green-200"
+                            />
+                        ) : (
+                            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold">
+                                {user.displayName?.charAt(0) || user.email?.charAt(0) || '?'}
+                            </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                                {user.displayName || 'User'}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        </div>
+                        {isAdmin && (
+                            <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                Admin
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <nav className="flex-1 px-4 space-y-2 py-6 overflow-y-auto">
                 {links.map((link) => (
@@ -62,7 +105,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             </nav>
 
             <div className="p-4 border-t border-gray-100">
-                <button className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors">
+                <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+                >
                     <LogOut className="w-5 h-5" />
                     <span className="font-medium">Sign Out</span>
                 </button>
