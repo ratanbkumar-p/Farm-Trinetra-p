@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
 import {
     collection,
     doc,
@@ -46,7 +47,18 @@ export const DataProvider = ({ children }) => {
     const [error, setError] = useState(null);
 
     // Real-time sync with Firestore
+    const { user, loading: authLoading } = useAuth();
     useEffect(() => {
+        // Wait for auth before syncing
+        if (authLoading) {
+            // still checking auth – keep loading true
+            return;
+        }
+        if (!user) {
+            // no user – stop syncing, set loading false
+            setLoading(false);
+            return;
+        }
         const unsubscribes = [];
 
         const collections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices'];
@@ -73,7 +85,7 @@ export const DataProvider = ({ children }) => {
 
         // Cleanup listeners on unmount
         return () => unsubscribes.forEach(unsub => unsub());
-    }, []);
+    }, [authLoading, user]);
 
     // --- ACTIONS ---
 
@@ -114,6 +126,24 @@ export const DataProvider = ({ children }) => {
         if (batch) {
             const updatedAnimals = (batch.animals || []).filter(a => a.id !== animalId);
             await updateDoc(doc(db, 'batches', batchId), { animals: updatedAnimals });
+        }
+    };
+
+    const updateBatchExpense = async (batchId, expenseId, updates) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedExpenses = (batch.expenses || []).map(e =>
+                e.id === expenseId ? { ...e, ...updates } : e
+            );
+            await updateDoc(doc(db, 'batches', batchId), { expenses: updatedExpenses });
+        }
+    };
+
+    const deleteBatchExpense = async (batchId, expenseId) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedExpenses = (batch.expenses || []).filter(e => e.id !== expenseId);
+            await updateDoc(doc(db, 'batches', batchId), { expenses: updatedExpenses });
         }
     };
 
@@ -307,6 +337,53 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    const deleteCropSale = async (cropId, saleId) => {
+        const crop = data.crops.find(c => c.id === cropId);
+        if (crop) {
+            const updatedSales = (crop.sales || []).filter(s => s.id !== saleId);
+            await updateDoc(doc(db, 'crops', cropId), { sales: updatedSales });
+        }
+    };
+
+    const deleteFruitSale = async (fruitId, saleId) => {
+        const fruit = data.fruits.find(f => f.id === fruitId);
+        if (fruit) {
+            const updatedSales = (fruit.sales || []).filter(s => s.id !== saleId);
+            await updateDoc(doc(db, 'fruits', fruitId), { sales: updatedSales });
+        }
+    };
+
+    const deleteExpense = async (expenseId) => {
+        const expense = data.expenses.find(e => e.id === expenseId);
+        if (expense && expense.batchId) {
+            const batch = data.batches.find(b => b.id === expense.batchId);
+            if (batch) {
+                const updatedExpenses = (batch.expenses || []).filter(e => e.id !== expenseId);
+                await updateDoc(doc(db, 'batches', expense.batchId), { expenses: updatedExpenses });
+            }
+        }
+        await deleteDoc(doc(db, 'expenses', expenseId));
+    };
+
+    const updateExpense = async (expenseId, updates) => {
+        const expense = data.expenses.find(e => e.id === expenseId);
+        if (!expense) return;
+
+        // Update the expense document
+        await updateDoc(doc(db, 'expenses', expenseId), updates);
+
+        // If linked to a batch, update the batch's expense array too
+        if (expense.batchId) {
+            const batch = data.batches.find(b => b.id === expense.batchId);
+            if (batch) {
+                const updatedExpenses = (batch.expenses || []).map(e =>
+                    e.id === expenseId ? { ...e, ...updates } : e
+                );
+                await updateDoc(doc(db, 'batches', expense.batchId), { expenses: updatedExpenses });
+            }
+        }
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -333,7 +410,13 @@ export const DataProvider = ({ children }) => {
             deleteInvoice,
             deleteBatch,
             addWeightRecord,
-            sellSelectedAnimals
+            sellSelectedAnimals,
+            deleteCropSale,
+            deleteFruitSale,
+            deleteExpense,
+            updateExpense,
+            updateBatchExpense,
+            deleteBatchExpense
         }}>
             {children}
         </DataContext.Provider>

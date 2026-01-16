@@ -1,46 +1,19 @@
 import React, { useState } from 'react';
 import { Plus, Leaf, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel } from 'lucide-react';
 import Table from '../components/ui/Table';
+import { motion } from 'framer-motion';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+
+const LABOR_TYPES = ['Sowing', 'Weeding', 'Harvesting', 'Fertilizer Application', 'Pesticide Application', 'Irrigation', 'Other'];
 
 const Agriculture = () => {
-    const { data, addCrop, updateCrop, deleteCrop, addCropSale, addCropExpense } = useData();
+    const { data, addCrop, updateCrop, deleteCrop, addCropSale, addCropExpense, deleteCropSale, deleteExpense } = useData();
     const { isSuperAdmin } = useAuth();
-    // ... existing code ...
 
-    const handleDeleteCrop = async () => {
-        if (!isSuperAdmin) return;
-        if (window.confirm('Are you sure you want to delete this crop? This action cannot be undone.')) {
-            await deleteCrop(selectedCrop.id);
-            setSelectedCropId(null);
-        }
-    };
-
-    // ... inside render ...
-    {/* Header */ }
-    <div className="flex flex-col md:flex-row justify-between gap-6">
-        <div className="flex items-center gap-3">
-            <Leaf className="w-8 h-8 text-green-500" />
-            <div>
-                <h1 className="text-3xl font-bold text-gray-900">{selectedCrop.name}</h1>
-                <p className="text-gray-500">{selectedCrop.variety} • Planted: {selectedCrop.plantedDate}</p>
-            </div>
-            <button onClick={() => openCropModal(selectedCrop)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
-                <Edit2 className="w-4 h-4" />
-            </button>
-            {isSuperAdmin && (
-                <button onClick={handleDeleteCrop} className="p-2 text-red-300 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors" title="Delete Crop">
-                    <Trash2 className="w-4 h-4" />
-                </button>
-            )}
-        </div>
-        <span className={`px-4 py-2 rounded-xl text-sm font-bold h-fit ${getStatusColor(selectedCrop.status)}`}>
-            {selectedCrop.status}
-        </span>
-    </div>
-
-    // Modals
+    // State
+    const [selectedCropId, setSelectedCropId] = useState(null);
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
     const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
@@ -69,7 +42,17 @@ const Agriculture = () => {
         amount: ''
     });
 
+    // Derived Data
     const selectedCrop = data.crops.find(c => c.id === selectedCropId);
+
+    // Handlers
+    const handleDeleteCrop = async () => {
+        if (!isSuperAdmin) return;
+        if (window.confirm('Are you sure you want to delete this crop? This action cannot be undone.')) {
+            await deleteCrop(selectedCrop.id);
+            setSelectedCropId(null);
+        }
+    };
 
     // Calculate stats
     const getTotalStats = () => {
@@ -389,6 +372,11 @@ const Agriculture = () => {
                     <button onClick={() => openCropModal(selectedCrop)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
                         <Edit2 className="w-4 h-4" />
                     </button>
+                    {isSuperAdmin && (
+                        <button onClick={handleDeleteCrop} className="p-2 text-gray-400 hover:bg-red-100 hover:text-red-600 rounded-full">
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
                 <span className={`px-4 py-2 rounded-xl text-sm font-bold h-fit ${getStatusColor(selectedCrop.status)}`}>
                     {selectedCrop.status}
@@ -443,7 +431,21 @@ const Agriculture = () => {
                                         <p className="font-medium text-gray-800">{sale.date}</p>
                                         <p className="text-xs text-gray-500">{sale.quantity} {sale.unit}</p>
                                     </div>
-                                    <span className="font-bold text-green-600">+ ₹ {Number(sale.amount).toLocaleString()}</span>
+                                    <div className="flex items-center gap-4">
+                                        <span className="font-bold text-green-600">+ ₹ {Number(sale.amount).toLocaleString()}</span>
+                                        {isSuperAdmin && (
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm('Delete this sale record?')) {
+                                                        deleteCropSale(selectedCrop.id, sale.id);
+                                                    }
+                                                }}
+                                                className="text-gray-400 hover:text-red-500"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))
                         ) : (
@@ -473,7 +475,21 @@ const Agriculture = () => {
                                         <p className="font-medium text-gray-800">{exp.category}</p>
                                         <p className="text-xs text-gray-500">{exp.date}</p>
                                     </div>
-                                    <span className="font-bold text-red-500">- ₹ {Number(exp.amount).toLocaleString()}</span>
+                                    <div className="flex items-center gap-4">
+                                        <span className="font-bold text-red-500">- ₹ {Number(exp.amount).toLocaleString()}</span>
+                                        {isSuperAdmin && (
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm('Delete this expense record?')) {
+                                                        deleteExpense(exp.id);
+                                                    }
+                                                }}
+                                                className="text-gray-400 hover:text-red-500"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))
                         ) : (

@@ -10,8 +10,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const Livestock = () => {
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, sellSelectedAnimals, addExpense } = useData();
-    const { canEdit } = useAuth();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense } = useData();
+    const { canEdit, isSuperAdmin } = useAuth();
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
     // Main Tab for Livestock view: 'active' | 'sold' | 'deceased'
@@ -53,6 +53,8 @@ const Livestock = () => {
         description: '',
         amount: ''
     });
+
+    const [editingBatchExpense, setEditingBatchExpense] = useState(null);
 
     // Sell Modal State
     const [sellForm, setSellForm] = useState({
@@ -128,18 +130,23 @@ const Livestock = () => {
                 // Edit existing animal logic would go here
             } else {
                 // Add new animals
-                // FIX: Sequential IDs (e.g. Goat-1, Goat-2)
+                // FIX: Sequential IDs (e.g. SHJANM26-1)
                 const type = selectedBatch.type;
+                const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Chicken': 'CH', 'Poultry': 'CH' };
+                const date = new Date();
+                const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
+                const year = date.getFullYear().toString().slice(-2);
+                const gender = animalForm.gender === 'Male' ? 'M' : 'F';
+                const prefix = `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${gender}${year}-`;
 
-                // Find all existing animals of this type across ALL batches
+                // Find all existing animals of this type across ALL batches to find max sequence for THIS month/type/gender
                 const allAnimalsOfType = data.batches
                     .filter(b => b.type === type)
                     .flatMap(b => b.animals || []);
 
                 let maxNum = 0;
                 allAnimalsOfType.forEach(a => {
-                    // Check if ID matches pattern Type-Number
-                    if (a.id && a.id.startsWith(type + '-')) {
+                    if (a.id && a.id.startsWith(prefix)) {
                         const parts = a.id.split('-');
                         if (parts.length === 2) {
                             const num = parseInt(parts[1]);
@@ -150,7 +157,7 @@ const Livestock = () => {
 
                 const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
                     maxNum++;
-                    const sequentialId = `${type}-${maxNum}`;
+                    const sequentialId = `${prefix}${maxNum}`;
 
                     return {
                         id: sequentialId,
@@ -159,6 +166,7 @@ const Livestock = () => {
                         purchaseCost: Number(animalForm.cost),
                         status: animalForm.status,
                         entryDate: new Date().toISOString().split('T')[0],
+                        boughtDate: selectedBatch.date, // Track when bought for filtering
                         weightHistory: [{ date: new Date().toISOString().split('T')[0], weight: Number(animalForm.weight) }]
                     };
                 });
@@ -167,6 +175,7 @@ const Livestock = () => {
                 updateBatch(selectedBatch.id, { animals: updatedAnimals });
             }
         }
+
         setIsAnimalModalOpen(false);
         setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy' });
     };
@@ -181,15 +190,26 @@ const Livestock = () => {
     const handleExpenseSubmit = async (e) => {
         e.preventDefault();
         if (selectedBatch) {
-            // FIX: Use addExpense from context to ensure it syncs to global expenses
-            // The context function handles adding to 'expenses' collection AND updating the 'batch' document
-            await addExpense({
-                ...expenseForm,
-                amount: Number(expenseForm.amount), // Ensure number
-                category: expenseForm.type, // Map type to category
-                batchId: selectedBatch.id,
-                date: new Date().toISOString().split('T')[0]
-            });
+            if (editingBatchExpense) {
+                // Edit Mode
+                await updateExpense(editingBatchExpense.id, {
+                    ...expenseForm,
+                    amount: Number(expenseForm.amount),
+                    category: expenseForm.type
+                });
+                setEditingBatchExpense(null);
+            } else {
+                // Add Mode
+                // FIX: Use addExpense from context to ensure it syncs to global expenses
+                // The context function handles adding to 'expenses' collection AND updating the 'batch' document
+                await addExpense({
+                    ...expenseForm,
+                    amount: Number(expenseForm.amount), // Ensure number
+                    category: expenseForm.type, // Map type to category
+                    batchId: selectedBatch.id,
+                    date: new Date().toISOString().split('T')[0]
+                });
+            }
         }
         setIsExpenseModalOpen(false);
         setExpenseForm({ type: 'Feed', description: '', amount: '' });
@@ -200,6 +220,23 @@ const Livestock = () => {
         if (window.confirm('Are you sure you want to delete this ENTIRE batch? This action cannot be undone.')) {
             await deleteBatch(selectedBatch.id);
             setSelectedBatchId(null);
+        }
+    };
+
+    const openEditBatchExpenseModal = (expense) => {
+        setEditingBatchExpense(expense);
+        setExpenseForm({
+            type: expense.type || expense.category || 'Feed',
+            description: expense.description || '',
+            amount: expense.amount || ''
+        });
+        setIsExpenseModalOpen(true);
+    };
+
+    const handleDeleteBatchExpenseItem = async (expenseId) => {
+        if (!isSuperAdmin) return;
+        if (window.confirm('Delete this expense?')) {
+            await deleteExpense(expenseId);
         }
     };
 
@@ -216,9 +253,11 @@ const Livestock = () => {
 
         const avgCostPerAnimal = activeAnimals.length > 0 ? financials.totalInvested / activeAnimals.length : 0;
         const suggestedPrice = Math.round(financials.minSellPrice); // Use min sell price as baseline
+        const breakEvenPrice = Math.round(financials.totalPerAnimalCost);
 
         setSellForm({
             pricePerAnimal: suggestedPrice,
+            breakEvenPrice: breakEvenPrice,
             // Select all by default for now
             selectedIds: activeAnimals.map(a => a.id)
         });
@@ -617,6 +656,32 @@ const Livestock = () => {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price Per Animal (₹)</label>
+
+                            {/* Margin Options */}
+                            <div className="flex gap-2 mb-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(sellForm.breakEvenPrice * 1.1) })}
+                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
+                                >
+                                    Min + 10%
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(sellForm.breakEvenPrice * 1.2) })}
+                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
+                                >
+                                    Min + 20%
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(sellForm.breakEvenPrice * 1.3) })}
+                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
+                                >
+                                    Min + 30%
+                                </button>
+                            </div>
+
                             <input
                                 required
                                 type="number"
@@ -769,7 +834,15 @@ const Livestock = () => {
                                         <p className="font-medium text-gray-800">{exp.type}</p>
                                         <p className="text-xs text-gray-500">{exp.description}</p>
                                     </div>
-                                    <span className="font-bold text-red-500">- ₹{exp.amount}</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-bold text-red-500">- ₹{exp.amount}</span>
+                                        {isSuperAdmin && (
+                                            <div className="flex gap-1">
+                                                <button onClick={() => openEditBatchExpenseModal(exp)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                                                <button onClick={() => handleDeleteBatchExpenseItem(exp.id)} className="p-1 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )) : (
                                 <div className="p-8 text-center text-gray-400"><p>No specific expenses recorded.</p></div>
@@ -877,7 +950,7 @@ const Livestock = () => {
             </Modal>
 
             {/* Expense Modal */}
-            <Modal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} title="Add Batch Expense">
+            <Modal isOpen={isExpenseModalOpen} onClose={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} title={editingBatchExpense ? "Edit Batch Expense" : "Add Batch Expense"}>
                 <form onSubmit={handleExpenseSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Expense Type</label>
@@ -898,8 +971,8 @@ const Livestock = () => {
                         <input required type="number" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
-                        <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Add Expense</button>
+                        <button type="button" onClick={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">{editingBatchExpense ? "Update Expense" : "Add Expense"}</button>
                     </div>
                 </form>
             </Modal>

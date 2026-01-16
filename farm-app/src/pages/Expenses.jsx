@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { Plus, TrendingDown, Filter, Calendar, Trash2, Users } from 'lucide-react';
+import { Plus, TrendingDown, Filter, Calendar, Trash2, Users, Edit2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 
 const Expenses = () => {
-    const { data, addExpense, addYearlyExpense, deleteYearlyExpense } = useData();
+    const { data, addExpense, addYearlyExpense, deleteYearlyExpense, deleteExpense, updateExpense } = useData();
+    const { isSuperAdmin } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isYearlyModalOpen, setIsYearlyModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('regular'); // 'regular' or 'yearly'
     const [filterBatchId, setFilterBatchId] = useState('all');
+    const [editingExpense, setEditingExpense] = useState(null);
 
     const [newExpense, setNewExpense] = useState({
         date: new Date().toISOString().split('T')[0],
@@ -28,12 +31,22 @@ const Expenses = () => {
         startDate: new Date().toISOString().split('T')[0]
     });
 
-    const handleAdd = (e) => {
+    const handleSubmit = (e) => {
         e.preventDefault();
-        addExpense({
-            ...newExpense,
-            amount: parseFloat(newExpense.amount)
-        });
+        if (editingExpense) {
+            // Edit mode
+            updateExpense(editingExpense.id, {
+                ...newExpense,
+                amount: parseFloat(newExpense.amount)
+            });
+            setEditingExpense(null);
+        } else {
+            // Add mode
+            addExpense({
+                ...newExpense,
+                amount: parseFloat(newExpense.amount)
+            });
+        }
         setIsModalOpen(false);
         setNewExpense({
             date: new Date().toISOString().split('T')[0],
@@ -43,6 +56,19 @@ const Expenses = () => {
             paidTo: '',
             batchId: ''
         });
+    };
+
+    const openEditModal = (expense) => {
+        setEditingExpense(expense);
+        setNewExpense({
+            date: expense.date || new Date().toISOString().split('T')[0],
+            category: expense.category || 'Feed',
+            description: expense.description || '',
+            amount: expense.amount?.toString() || '',
+            paidTo: expense.paidTo || '',
+            batchId: expense.batchId || ''
+        });
+        setIsModalOpen(true);
     };
 
     const handleAddYearly = (e) => {
@@ -207,7 +233,7 @@ const Expenses = () => {
                     </div>
 
                     <Table
-                        headers={['ID', 'Date', 'Batch', 'Category', 'Description', 'Paid To', 'Amount']}
+                        headers={['ID', 'Date', 'Batch', 'Category', 'Description', 'Paid To', 'Amount', ...(isSuperAdmin ? ['Action'] : [])]}
                         data={filteredExpenses}
                         renderRow={(item) => (
                             <>
@@ -233,6 +259,26 @@ const Expenses = () => {
                                 <td className="px-6 py-4">{item.description}</td>
                                 <td className="px-6 py-4">{item.paidTo}</td>
                                 <td className="px-6 py-4 font-bold text-red-600">- ₹ {item.amount.toLocaleString()}</td>
+                                {isSuperAdmin && (
+                                    <td className="px-6 py-4 flex gap-2">
+                                        <button
+                                            onClick={() => openEditModal(item)}
+                                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                                        >
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (window.confirm('Delete this expense?')) {
+                                                    deleteExpense(item.id);
+                                                }
+                                            }}
+                                            className="text-gray-400 hover:text-red-600 transition-colors"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </td>
+                                )}
                             </>
                         )}
                     />
@@ -289,9 +335,9 @@ const Expenses = () => {
                 </div>
             )}
 
-            {/* Add Regular Expense Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Add Expense">
-                <form onSubmit={handleAdd} className="space-y-4">
+            {/* Add/Edit Regular Expense Modal */}
+            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingExpense(null); }} title={editingExpense ? "Edit Expense" : "Add Expense"}>
+                <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -369,7 +415,7 @@ const Expenses = () => {
                         />
                     </div>
                     <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
-                        Save Expense
+                        {editingExpense ? 'Update Expense' : 'Save Expense'}
                     </button>
                 </form>
             </Modal>

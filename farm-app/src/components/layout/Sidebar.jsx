@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
+// Removed useTheme import
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
     const { user, isAdmin, canEdit, isSuperAdmin, logout } = useAuth();
@@ -81,6 +82,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     </div>
                 </div>
             )}
+
+
 
             <nav className="flex-1 px-4 space-y-2 py-6 overflow-y-auto">
                 {links.map((link) => (
