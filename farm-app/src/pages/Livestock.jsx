@@ -123,61 +123,72 @@ const Livestock = () => {
         setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising' });
     };
 
-    const handleAnimalSubmit = (e) => {
+    const handleAnimalSubmit = async (e) => {
         e.preventDefault();
-        if (selectedBatch) {
-            if (editingAnimalId) {
-                // Edit existing animal logic would go here
-            } else {
-                // Add new animals
-                // FIX: Sequential IDs (e.g. SHJANM26-1)
-                const type = selectedBatch.type;
-                const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Poultry': 'PL', 'Chicken': 'CH' };
-                const date = new Date();
-                const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
-                const year = date.getFullYear().toString().slice(-2);
-                const gender = animalForm.gender === 'Male' ? 'M' : 'F';
-                const prefix = `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${gender}${year}-`;
+        try {
+            if (selectedBatch) {
+                if (editingAnimalId) {
+                    // Edit existing animal logic would go here
+                } else {
+                    // Add new animals
+                    // FIX: Sequential IDs (e.g. SHJANM26-1)
+                    const type = selectedBatch.type;
+                    const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Poultry': 'PL', 'Chicken': 'CH' };
 
-                // Find all existing animals of this type across ALL batches to find max sequence for THIS month/type/gender
-                const allAnimalsOfType = data.batches
-                    .filter(b => b.type === type)
-                    .flatMap(b => b.animals || []);
-
-                let maxNum = 0;
-                allAnimalsOfType.forEach(a => {
-                    if (a.id && a.id.startsWith(prefix)) {
-                        const parts = a.id.split('-');
-                        if (parts.length === 2) {
-                            const num = parseInt(parts[1]);
-                            if (!isNaN(num) && num > maxNum) maxNum = num;
-                        }
+                    if (!typeMap[type]) {
+                        console.error(`Unknown animal type: ${type}`);
+                        return;
                     }
-                });
 
-                const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
-                    maxNum++;
-                    const sequentialId = `${prefix}${maxNum}`;
+                    const date = new Date();
+                    const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
+                    const year = date.getFullYear().toString().slice(-2);
+                    const gender = animalForm.gender === 'Male' ? 'M' : 'F';
+                    const prefix = `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${gender}${year}-`;
 
-                    return {
-                        id: sequentialId,
-                        gender: animalForm.gender,
-                        weight: animalForm.weight,
-                        purchaseCost: Number(animalForm.cost),
-                        status: animalForm.status,
-                        entryDate: new Date().toISOString().split('T')[0],
-                        boughtDate: selectedBatch.date, // Track when bought for filtering
-                        weightHistory: [{ date: new Date().toISOString().split('T')[0], weight: Number(animalForm.weight) }]
-                    };
-                });
+                    // Find all existing animals of this type across ALL batches to find max sequence for THIS month/type/gender
+                    const allAnimalsOfType = data.batches
+                        .filter(b => b.type === type)
+                        .flatMap(b => b.animals || []);
 
-                const updatedAnimals = [...(selectedBatch.animals || []), ...newAnimals];
-                updateBatch(selectedBatch.id, { animals: updatedAnimals });
+                    let maxNum = 0;
+                    allAnimalsOfType.forEach(a => {
+                        if (a.id && a.id.startsWith(prefix)) {
+                            const parts = a.id.split('-');
+                            if (parts.length === 2) {
+                                const num = parseInt(parts[1]);
+                                if (!isNaN(num) && num > maxNum) maxNum = num;
+                            }
+                        }
+                    });
+
+                    const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
+                        maxNum++;
+                        const sequentialId = `${prefix}${maxNum}`;
+
+                        return {
+                            id: sequentialId,
+                            gender: animalForm.gender,
+                            weight: animalForm.weight,
+                            purchaseCost: Number(animalForm.cost),
+                            status: animalForm.status,
+                            entryDate: new Date().toISOString().split('T')[0],
+                            // Fix: Handle both date and startDate, or fallback to today
+                            boughtDate: selectedBatch.date || selectedBatch.startDate || new Date().toISOString().split('T')[0],
+                            weightHistory: [{ date: new Date().toISOString().split('T')[0], weight: Number(animalForm.weight) }]
+                        };
+                    });
+
+                    const updatedAnimals = [...(selectedBatch.animals || []), ...newAnimals];
+                    await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+                }
             }
-        }
 
-        setIsAnimalModalOpen(false);
-        setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy' });
+            setIsAnimalModalOpen(false);
+            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy' });
+        } catch (error) {
+            console.error('Error adding animals:', error);
+        }
     };
 
     const handleDeleteAnimal = (animalId) => {
