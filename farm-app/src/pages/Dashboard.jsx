@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Wallet, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Activity, Bell } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useData } from '../context/DataContext';
+import { useSettings } from '../context/SettingsContext';
 
 const cardVariants = {
     hidden: { opacity: 0, y: 20 },
@@ -60,6 +62,7 @@ const StatCard = ({ title, value, trend, trendValue, icon: Icon, color, index, c
 
 const Dashboard = () => {
     const { data } = useData();
+    const { settings } = useSettings();
     const [timeRange, setTimeRange] = useState('6M'); // For Chart: '6M' or '1Y'
     const [periodFilter, setPeriodFilter] = useState('month'); // For Totals: 'month', 'quarter', 'year', 'all'
     const [showFinancials, setShowFinancials] = useState(false); // Toggle for chart
@@ -369,8 +372,87 @@ const Dashboard = () => {
         </div>
     );
 
+    // Alerts Logic
+    const getAlerts = () => {
+        const alerts = [];
+        const today = new Date();
+        const notificationBuffer = settings?.dewormingNotificationDays || 7;
+
+        data.batches.forEach(batch => {
+            if (batch.status === 'Completed' || batch.status === 'Archived') return;
+
+            const scheduleDays = settings?.dewormingSchedule?.[batch.type] || 90; // Default 90 days
+
+            // Find last de-worming date
+            const medicalRecords = batch.medical || [];
+            const lastDeworming = medicalRecords
+                .filter(m => m.type === 'De-worming')
+                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+            let lastDate = lastDeworming ? new Date(lastDeworming.date) : new Date(batch.startDate);
+
+            // Check if start date is valid, if not ignore (avoid NaN)
+            if (isNaN(lastDate.getTime())) return;
+
+            const nextDueDate = new Date(lastDate);
+            nextDueDate.setDate(nextDueDate.getDate() + scheduleDays);
+
+            const daysRemaining = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24));
+
+            if (daysRemaining <= notificationBuffer) {
+                alerts.push({
+                    id: batch.id + '_deworm',
+                    type: 'Deworming',
+                    batchName: batch.name || `Batch ${batch.id}`,
+                    batchType: batch.type,
+                    daysRemaining,
+                    dueDate: nextDueDate.toLocaleDateString(),
+                    severity: daysRemaining < 0 ? 'critical' : 'warning'
+                });
+            }
+        });
+
+        return alerts;
+    };
+
+    const alerts = getAlerts();
+
     return (
         <div className="space-y-8 pb-10">
+            {/* Alerts Section */}
+            {alerts.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6 space-y-3"
+                >
+                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <Bell className="w-5 h-5 text-red-500" />
+                        Important Alerts
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {alerts.map(alert => (
+                            <div
+                                key={alert.id}
+                                className={`p-4 rounded-xl border flex items-start justify-between ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-yellow-50 border-yellow-100'
+                                    }`}
+                            >
+                                <div>
+                                    <h4 className={`font-bold text-sm ${alert.severity === 'critical' ? 'text-red-800' : 'text-yellow-800'}`}>
+                                        {alert.type} Due
+                                    </h4>
+                                    <p className="text-sm font-medium text-gray-700 mt-1">{alert.batchName} ({alert.batchType})</p>
+                                    <p className="text-xs text-gray-500 mt-1">Due: {alert.dueDate}</p>
+                                </div>
+                                <div className={`px-2 py-1 rounded text-xs font-bold ${alert.severity === 'critical' ? 'bg-red-200 text-red-800' : 'bg-yellow-200 text-yellow-800'
+                                    }`}>
+                                    {alert.daysRemaining < 0 ? `${Math.abs(alert.daysRemaining)} Days Overdue` : `In ${alert.daysRemaining} Days`}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
             {/* Header */}
             <motion.div
                 initial={{ opacity: 0, x: -20 }}

@@ -22,7 +22,20 @@ export const SettingsProvider = ({ children }) => {
                 Sheep: 1,
                 Cow: 10,
                 Chicken: 0.1
-            }
+            },
+            // Split Medical Options
+            vaccineNames: ['FMD', 'PPR', 'ET'],
+            medicineNames: ['Antibiotics', 'Painkiller', 'Vitamins'],
+            pesticideNames: ['Neem Oil', 'Chlorpyrifos', 'Malathion', 'Cypermethrin'],
+
+            // Deworming Settings
+            dewormingSchedule: {
+                Goat: 90,   // Days
+                Sheep: 90,
+                Cow: 90,
+                Chicken: 30
+            },
+            dewormingNotificationDays: 7 // Notify 7 days before
         };
     });
 

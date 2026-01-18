@@ -1,15 +1,36 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 // Removed useTheme import
-import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail } from 'lucide-react';
+import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail, Stethoscope, Plus, Syringe, Clock, Bell, Bug } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 
 const Settings = () => {
     const { user, isSuperAdmin, isAdmin, allUsers, allowedUsers, updateUserRole, userRole, inviteUser, removeInvite } = useAuth();
+    const { settings, updateSetting } = useSettings();
 
     // Modal State
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'viewer' });
+    const [newMedicalOption, setNewMedicalOption] = useState('');
+
+    const handleAddMedicalOption = (e) => {
+        e.preventDefault();
+        if (newMedicalOption.trim()) {
+            const currentOptions = settings.medicalOptions || [];
+            if (!currentOptions.includes(newMedicalOption.trim())) {
+                updateSetting('medicalOptions', [...currentOptions, newMedicalOption.trim()]);
+                setNewMedicalOption('');
+            }
+        }
+    };
+
+    const handleDeleteMedicalOption = (option) => {
+        if (window.confirm(`Delete "${option}"?`)) {
+            const currentOptions = settings.medicalOptions || [];
+            updateSetting('medicalOptions', currentOptions.filter(o => o !== option));
+        }
+    };
 
     const getRoleBadge = (role) => {
         switch (role) {
@@ -209,6 +230,209 @@ const Settings = () => {
             )}
 
 
+
+            {currentUserIsSuperAdmin && (
+                <div className="space-y-6 mb-6">
+                    {/* Vaccines Section */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                                <Syringe className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <h3 className="font-bold text-gray-800">Manage Vaccines</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {(settings?.vaccineNames || []).map((option, idx) => (
+                                <div key={idx} className="flex items-center gap-2 bg-blue-50 text-blue-800 px-3 py-1.5 rounded-lg border border-blue-100">
+                                    <span className="font-medium text-sm">{option}</span>
+                                    <button onClick={() => {
+                                        const newOpts = (settings.vaccineNames || []).filter(o => o !== option);
+                                        updateSetting('vaccineNames', newOpts);
+                                    }} className="text-blue-400 hover:text-red-500 transition-colors">
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                id="newVaccine"
+                                placeholder="Add new vaccine..."
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const val = e.target.value.trim();
+                                        if (val) {
+                                            updateSetting('vaccineNames', [...(settings.vaccineNames || []), val]);
+                                            e.target.value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <button onClick={() => {
+                                const val = document.getElementById('newVaccine').value.trim();
+                                if (val) {
+                                    updateSetting('vaccineNames', [...(settings.vaccineNames || []), val]);
+                                    document.getElementById('newVaccine').value = '';
+                                }
+                            }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700">
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Medicines Section */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-purple-100 rounded-lg">
+                                <Stethoscope className="w-5 h-5 text-purple-600" />
+                            </div>
+                            <h3 className="font-bold text-gray-800">Manage Medicines</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {(settings?.medicineNames || []).map((option, idx) => (
+                                <div key={idx} className="flex items-center gap-2 bg-purple-50 text-purple-800 px-3 py-1.5 rounded-lg border border-purple-100">
+                                    <span className="font-medium text-sm">{option}</span>
+                                    <button onClick={() => {
+                                        const newOpts = (settings.medicineNames || []).filter(o => o !== option);
+                                        updateSetting('medicineNames', newOpts);
+                                    }} className="text-purple-400 hover:text-red-500 transition-colors">
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                id="newMedicine"
+                                placeholder="Add new medicine..."
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 outline-none"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const val = e.target.value.trim();
+                                        if (val) {
+                                            updateSetting('medicineNames', [...(settings.medicineNames || []), val]);
+                                            e.target.value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <button onClick={() => {
+                                const val = document.getElementById('newMedicine').value.trim();
+                                if (val) {
+                                    updateSetting('medicineNames', [...(settings.medicineNames || []), val]);
+                                    document.getElementById('newMedicine').value = '';
+                                }
+                            }} className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700">
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Pesticides Section */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-yellow-100 rounded-lg">
+                                <Bug className="w-5 h-5 text-yellow-600" />
+                            </div>
+                            <h3 className="font-bold text-gray-800">Manage Pesticides</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {(settings?.pesticideNames || []).map((option, idx) => (
+                                <div key={idx} className="flex items-center gap-2 bg-yellow-50 text-yellow-800 px-3 py-1.5 rounded-lg border border-yellow-100">
+                                    <span className="font-medium text-sm">{option}</span>
+                                    <button onClick={() => {
+                                        const newOpts = (settings.pesticideNames || []).filter(o => o !== option);
+                                        updateSetting('pesticideNames', newOpts);
+                                    }} className="text-yellow-400 hover:text-red-500 transition-colors">
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                id="newPesticide"
+                                placeholder="Add new pesticide..."
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const val = e.target.value.trim();
+                                        if (val) {
+                                            updateSetting('pesticideNames', [...(settings.pesticideNames || []), val]);
+                                            e.target.value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <button onClick={() => {
+                                const val = document.getElementById('newPesticide').value.trim();
+                                if (val) {
+                                    updateSetting('pesticideNames', [...(settings.pesticideNames || []), val]);
+                                    document.getElementById('newPesticide').value = '';
+                                }
+                            }} className="bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-yellow-700">
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Deworming Schedule Section */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-green-100 rounded-lg">
+                                <Clock className="w-5 h-5 text-green-600" />
+                            </div>
+                            <h3 className="font-bold text-gray-800">Deworming Schedule</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">Set the interval (in days) for deworming each animal type.</p>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            {['Goat', 'Sheep', 'Cattle', 'Buffalo'].map((type) => (
+                                <div key={type} className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-600 uppercase">{type}</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            value={settings?.dewormingSchedule?.[type] || 90}
+                                            onChange={(e) => {
+                                                updateSetting('dewormingSchedule', {
+                                                    ...(settings?.dewormingSchedule || {}),
+                                                    [type]: parseInt(e.target.value) || 0
+                                                });
+                                            }}
+                                            className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none bg-blue-50/30"
+                                        />
+                                        <span className="text-sm text-gray-500">days</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="pt-4 border-t border-gray-100">
+                            <div className="flex items-center gap-3">
+                                <Bell className="w-5 h-5 text-red-500" />
+                                <div className="flex-1">
+                                    <label className="text-sm font-medium text-gray-700">Notification Alert Buffer</label>
+                                    <p className="text-xs text-gray-500">Show alert dashboard this many days before due date.</p>
+                                </div>
+                                <div className="flex items-center gap-2 w-32">
+                                    <input
+                                        type="number"
+                                        value={settings.dewormingNotificationDays || 7}
+                                        onChange={(e) => updateSetting('dewormingNotificationDays', parseInt(e.target.value))}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-center"
+                                    />
+                                    <span className="text-sm text-gray-500">days</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-800 mb-2">About</h3>

@@ -33,18 +33,18 @@ const generateId = (prefix) => {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 };
 
-// QA Test Mode: Use isolated collections to avoid touching production data
-const isQATestMode = typeof window !== 'undefined' &&
-    window.location.search.includes('qa_test=true') &&
-    import.meta.env.DEV;
+// SAFE DEVELOPMENT MODE:
+// If running on localhost (DEV), use 'qa_' collections to avoid touching production data.
+// If ?qa_test=true is present, also use 'qa_' collections (and AuthContext will mock the user).
+const useTestCollections = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.search.includes('qa_test=true'));
 
-// Get collection name with qa_ prefix if in test mode
+// Get collection name with qa_ prefix if in test/dev mode
 const getCollectionName = (baseName) => {
-    return isQATestMode ? `qa_${baseName}` : baseName;
+    return useTestCollections ? `qa_${baseName}` : baseName;
 };
 
 // Log once if in QA test mode
-if (isQATestMode) {
+if (useTestCollections) {
     console.log('[QA] Data isolation enabled - using qa_* collections');
 }
 
@@ -160,7 +160,7 @@ export const DataProvider = ({ children }) => {
         const batch = data.batches.find(b => b.id === batchId);
         if (batch) {
             const updatedExpenses = (batch.expenses || []).filter(e => e.id !== expenseId);
-            await updateDoc(doc(db, 'batches', batchId), { expenses: updatedExpenses });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { expenses: updatedExpenses });
         }
     };
 
@@ -320,13 +320,25 @@ export const DataProvider = ({ children }) => {
             const updatedAnimals = batch.animals.map(a => {
                 if (a.id === animalId) {
                     const weightHistory = a.weightHistory || [];
+                    const recordDate = date || new Date().toISOString().split('T')[0];
+
+                    // Check if record for this date already exists
+                    const existingIndex = weightHistory.findIndex(r => r.date === recordDate);
+                    let newHistory;
+
+                    if (existingIndex >= 0) {
+                        // Update existing record
+                        newHistory = [...weightHistory];
+                        newHistory[existingIndex] = { date: recordDate, weight: Number(weight) };
+                    } else {
+                        // Add new record
+                        newHistory = [...weightHistory, { date: recordDate, weight: Number(weight) }];
+                    }
+
                     return {
                         ...a,
                         weight: weight, // Update current weight
-                        weightHistory: [...weightHistory, {
-                            date: date || new Date().toISOString().split('T')[0],
-                            weight: Number(weight)
-                        }]
+                        weightHistory: newHistory
                     };
                 }
                 return a;
@@ -401,6 +413,43 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    // Update specific weight record
+    const updateWeightRecord = async (batchId, animalId, oldDate, newDate, newWeight) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedAnimals = batch.animals.map(a => {
+                if (a.id === animalId) {
+                    let weightHistory = [...(a.weightHistory || [])];
+
+                    // Remove old record
+                    weightHistory = weightHistory.filter(r => r.date !== oldDate);
+
+                    // Add new/updated record logic
+                    const existingIndex = weightHistory.findIndex(r => r.date === newDate);
+                    if (existingIndex >= 0) {
+                        weightHistory[existingIndex] = { date: newDate, weight: Number(newWeight) };
+                    } else {
+                        weightHistory.push({ date: newDate, weight: Number(newWeight) });
+                    }
+
+                    // Sort history to find latest
+                    weightHistory.sort((x, y) => new Date(x.date) - new Date(y.date));
+
+                    const latestRecord = weightHistory[weightHistory.length - 1];
+                    const currentWeight = latestRecord ? latestRecord.weight : a.weight;
+
+                    return {
+                        ...a,
+                        weight: currentWeight,
+                        weightHistory: weightHistory
+                    };
+                }
+                return a;
+            });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
+        }
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -427,6 +476,7 @@ export const DataProvider = ({ children }) => {
             deleteInvoice,
             deleteBatch,
             addWeightRecord,
+            updateWeightRecord,
             sellSelectedAnimals,
             deleteCropSale,
             deleteFruitSale,

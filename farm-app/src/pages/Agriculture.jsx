@@ -1,23 +1,27 @@
 import React, { useState } from 'react';
-import { Plus, Leaf, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel } from 'lucide-react';
+import { Plus, Leaf, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel, Bug } from 'lucide-react';
 import Table from '../components/ui/Table';
 import { motion } from 'framer-motion';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { useSettings } from '../context/SettingsContext';
 
 const LABOR_TYPES = ['Sowing', 'Weeding', 'Harvesting', 'Fertilizer Application', 'Pesticide Application', 'Irrigation', 'Other'];
 
 const Agriculture = () => {
     const { data, addCrop, updateCrop, deleteCrop, addCropSale, addCropExpense, deleteCropSale, deleteExpense } = useData();
     const { isSuperAdmin } = useAuth();
+    const { settings } = useSettings();
 
     // State
     const [selectedCropId, setSelectedCropId] = useState(null);
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
     const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
+    const [isPesticideModalOpen, setIsPesticideModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
+    const [cropTab, setCropTab] = useState('sales'); // 'sales' | 'labor' | 'pesticides'
 
     // Forms
     const [cropForm, setCropForm] = useState({
@@ -40,6 +44,16 @@ const Agriculture = () => {
         laborType: 'Sowing',
         description: '',
         amount: ''
+    });
+
+    const [pesticideForm, setPesticideForm] = useState({
+        date: new Date().toISOString().split('T')[0],
+        pesticideName: '',
+        otherName: '',
+        quantity: '',
+        unit: 'liters',
+        cost: '',
+        notes: ''
     });
 
     // Derived Data
@@ -154,6 +168,49 @@ const Agriculture = () => {
             laborType: 'Sowing',
             description: '',
             amount: ''
+        });
+    };
+
+    const handlePesticideSubmit = (e) => {
+        e.preventDefault();
+        const pestName = pesticideForm.pesticideName === 'Other' ? pesticideForm.otherName : pesticideForm.pesticideName;
+        if (!pestName) {
+            alert('Please select or enter a pesticide name');
+            return;
+        }
+
+        const pestRecord = {
+            id: Date.now().toString(),
+            date: pesticideForm.date,
+            name: pestName,
+            quantity: pesticideForm.quantity,
+            unit: pesticideForm.unit,
+            cost: Number(pesticideForm.cost) || 0,
+            notes: pesticideForm.notes
+        };
+
+        const updatedPesticides = [...(selectedCrop.pesticides || []), pestRecord];
+        updateCrop(selectedCrop.id, { ...selectedCrop, pesticides: updatedPesticides });
+
+        if (pesticideForm.cost) {
+            addCropExpense(selectedCrop.id, {
+                date: pesticideForm.date,
+                laborType: 'Pesticide Application',
+                description: pestName,
+                amount: Number(pesticideForm.cost),
+                paidTo: 'Pesticide'
+            });
+        }
+
+        setIsPesticideModalOpen(false);
+        setPesticideForm({
+            date: new Date().toISOString().split('T')[0],
+            pesticideName: '',
+            otherName: '',
+            quantity: '',
+            unit: 'liters',
+            cost: '',
+            notes: ''
         });
     };
 
@@ -409,8 +466,30 @@ const Agriculture = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Sales Section */}
+            {/* Tab Buttons */}
+            <div className="flex gap-2 border-b border-gray-200 pb-2">
+                <button
+                    onClick={() => setCropTab('sales')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${cropTab === 'sales' ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:bg-gray-100'}`}
+                >
+                    <Wallet className="w-4 h-4" /> Sales
+                </button>
+                <button
+                    onClick={() => setCropTab('labor')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${cropTab === 'labor' ? 'bg-orange-100 text-orange-700' : 'text-gray-500 hover:bg-gray-100'}`}
+                >
+                    <Shovel className="w-4 h-4" /> Labor
+                </button>
+                <button
+                    onClick={() => setCropTab('pesticides')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${cropTab === 'pesticides' ? 'bg-yellow-100 text-yellow-700' : 'text-gray-500 hover:bg-gray-100'}`}
+                >
+                    <Bug className="w-4 h-4" /> Pesticides
+                </button>
+            </div>
+
+            {/* Tab Content */}
+            {cropTab === 'sales' && (
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -453,8 +532,10 @@ const Agriculture = () => {
                         )}
                     </div>
                 </div>
+            )}
 
-                {/* Labor Expenses Section */}
+            {/* Labor Expenses Section */}
+            {cropTab === 'labor' && (
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -497,7 +578,55 @@ const Agriculture = () => {
                         )}
                     </div>
                 </div>
-            </div>
+            )}
+
+            {/* Pesticides Section */}
+            {cropTab === 'pesticides' && (
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                            <Bug className="w-5 h-5 text-yellow-500" /> Pesticides
+                        </h3>
+                        <button
+                            onClick={() => setIsPesticideModalOpen(true)}
+                            className="text-xs bg-yellow-50 text-yellow-700 px-3 py-1.5 rounded-lg hover:bg-yellow-100 flex items-center gap-1 font-medium"
+                        >
+                            <Plus className="w-3 h-3" /> Add Pesticide
+                        </button>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        {(selectedCrop.pesticides || []).length > 0 ? (
+                            (selectedCrop.pesticides || []).map((pest, i) => (
+                                <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-gray-800">{pest.name}</p>
+                                        <p className="text-xs text-gray-500">{pest.date} • {pest.quantity} {pest.unit}</p>
+                                        {pest.notes && <p className="text-xs text-gray-400 mt-1">{pest.notes}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="font-bold text-red-500">- ₹ {Number(pest.cost).toLocaleString()}</span>
+                                        {isSuperAdmin && (
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm('Delete this pesticide record?')) {
+                                                        const updatedPesticides = (selectedCrop.pesticides || []).filter(p => p.id !== pest.id);
+                                                        updateCrop(selectedCrop.id, { ...selectedCrop, pesticides: updatedPesticides });
+                                                    }
+                                                }}
+                                                className="text-gray-400 hover:text-red-500"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="p-8 text-center text-gray-400">No pesticide applications recorded yet</div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Add Sale Modal */}
             <Modal isOpen={isSaleModalOpen} onClose={() => setIsSaleModalOpen(false)} title="Record Sale">
@@ -603,6 +732,98 @@ const Agriculture = () => {
                     </div>
                     <button type="submit" className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors">
                         Add Labor Expense
+                    </button>
+                </form>
+            </Modal>
+
+            {/* Add Pesticide Modal */}
+            <Modal isOpen={isPesticideModalOpen} onClose={() => setIsPesticideModalOpen(false)} title="Add Pesticide Application">
+                <form onSubmit={handlePesticideSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                        <input
+                            required
+                            type="date"
+                            value={pesticideForm.date}
+                            onChange={e => setPesticideForm({ ...pesticideForm, date: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Pesticide Name</label>
+                        <select
+                            value={pesticideForm.pesticideName}
+                            onChange={e => setPesticideForm({ ...pesticideForm, pesticideName: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                        >
+                            <option value="">Select Pesticide...</option>
+                            {(settings?.pesticideNames || []).map(name => (
+                                <option key={name} value={name}>{name}</option>
+                            ))}
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    {pesticideForm.pesticideName === 'Other' && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Enter Pesticide Name</label>
+                            <input
+                                required
+                                type="text"
+                                placeholder="Enter pesticide name..."
+                                value={pesticideForm.otherName}
+                                onChange={e => setPesticideForm({ ...pesticideForm, otherName: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                            />
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                            <input
+                                type="number"
+                                step="0.1"
+                                placeholder="0"
+                                value={pesticideForm.quantity}
+                                onChange={e => setPesticideForm({ ...pesticideForm, quantity: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                            <select
+                                value={pesticideForm.unit}
+                                onChange={e => setPesticideForm({ ...pesticideForm, unit: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                            >
+                                <option value="liters">Liters</option>
+                                <option value="ml">ML</option>
+                                <option value="kg">KG</option>
+                                <option value="grams">Grams</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cost (₹)</label>
+                        <input
+                            type="number"
+                            placeholder="0"
+                            value={pesticideForm.cost}
+                            onChange={e => setPesticideForm({ ...pesticideForm, cost: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
+                        <input
+                            type="text"
+                            placeholder="Additional details..."
+                            value={pesticideForm.notes}
+                            onChange={e => setPesticideForm({ ...pesticideForm, notes: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
+                        />
+                    </div>
+                    <button type="submit" className="w-full bg-yellow-600 text-white py-3 rounded-xl font-bold hover:bg-yellow-700 transition-colors">
+                        Add Pesticide Record
                     </button>
                 </form>
             </Modal>
