@@ -19,7 +19,7 @@ export const useData = () => {
 
 // Helper to generate simple IDs
 const generateSimpleId = (type, name) => {
-    const typeCodes = { Goat: 'go', Sheep: 'sh', Chicken: 'ch', Cow: 'co' };
+    const typeCodes = { Goat: 'go', Sheep: 'sh', Chicken: 'ch', Cow: 'co', Poultry: 'pl' };
     const typeCode = typeCodes[type] || 'xx';
     const cleanName = (name || 'batch').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6);
     const now = new Date();
@@ -32,6 +32,21 @@ const generateSimpleId = (type, name) => {
 const generateId = (prefix) => {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 };
+
+// QA Test Mode: Use isolated collections to avoid touching production data
+const isQATestMode = typeof window !== 'undefined' &&
+    window.location.search.includes('qa_test=true') &&
+    import.meta.env.DEV;
+
+// Get collection name with qa_ prefix if in test mode
+const getCollectionName = (baseName) => {
+    return isQATestMode ? `qa_${baseName}` : baseName;
+};
+
+// Log once if in QA test mode
+if (isQATestMode) {
+    console.log('[QA] Data isolation enabled - using qa_* collections');
+}
 
 export const DataProvider = ({ children }) => {
     const [data, setData] = useState({
@@ -61,21 +76,23 @@ export const DataProvider = ({ children }) => {
         }
         const unsubscribes = [];
 
-        const collections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices'];
+        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices'];
 
-        collections.forEach(collName => {
+        baseCollections.forEach(baseName => {
+            const firestoreCollName = getCollectionName(baseName);
             const unsubscribe = onSnapshot(
-                collection(db, collName),
+                collection(db, firestoreCollName),
                 (snapshot) => {
                     const items = snapshot.docs.map(doc => ({
                         id: doc.id,
                         ...doc.data()
                     }));
-                    setData(prev => ({ ...prev, [collName]: items }));
+                    // Store under base name so app logic works unchanged
+                    setData(prev => ({ ...prev, [baseName]: items }));
                     setLoading(false);
                 },
                 (err) => {
-                    console.error(`Error syncing ${collName}:`, err);
+                    console.error(`Error syncing ${firestoreCollName}:`, err);
                     setError(err);
                     setLoading(false);
                 }
@@ -114,18 +131,18 @@ export const DataProvider = ({ children }) => {
             animals: [],
             createdAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'batches', id), newBatch);
+        await setDoc(doc(db, getCollectionName('batches'), id), newBatch);
     };
 
     const updateBatch = async (batchId, updates) => {
-        await updateDoc(doc(db, 'batches', batchId), updates);
+        await updateDoc(doc(db, getCollectionName('batches'), batchId), updates);
     };
 
     const deleteAnimalFromBatch = async (batchId, animalId) => {
         const batch = data.batches.find(b => b.id === batchId);
         if (batch) {
             const updatedAnimals = (batch.animals || []).filter(a => a.id !== animalId);
-            await updateDoc(doc(db, 'batches', batchId), { animals: updatedAnimals });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
         }
     };
 
@@ -135,7 +152,7 @@ export const DataProvider = ({ children }) => {
             const updatedExpenses = (batch.expenses || []).map(e =>
                 e.id === expenseId ? { ...e, ...updates } : e
             );
-            await updateDoc(doc(db, 'batches', batchId), { expenses: updatedExpenses });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { expenses: updatedExpenses });
         }
     };
 
@@ -167,13 +184,13 @@ export const DataProvider = ({ children }) => {
                     amount: expense.amount,
                     date: expense.date
                 };
-                await updateDoc(doc(db, 'batches', expense.batchId), {
+                await updateDoc(doc(db, getCollectionName('batches'), expense.batchId), {
                     expenses: [...(batch.expenses || []), batchExpense]
                 });
             }
         }
 
-        await setDoc(doc(db, 'expenses', id), newExpense);
+        await setDoc(doc(db, getCollectionName('expenses'), id), newExpense);
     };
 
     const addYearlyExpense = async (yearlyExpense) => {
@@ -183,11 +200,11 @@ export const DataProvider = ({ children }) => {
             monthlyAmount: Math.round(Number(yearlyExpense.amount) / 12),
             createdAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'yearlyExpenses', id), newYearlyExpense);
+        await setDoc(doc(db, getCollectionName('yearlyExpenses'), id), newYearlyExpense);
     };
 
     const deleteYearlyExpense = async (expenseId) => {
-        await deleteDoc(doc(db, 'yearlyExpenses', expenseId));
+        await deleteDoc(doc(db, getCollectionName('yearlyExpenses'), expenseId));
     };
 
     const addEmployee = async (employee) => {
@@ -199,7 +216,7 @@ export const DataProvider = ({ children }) => {
             status: 'Active', // Default status
             createdAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'employees', id), newEmployee);
+        await setDoc(doc(db, getCollectionName('employees'), id), newEmployee);
     };
 
     const addCrop = async (crop) => {
@@ -210,11 +227,11 @@ export const DataProvider = ({ children }) => {
             expenses: [],
             createdAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'crops', id), newCrop);
+        await setDoc(doc(db, getCollectionName('crops'), id), newCrop);
     };
 
     const updateCrop = async (cropId, updates) => {
-        await updateDoc(doc(db, 'crops', cropId), updates);
+        await updateDoc(doc(db, getCollectionName('crops'), cropId), updates);
     };
 
     const addCropSale = async (cropId, sale) => {
@@ -224,7 +241,7 @@ export const DataProvider = ({ children }) => {
                 id: generateId('S'),
                 ...sale
             };
-            await updateDoc(doc(db, 'crops', cropId), {
+            await updateDoc(doc(db, getCollectionName('crops'), cropId), {
                 sales: [...(crop.sales || []), newSale]
             });
         }
@@ -249,19 +266,19 @@ export const DataProvider = ({ children }) => {
             expenses: [],
             createdAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'fruits', id), newFruit);
+        await setDoc(doc(db, getCollectionName('fruits'), id), newFruit);
     };
 
     const deleteCrop = async (id) => {
-        await deleteDoc(doc(db, 'crops', id));
+        await deleteDoc(doc(db, getCollectionName('crops'), id));
     };
 
     const deleteFruit = async (id) => {
-        await deleteDoc(doc(db, 'fruits', id));
+        await deleteDoc(doc(db, getCollectionName('fruits'), id));
     };
 
     const updateFruit = async (fruitId, updates) => {
-        await updateDoc(doc(db, 'fruits', fruitId), updates);
+        await updateDoc(doc(db, getCollectionName('fruits'), fruitId), updates);
     };
 
     const addFruitSale = async (fruitId, sale) => {
@@ -271,7 +288,7 @@ export const DataProvider = ({ children }) => {
                 id: generateId('FS'),
                 ...sale
             };
-            await updateDoc(doc(db, 'fruits', fruitId), {
+            await updateDoc(doc(db, getCollectionName('fruits'), fruitId), {
                 sales: [...(fruit.sales || []), newSale]
             });
         }
@@ -284,16 +301,16 @@ export const DataProvider = ({ children }) => {
             ...invoice,
             createdAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'invoices', id), newInvoice);
+        await setDoc(doc(db, getCollectionName('invoices'), id), newInvoice);
     };
 
     const deleteInvoice = async (invoiceId) => {
-        await deleteDoc(doc(db, 'invoices', invoiceId));
+        await deleteDoc(doc(db, getCollectionName('invoices'), invoiceId));
     };
 
     // Delete batch
     const deleteBatch = async (batchId) => {
-        await deleteDoc(doc(db, 'batches', batchId));
+        await deleteDoc(doc(db, getCollectionName('batches'), batchId));
     };
 
     // Add weight record for an animal
@@ -314,7 +331,7 @@ export const DataProvider = ({ children }) => {
                 }
                 return a;
             });
-            await updateDoc(doc(db, 'batches', batchId), { animals: updatedAnimals });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
         }
     };
 
@@ -333,7 +350,7 @@ export const DataProvider = ({ children }) => {
                 }
                 return a;
             });
-            await updateDoc(doc(db, 'batches', batchId), { animals: updatedAnimals });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
         }
     };
 
@@ -341,7 +358,7 @@ export const DataProvider = ({ children }) => {
         const crop = data.crops.find(c => c.id === cropId);
         if (crop) {
             const updatedSales = (crop.sales || []).filter(s => s.id !== saleId);
-            await updateDoc(doc(db, 'crops', cropId), { sales: updatedSales });
+            await updateDoc(doc(db, getCollectionName('crops'), cropId), { sales: updatedSales });
         }
     };
 
@@ -349,7 +366,7 @@ export const DataProvider = ({ children }) => {
         const fruit = data.fruits.find(f => f.id === fruitId);
         if (fruit) {
             const updatedSales = (fruit.sales || []).filter(s => s.id !== saleId);
-            await updateDoc(doc(db, 'fruits', fruitId), { sales: updatedSales });
+            await updateDoc(doc(db, getCollectionName('fruits'), fruitId), { sales: updatedSales });
         }
     };
 
@@ -359,10 +376,10 @@ export const DataProvider = ({ children }) => {
             const batch = data.batches.find(b => b.id === expense.batchId);
             if (batch) {
                 const updatedExpenses = (batch.expenses || []).filter(e => e.id !== expenseId);
-                await updateDoc(doc(db, 'batches', expense.batchId), { expenses: updatedExpenses });
+                await updateDoc(doc(db, getCollectionName('batches'), expense.batchId), { expenses: updatedExpenses });
             }
         }
-        await deleteDoc(doc(db, 'expenses', expenseId));
+        await deleteDoc(doc(db, getCollectionName('expenses'), expenseId));
     };
 
     const updateExpense = async (expenseId, updates) => {
@@ -370,7 +387,7 @@ export const DataProvider = ({ children }) => {
         if (!expense) return;
 
         // Update the expense document
-        await updateDoc(doc(db, 'expenses', expenseId), updates);
+        await updateDoc(doc(db, getCollectionName('expenses'), expenseId), updates);
 
         // If linked to a batch, update the batch's expense array too
         if (expense.batchId) {
@@ -379,7 +396,7 @@ export const DataProvider = ({ children }) => {
                 const updatedExpenses = (batch.expenses || []).map(e =>
                     e.id === expenseId ? { ...e, ...updates } : e
                 );
-                await updateDoc(doc(db, 'batches', expense.batchId), { expenses: updatedExpenses });
+                await updateDoc(doc(db, getCollectionName('batches'), expense.batchId), { expenses: updatedExpenses });
             }
         }
     };

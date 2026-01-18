@@ -19,6 +19,27 @@ export const AuthProvider = ({ children }) => {
     const [allUsers, setAllUsers] = useState([]);
     const [allowedUsers, setAllowedUsers] = useState([]);
 
+    // QA TEST MODE: Bypass auth for automated testing
+    // Only works in development mode with ?qa_test=true URL parameter
+    const isQATestMode = typeof window !== 'undefined' &&
+        window.location.search.includes('qa_test=true') &&
+        import.meta.env.DEV;
+
+    // If QA test mode, create a fake user immediately
+    useEffect(() => {
+        if (isQATestMode) {
+            console.log('[QA] Test mode enabled - bypassing authentication');
+            setUser({
+                uid: 'qa-test-user',
+                email: 'qa-test@trinetra-farms.com',
+                displayName: 'QA Test User',
+                photoURL: null
+            });
+            setUserRole('super_admin'); // Give full access for testing
+            setLoading(false);
+        }
+    }, [isQATestMode]);
+
     // Listen for all users (for user management display)
     useEffect(() => {
         const unsubscribe = onSnapshot(
@@ -55,8 +76,11 @@ export const AuthProvider = ({ children }) => {
         return () => unsubscribe();
     }, []);
 
-    // Listen for auth state changes
+    // Listen for auth state changes (skip in QA test mode)
     useEffect(() => {
+        // Skip real auth in QA test mode
+        if (isQATestMode) return;
+
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
 

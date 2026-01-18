@@ -132,7 +132,7 @@ const Livestock = () => {
                 // Add new animals
                 // FIX: Sequential IDs (e.g. SHJANM26-1)
                 const type = selectedBatch.type;
-                const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Chicken': 'CH', 'Poultry': 'CH' };
+                const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Poultry': 'PL', 'Chicken': 'CH' };
                 const date = new Date();
                 const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
                 const year = date.getFullYear().toString().slice(-2);
