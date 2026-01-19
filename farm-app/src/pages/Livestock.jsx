@@ -101,6 +101,10 @@ const Livestock = () => {
         selectedAnimals: []
     });
 
+    // Collapsible State for Mobile Optimization
+    const [isAdultsOpen, setIsAdultsOpen] = useState(false);
+    const [isKidsOpen, setIsKidsOpen] = useState(false);
+
     const toggleAnimalExpand = (id) => {
         setExpandedAnimalId(prev => prev === id ? null : id);
     };
@@ -1257,8 +1261,12 @@ const Livestock = () => {
 
                         {/* Adults Section */}
                         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                            <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                            <div
+                                onClick={() => setIsAdultsOpen(!isAdultsOpen)}
+                                className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors"
+                            >
                                 <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                                    {isAdultsOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                                     <span className="w-2 h-8 bg-blue-500 rounded-full"></span>
                                     Adults
                                 </h4>
@@ -1266,81 +1274,104 @@ const Livestock = () => {
                                     {activeAnimals.filter(a => a.category === 'Adult').length} animals
                                 </span>
                             </div>
-                            <div className="divide-y divide-gray-50">
-                                {activeAnimals.filter(a => a.category === 'Adult').length > 0 ? (
-                                    activeAnimals.filter(a => a.category === 'Adult').map(animal => (
-                                        <div key={animal.id} className="border-b border-gray-50 last:border-0">
-                                            <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
-                                                        {animal.gender === 'Male' ? 'M' : 'F'}
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                            {animal.id}
-                                                            <span className="text-gray-300 text-xs font-normal">|</span>
-                                                            <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                            {isAdultsOpen && (
+                                <div className="divide-y divide-gray-50">
+                                    {activeAnimals.filter(a => a.category === 'Adult').length > 0 ? (
+                                        activeAnimals.filter(a => a.category === 'Adult').map(animal => (
+                                            <div key={animal.id} className="border-b border-gray-50 last:border-0">
+                                                <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                            {animal.gender === 'Male' ? 'M' : 'F'}
                                                         </div>
-                                                        <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                            <span>{animal.weight} kg</span>
-                                                            <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                        <div>
+                                                            <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                                {animal.id}
+                                                                <span className="text-gray-300 text-xs font-normal">|</span>
+                                                                <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 flex gap-2 items-center">
+                                                                <span>{animal.weight} kg</span>
+                                                                <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-gray-400 group-hover:text-blue-600">
+                                                            {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                            <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
+                                                                <TrendingUp className="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                                                                <Edit2 className="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-4">
-                                                    <div className="text-gray-400 group-hover:text-blue-600">
-                                                        {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                                        <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
-                                                            <TrendingUp className="w-4 h-4" />
-                                                        </button>
-                                                        <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                                                            <Edit2 className="w-4 h-4" />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {expandedAnimalId === animal.id && (
-                                                <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Adult'}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
-                                                    </div>
-
-                                                    <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
-                                                        {/* Individual Weight History (Last 10) */}
-                                                        <div className="flex-1">
-                                                            <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
-                                                            {(animal.weightHistory || []).length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
-                                                                        <div key={i} className="flex gap-4 text-xs text-gray-600">
-                                                                            <span className="text-gray-400 w-20">{w.date}</span>
-                                                                            <span className="font-medium">{w.weight} kg</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : (
-                                                                <p className="text-xs text-gray-400 italic">No weight history.</p>
-                                                            )}
+                                                {expandedAnimalId === animal.id && (
+                                                    <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Adult'}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
                                                         </div>
 
-                                                        {/* Individual Medical History (Last 10) */}
-                                                        <div className="flex-1 border-l border-gray-100 md:pl-6">
-                                                            <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
-                                                            {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                        <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
+                                                            {/* Individual Weight History (Last 10) */}
+                                                            <div className="flex-1">
+                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
+                                                                {(animal.weightHistory || []).length > 0 ? (
+                                                                    <div className="space-y-1">
+                                                                        {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
+                                                                            <div key={i} className="flex gap-4 text-xs text-gray-600">
+                                                                                <span className="text-gray-400 w-20">{w.date}</span>
+                                                                                <span className="font-medium">{w.weight} kg</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-xs text-gray-400 italic">No weight history.</p>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Individual Medical History (Last 10) */}
+                                                            <div className="flex-1 border-l border-gray-100 md:pl-6">
+                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
+                                                                {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                                    <div className="space-y-1">
+                                                                        {(selectedBatch.medical || [])
+                                                                            .filter(m => (m.animalIds || []).includes(animal.id))
+                                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                            .slice(0, 10)
+                                                                            .map((m, i) => (
+                                                                                <div key={i} className="flex gap-2 text-xs text-gray-600">
+                                                                                    <span className="text-gray-400 w-20">{m.date}</span>
+                                                                                    <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
+                                                                                    <span className="font-medium">{m.name}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-xs text-gray-400 italic">No medical records.</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Individual Medical History (Legacy Disabled) */}
+                                                        {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
+                                                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
                                                                 <div className="space-y-1">
                                                                     {(selectedBatch.medical || [])
                                                                         .filter(m => (m.animalIds || []).includes(animal.id))
                                                                         .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                        .slice(0, 10)
                                                                         .map((m, i) => (
                                                                             <div key={i} className="flex gap-2 text-xs text-gray-600">
                                                                                 <span className="text-gray-400 w-20">{m.date}</span>
@@ -1349,44 +1380,27 @@ const Livestock = () => {
                                                                             </div>
                                                                         ))}
                                                                 </div>
-                                                            ) : (
-                                                                <p className="text-xs text-gray-400 italic">No medical records.</p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Individual Medical History (Legacy Disabled) */}
-                                                    {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
-                                                        <div className="mt-4 pt-4 border-t border-gray-100">
-                                                            <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
-                                                            <div className="space-y-1">
-                                                                {(selectedBatch.medical || [])
-                                                                    .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                    .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                    .map((m, i) => (
-                                                                        <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                            <span className="text-gray-400 w-20">{m.date}</span>
-                                                                            <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                            <span className="font-medium">{m.name}</span>
-                                                                        </div>
-                                                                    ))}
                                                             </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="p-8 text-center text-gray-400 text-sm">No adult animals in this batch.</div>
-                                )}
-                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-8 text-center text-gray-400 text-sm">No adult animals in this batch.</div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Kids Section */}
                         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                            <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                            <div
+                                onClick={() => setIsKidsOpen(!isKidsOpen)}
+                                className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors"
+                            >
                                 <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                                    {isKidsOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                                     <span className="w-2 h-8 bg-green-500 rounded-full"></span>
                                     Kids
                                 </h4>
@@ -1394,81 +1408,104 @@ const Livestock = () => {
                                     {activeAnimals.filter(a => a.category !== 'Adult').length} animals
                                 </span>
                             </div>
-                            <div className="divide-y divide-gray-50">
-                                {activeAnimals.filter(a => a.category !== 'Adult').length > 0 ? (
-                                    activeAnimals.filter(a => a.category !== 'Adult').map(animal => (
-                                        <div key={animal.id} className="border-b border-gray-50 last:border-0">
-                                            <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
-                                                        {animal.gender === 'Male' ? 'M' : 'F'}
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                            {animal.id}
-                                                            <span className="text-gray-300 text-xs font-normal">|</span>
-                                                            <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                            {isKidsOpen && (
+                                <div className="divide-y divide-gray-50">
+                                    {activeAnimals.filter(a => a.category !== 'Adult').length > 0 ? (
+                                        activeAnimals.filter(a => a.category !== 'Adult').map(animal => (
+                                            <div key={animal.id} className="border-b border-gray-50 last:border-0">
+                                                <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                            {animal.gender === 'Male' ? 'M' : 'F'}
                                                         </div>
-                                                        <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                            <span>{animal.weight} kg</span>
-                                                            <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                        <div>
+                                                            <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                                {animal.id}
+                                                                <span className="text-gray-300 text-xs font-normal">|</span>
+                                                                <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 flex gap-2 items-center">
+                                                                <span>{animal.weight} kg</span>
+                                                                <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-gray-400 group-hover:text-blue-600">
+                                                            {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                            <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
+                                                                <TrendingUp className="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                                                                <Edit2 className="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-4">
-                                                    <div className="text-gray-400 group-hover:text-blue-600">
-                                                        {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                                        <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
-                                                            <TrendingUp className="w-4 h-4" />
-                                                        </button>
-                                                        <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                                                            <Edit2 className="w-4 h-4" />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {expandedAnimalId === animal.id && (
-                                                <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Kid'}</span></div>
-                                                        <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
-                                                    </div>
-
-                                                    <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
-                                                        {/* Individual Weight History (Last 10) */}
-                                                        <div className="flex-1">
-                                                            <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
-                                                            {(animal.weightHistory || []).length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
-                                                                        <div key={i} className="flex gap-4 text-xs text-gray-600">
-                                                                            <span className="text-gray-400 w-20">{w.date}</span>
-                                                                            <span className="font-medium">{w.weight} kg</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : (
-                                                                <p className="text-xs text-gray-400 italic">No weight history.</p>
-                                                            )}
+                                                {expandedAnimalId === animal.id && (
+                                                    <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Kid'}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
                                                         </div>
 
-                                                        {/* Individual Medical History (Last 10) */}
-                                                        <div className="flex-1 border-l border-gray-100 md:pl-6">
-                                                            <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
-                                                            {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                        <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
+                                                            {/* Individual Weight History (Last 10) */}
+                                                            <div className="flex-1">
+                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
+                                                                {(animal.weightHistory || []).length > 0 ? (
+                                                                    <div className="space-y-1">
+                                                                        {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
+                                                                            <div key={i} className="flex gap-4 text-xs text-gray-600">
+                                                                                <span className="text-gray-400 w-20">{w.date}</span>
+                                                                                <span className="font-medium">{w.weight} kg</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-xs text-gray-400 italic">No weight history.</p>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Individual Medical History (Last 10) */}
+                                                            <div className="flex-1 border-l border-gray-100 md:pl-6">
+                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
+                                                                {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                                    <div className="space-y-1">
+                                                                        {(selectedBatch.medical || [])
+                                                                            .filter(m => (m.animalIds || []).includes(animal.id))
+                                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                            .slice(0, 10)
+                                                                            .map((m, i) => (
+                                                                                <div key={i} className="flex gap-2 text-xs text-gray-600">
+                                                                                    <span className="text-gray-400 w-20">{m.date}</span>
+                                                                                    <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
+                                                                                    <span className="font-medium">{m.name}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-xs text-gray-400 italic">No medical records.</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Individual Medical History (Legacy Disabled) */}
+                                                        {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
+                                                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
                                                                 <div className="space-y-1">
                                                                     {(selectedBatch.medical || [])
                                                                         .filter(m => (m.animalIds || []).includes(animal.id))
                                                                         .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                        .slice(0, 10)
                                                                         .map((m, i) => (
                                                                             <div key={i} className="flex gap-2 text-xs text-gray-600">
                                                                                 <span className="text-gray-400 w-20">{m.date}</span>
@@ -1477,38 +1514,17 @@ const Livestock = () => {
                                                                             </div>
                                                                         ))}
                                                                 </div>
-                                                            ) : (
-                                                                <p className="text-xs text-gray-400 italic">No medical records.</p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Individual Medical History (Legacy Disabled) */}
-                                                    {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
-                                                        <div className="mt-4 pt-4 border-t border-gray-100">
-                                                            <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
-                                                            <div className="space-y-1">
-                                                                {(selectedBatch.medical || [])
-                                                                    .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                    .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                    .map((m, i) => (
-                                                                        <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                            <span className="text-gray-400 w-20">{m.date}</span>
-                                                                            <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                            <span className="font-medium">{m.name}</span>
-                                                                        </div>
-                                                                    ))}
                                                             </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="p-8 text-center text-gray-400 text-sm">No kid animals in this batch.</div>
-                                )}
-                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-8 text-center text-gray-400 text-sm">No kid animals in this batch.</div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                     </div>

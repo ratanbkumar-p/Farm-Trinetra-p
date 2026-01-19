@@ -103,10 +103,10 @@ const Dashboard = () => {
                 // Bought Cost (Investment)
                 animals.forEach(a => {
                     // Calculate Investment
-                    // If filter is active, check boughtDate. If no boughtDate, using batch date.
-                    const purchaseDate = a.boughtDate || batch.date;
+                    // If filter is active, check boughtDate. If no boughtDate, using batch start date or created date.
+                    const purchaseDate = a.boughtDate || batch.startDate || batch.date;
                     if (isInPeriod(purchaseDate)) {
-                        boughtCost += (Number(a.cost) || Number(a.boughtPrice) || 0);
+                        boughtCost += (Number(a.purchaseCost) || Number(a.cost) || Number(a.boughtPrice) || 0);
                     }
 
                     // Revenue
