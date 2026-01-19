@@ -13,7 +13,7 @@ import { useLocation } from 'react-router-dom';
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal } = useData();
     const { canEdit, isSuperAdmin } = useAuth();
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
@@ -41,7 +41,7 @@ const Livestock = () => {
     const [weightForm, setWeightForm] = useState({ weight: '', date: new Date().toISOString().split('T')[0] });
 
     // Forms State
-    const [batchForm, setBatchForm] = useState({ name: '', type: 'Goat', startDate: '', status: 'Raising' });
+    const [batchForm, setBatchForm] = useState({ name: '', type: 'Goat', startDate: '', status: 'Raising', color: '#3B82F6' });
 
     const [animalForm, setAnimalForm] = useState({
         count: 1,
@@ -160,13 +160,26 @@ const Livestock = () => {
     // --- HANDLERS ---
     const handleBatchSubmit = (e) => {
         e.preventDefault();
+
+        // Validation: Cannot complete if there are active animals
+        if (batchForm.status === 'Completed') {
+            const batchToValidate = selectedBatch || null;
+            if (batchToValidate) {
+                const activeCount = (batchToValidate.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').length;
+                if (activeCount > 0) {
+                    alert(`Cannot mark as Completed. This batch still has ${activeCount} active animals. Sell or mark them as deceased first.`);
+                    return;
+                }
+            }
+        }
+
         if (selectedBatch) {
             updateBatch(selectedBatch.id, batchForm);
         } else {
             addBatch(batchForm);
         }
         setIsBatchModalOpen(false);
-        setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising' });
+        setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising', color: '#3B82F6' });
     };
 
     const handleMigrateIds = async () => {
@@ -429,6 +442,28 @@ const Livestock = () => {
             let updatedExpenses = selectedBatch.expenses || [];
 
             if (medicalForm.addToExpenses && newRecord.cost > 0) {
+                // Also add to global expenses
+                addExpense({
+                    date: newRecord.date,
+                    category: 'Medical',
+                    description: `${newRecord.type}: ${newRecord.name}`,
+                    amount: newRecord.cost,
+                    batchId: selectedBatch.id,
+                    paidTo: 'Pharmacy/Vet'
+                });
+
+                // We don't need to manually update batch.expenses here because addExpense
+                // handles adding to the 'expenses' collection AND updating the batch's expenses array
+                // if a batchId is provided.
+                // However, preserving existing logic just in case, but usually addExpense is the source of truth.
+                // Let's rely on addExpense to handle the batch update part if possible, 
+                // BUT current updateBatch call below overwrites it. 
+
+                // OPTIMIZATION: We should Call updateBatch ONLY for medical records.
+                // And call addExpense for the expense part.
+
+                // Let's keep the local array update for now to be safe with existing logic, 
+                // but strictly speaking duplicate.
                 updatedExpenses = [...updatedExpenses, {
                     id: Date.now() + '_exp',
                     date: newRecord.date,
@@ -437,7 +472,7 @@ const Livestock = () => {
                     amount: newRecord.cost
                 }];
             }
-            updateBatch(selectedBatch.id, { ...selectedBatch, medical: updatedMedical, expenses: updatedExpenses });
+            updateBatch(selectedBatch.id, { ...selectedBatch, medical: updatedMedical });
         }
 
         setIsMedicalModalOpen(false);
@@ -549,6 +584,29 @@ const Livestock = () => {
         }
     };
 
+    // Helper to identify if animal is a Kid (< 1 Year)
+    const isKid = (animal) => {
+        if (!animal.age) return true; // Assume kid if no age
+        const matchY = animal.age.match(/(\d+)\s*Year/i);
+        if (matchY && parseInt(matchY[1]) > 0) return false; // Is Adult
+        return true;
+    };
+
+    const handleQuickSelect = (type) => {
+        const active = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+        let toSelect = [];
+
+        if (type === 'Kids') {
+            toSelect = active.filter(a => isKid(a)).map(a => a.id);
+        } else if (type === 'Adults') {
+            toSelect = active.filter(a => !isKid(a)).map(a => a.id);
+        } else {
+            // Both / All
+            toSelect = active.map(a => a.id);
+        }
+        setSelectedAnimalsToSell(toSelect);
+    };
+
     // Selective Sell Handler
     const openSellModal = () => {
         // Calculate suggested price
@@ -560,14 +618,13 @@ const Livestock = () => {
             return;
         }
 
-        const avgCostPerAnimal = activeAnimals.length > 0 ? financials.totalInvested / activeAnimals.length : 0;
-        const suggestedPrice = Math.round(financials.minSellPrice); // Use min sell price as baseline
-        const breakEvenPrice = Math.round(financials.totalPerAnimalCost);
+        // Default to "Total Price" based on minSellPrice
+        const totalSuggested = Math.round(financials.minSellPrice * activeAnimals.length);
 
         setSellForm({
-            pricePerAnimal: suggestedPrice,
-            breakEvenPrice: breakEvenPrice,
-            // Select all by default for now
+            totalPrice: totalSuggested,
+            pricePerAnimal: '', // specific override per animal? No, we use total now.
+            // Select all by default
             selectedIds: activeAnimals.map(a => a.id)
         });
         // Also populate selection state
@@ -579,8 +636,17 @@ const Livestock = () => {
         e.preventDefault();
         if (!selectedBatch) return;
 
+        const count = selectedAnimalsToSell.length;
+        if (count === 0) {
+            alert("Please select at least one animal.");
+            return;
+        }
+
+        const total = Number(sellForm.totalPrice);
+        const pricePerAnimal = count > 0 ? Math.round(total / count) : 0;
+
         // Use the selected IDs
-        await sellSelectedAnimals(selectedBatch.id, selectedAnimalsToSell, Number(sellForm.pricePerAnimal));
+        await sellSelectedAnimals(selectedBatch.id, selectedAnimalsToSell, pricePerAnimal);
         setIsSellModalOpen(false);
     };
 
@@ -616,10 +682,11 @@ const Livestock = () => {
                 name: batch.name,
                 type: batch.type,
                 startDate: batch.startDate || batch.date || '', // Fix: Handle both date keys
-                status: batch.status || 'Raising' // Fix: Preserve existing status
+                status: batch.status || 'Raising', // Fix: Preserve existing status
+                color: batch.color || '#3B82F6'
             });
         } else {
-            setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising' });
+            setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising', color: '#3B82F6' });
         }
         setIsBatchModalOpen(true);
     };
@@ -755,6 +822,7 @@ const Livestock = () => {
                         <button onClick={() => setMainTab('active')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'active' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>🐐 Active Batches</button>
                         <button onClick={() => setMainTab('sold')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>💰 Sold Animals</button>
                         <button onClick={() => setMainTab('deceased')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'deceased' ? 'text-gray-600 border-b-2 border-gray-600' : 'text-gray-500 hover:text-gray-800'}`}>⚰️ Deceased</button>
+                        <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed</button>
                     </div>
 
                     {/* Summary Stats */}
@@ -782,7 +850,7 @@ const Livestock = () => {
                     {/* Sold Animals Table */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                         <Table
-                            headers={['ID', 'Batch', 'Type', 'Purchase Cost', 'Sold Price', 'Profit', 'Sold Date']}
+                            headers={['ID', 'Batch', 'Type', 'Purchase Cost', 'Sold Price', 'Profit', 'Sold Date', 'Actions']}
                             data={allSoldAnimals}
                             renderRow={(item) => (
                                 <>
@@ -795,6 +863,15 @@ const Livestock = () => {
                                         ₹ {((item.soldPrice || 0) - (item.purchaseCost || 0)).toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4 text-gray-500">{item.soldDate || 'N/A'}</td>
+                                    <td className="px-6 py-4">
+                                        <button
+                                            onClick={() => openAnimalModal(item)}
+                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="Edit / Undo Sell"
+                                        >
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                    </td>
                                 </>
                             )}
                             emptyMessage="No animals have been sold yet"
@@ -819,6 +896,7 @@ const Livestock = () => {
                         <button onClick={() => setMainTab('active')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'active' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>🐐 Active Batches</button>
                         <button onClick={() => setMainTab('sold')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>💰 Sold Animals</button>
                         <button onClick={() => setMainTab('deceased')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'deceased' ? 'text-gray-600 border-b-2 border-gray-600' : 'text-gray-500 hover:text-gray-800'}`}>⚰️ Deceased</button>
+                        <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed</button>
                     </div>
 
                     {/* Summary Stats */}
@@ -896,62 +974,68 @@ const Livestock = () => {
                     <button onClick={() => setMainTab('active')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'active' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>🐐 Active Batches</button>
                     <button onClick={() => setMainTab('sold')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>💰 Sold Animals ({allSoldAnimals.length})</button>
                     <button onClick={() => setMainTab('deceased')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'deceased' ? 'text-gray-600 border-b-2 border-gray-600' : 'text-gray-500 hover:text-gray-800'}`}>⚰️ Deceased ({allDeceasedAnimals.length})</button>
+                    <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed ({data.batches.filter(b => b.status === 'Completed').length})</button>
                 </div>
 
-                {/* Batch Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {data.batches.map(batch => {
-                        const f = calculateBatchFinancials(batch);
-                        return (
-                            <motion.div
-                                whileHover={{ y: -5 }}
-                                key={batch.id}
-                                onClick={() => setSelectedBatchId(batch.id)}
-                                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all"
-                            >
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <h3 className="text-xl font-bold text-gray-800">{batch.name}</h3>
-                                        <span className="text-sm text-gray-500">{batch.type} Batch</span>
+                    {data.batches
+                        .filter(batch => {
+                            if (mainTab === 'completed') return batch.status === 'Completed';
+                            // Default to active/raising view (show everything NOT completed)
+                            return batch.status !== 'Completed';
+                        })
+                        .map(batch => {
+                            const f = calculateBatchFinancials(batch);
+                            return (
+                                <motion.div
+                                    whileHover={{ y: -5 }}
+                                    key={batch.id}
+                                    onClick={() => setSelectedBatchId(batch.id)}
+                                    className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all"
+                                >
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-xl font-bold" style={{ color: batch.color || '#1F2937' }}>{batch.name}</h3>
+                                            <span className="text-sm text-gray-500">{batch.type} Batch</span>
+                                        </div>
+                                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">{f.activeAnimals} Active</span>
                                     </div>
-                                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">{f.activeAnimals} Active</span>
-                                </div>
-                                <div className="space-y-2 text-sm">
-                                    {/* FIX: Include Total Bought Cost */}
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Bought Cost</span>
-                                        <span className="font-medium">₹ {Math.round(f.totalAnimalCost).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Total Invested</span>
-                                        <span className="font-medium">₹ {Math.round(f.totalInvested).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Allocated Exp</span>
-                                        <span className="font-medium text-amber-600">₹ {(f.allocatedExpense || 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between border-t border-gray-100 pt-1 mt-1 border-dashed">
-                                        <span className="text-gray-500 text-xs">Cost/Animal</span>
-                                        <span className="font-medium text-xs">₹ {Math.round(f.totalPerAnimalCost).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Sold</span>
-                                        <span className="font-medium text-blue-600">{f.soldAnimals} (₹{f.soldRevenue?.toLocaleString() || 0})</span>
-                                    </div>
-                                    {/* FIX: Always show Min Sell Price as requested, or keep tied to ownerMode if user prefers. 
+                                    <div className="space-y-2 text-sm">
+                                        {/* FIX: Include Total Bought Cost */}
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Bought Cost</span>
+                                            <span className="font-medium">₹ {Math.round(f.totalAnimalCost).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Total Invested</span>
+                                            <span className="font-medium">₹ {Math.round(f.totalInvested).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Allocated Exp</span>
+                                            <span className="font-medium text-amber-600">₹ {(f.allocatedExpense || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-gray-100 pt-1 mt-1 border-dashed">
+                                            <span className="text-gray-500 text-xs">Cost/Animal</span>
+                                            <span className="font-medium text-xs">₹ {Math.round(f.totalPerAnimalCost).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Sold</span>
+                                            <span className="font-medium text-blue-600">{f.soldAnimals} (₹{f.soldRevenue?.toLocaleString() || 0})</span>
+                                        </div>
+                                        {/* FIX: Always show Min Sell Price as requested, or keep tied to ownerMode if user prefers. 
                                         User said "Total bough cost and minimum selling price as per expenses should be there in the batches".
                                         I will remove ownerMode check for this to ensure it's visible. */}
-                                    <div className="flex justify-between pt-2 border-t border-gray-100">
-                                        <span className="text-gray-500">Min. Sell Price</span>
-                                        <div className="text-right">
-                                            <span className="font-bold text-green-600 block">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
-                                            <span className="text-[10px] text-gray-400 block">(inc. {Number(settings.marginPercentage) || 20}% margin)</span>
+                                        <div className="flex justify-between pt-2 border-t border-gray-100">
+                                            <span className="text-gray-500">Min. Sell Price</span>
+                                            <div className="text-right">
+                                                <span className="font-bold text-green-600 block">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
+                                                <span className="text-[10px] text-gray-400 block">(inc. {Number(settings.marginPercentage) || 20}% margin)</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
+                                </motion.div>
+                            );
+                        })}
                 </div>
 
                 {/* Modals for List View */}
@@ -973,6 +1057,29 @@ const Livestock = () => {
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
                             <input required type="date" value={batchForm.startDate} onChange={e => setBatchForm({ ...batchForm, startDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Batch Color</label>
+                            <div className="flex gap-2 flex-wrap items-center">
+                                {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1'].map(color => (
+                                    <button
+                                        key={color}
+                                        type="button"
+                                        onClick={() => setBatchForm({ ...batchForm, color })}
+                                        className={`w-8 h-8 rounded-full border-2 ${batchForm.color === color ? 'border-gray-800 ring-2 ring-offset-2 ring-gray-300' : 'border-transparent'}`}
+                                        style={{ backgroundColor: color }}
+                                    />
+                                ))}
+                                {/* Custom Color Picker */}
+                                <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-gray-200 cursor-pointer" title="Custom Color">
+                                    <input
+                                        type="color"
+                                        value={batchForm.color || '#3B82F6'}
+                                        onChange={e => setBatchForm({ ...batchForm, color: e.target.value })}
+                                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] p-0 border-0 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
                         </div>
                         <div className="flex justify-end gap-3 mt-6">
                             <button type="button" onClick={() => setIsBatchModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
@@ -1100,7 +1207,7 @@ const Livestock = () => {
             <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h1 className="text-3xl font-bold text-gray-900">{selectedBatch.name}</h1>
+                        <h1 className="text-3xl font-bold" style={{ color: selectedBatch.color || '#1F2937' }}>{selectedBatch.name}</h1>
                         <button onClick={() => openBatchModal(selectedBatch)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><Edit2 className="w-4 h-4" /></button>
                         {/* Sell Button - Now in Header */}
                         {activeAnimals.length > 0 && (
@@ -1720,6 +1827,36 @@ const Livestock = () => {
                         </select>
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
+                        {editingAnimalId && animalForm.status === 'Sold' && isSuperAdmin && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (window.confirm(`Revert animal ${editingAnimalId} to active status?`)) {
+                                        // Need to find batch ID - since manual edit is usually inside a batch view (selectedBatchId)
+                                        // But Sold view might not set selectedBatchId if viewing all sold?
+                                        // Actually openAnimalModal sets editingAnimalId.
+                                        // Wait, revertSoldAnimal needs batchId.
+                                        // If we are in "All Sold" view, selectedBatchId might be null!
+                                        // We need to find the batchId from the animal object itself or look it up.
+                                        // The 'animal' passed to openAnimalModal comes from the list.
+                                        // The list in 'Sold Animals' tab is 'allSoldAnimals' which has 'batchId' attached in useMemo!
+                                        // So we should verify if 'animalForm' has batchId? No, 'animalForm' is just form state.
+                                        // We need the original animal object.
+                                        // Let's assume we can get it from 'allSoldAnimals' since we have the ID.
+                                        const found = allSoldAnimals.find(a => a.id === editingAnimalId);
+                                        if (found && found.batchId) {
+                                            await revertSoldAnimal(found.batchId, editingAnimalId);
+                                            setIsAnimalModalOpen(false);
+                                        } else {
+                                            alert("Could not find batch info for this animal.");
+                                        }
+                                    }
+                                }}
+                                className="mr-auto px-4 py-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200"
+                            >
+                                Undo Sell
+                            </button>
+                        )}
                         <button type="button" onClick={() => setIsAnimalModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
                         <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">{editingAnimalId ? 'Save Changes' : 'Add Animals'}</button>
                     </div>
@@ -1782,7 +1919,19 @@ const Livestock = () => {
             {/* Sell Modal */}
             <Modal isOpen={isSellModalOpen} onClose={() => setIsSellModalOpen(false)} title="Sell Animals">
                 <form onSubmit={handleSellSubmit} className="space-y-4">
-                    <p className="text-sm text-gray-500 mb-4">Select which animals to sell from this batch.</p>
+                    <p className="text-sm text-gray-500 mb-2">Select which animals to sell from this batch.</p>
+
+                    <div className="flex gap-2 mb-4">
+                        <button type="button" onClick={() => handleQuickSelect('Kids')} className="flex-1 py-1.5 text-xs font-semibold bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 border border-blue-200">
+                            Select Kids
+                        </button>
+                        <button type="button" onClick={() => handleQuickSelect('Adults')} className="flex-1 py-1.5 text-xs font-semibold bg-green-50 text-green-600 rounded-lg hover:bg-green-100 border border-green-200">
+                            Select Adults
+                        </button>
+                        <button type="button" onClick={() => handleQuickSelect('Both')} className="flex-1 py-1.5 text-xs font-semibold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-300">
+                            Select All
+                        </button>
+                    </div>
 
                     <div className="max-h-[200px] overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
                         {activeAnimals.map(a => (
@@ -1795,20 +1944,29 @@ const Livestock = () => {
                                 />
                                 <div>
                                     <span className="font-medium text-gray-800">{a.id}</span>
-                                    <span className="text-gray-500 text-sm ml-2">({a.gender}, {a.weight}kg)</span>
+                                    <span className="text-gray-500 text-sm ml-2">({a.gender}, {a.weight}kg, {a.age || 'Unknown Age'})</span>
                                 </div>
                             </label>
                         ))}
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Sold Price per Animal</label>
-                        <input required type="number" value={sellForm.pricePerAnimal} onChange={e => setSellForm({ ...sellForm, pricePerAnimal: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <div className="flex justify-between items-center mb-1">
+                            <label className="block text-sm font-medium text-gray-700">Total Sale Price</label>
+                            {selectedAnimalsToSell.length > 0 && sellForm.totalPrice && (
+                                <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">
+                                    Avg: ₹ {Math.round(sellForm.totalPrice / selectedAnimalsToSell.length).toLocaleString()} / animal
+                                </span>
+                            )}
+                        </div>
+                        <input required type="number" value={sellForm.totalPrice} onChange={e => setSellForm({ ...sellForm, totalPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Enter total amount for all selected animals" />
                     </div>
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm Sale</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Confirm Sale ({selectedAnimalsToSell.length})
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -1840,6 +1998,33 @@ const Livestock = () => {
                             <option value="Completed">Completed</option>
                             <option value="Archived">Archived</option>
                         </select>
+                        {batchForm.status === 'Completed' && selectedBatch && (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').length > 0 && (
+                            <p className="text-xs text-red-500 mt-1 font-medium italic">
+                                * Cannot complete: {selectedBatch.animals.filter(a => a.status !== 'Sold' && a.status !== 'Deceased').length} active animals remaining.
+                            </p>
+                        )}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Batch Color</label>
+                        <div className="flex gap-2 flex-wrap items-center">
+                            {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1'].map(color => (
+                                <button
+                                    key={color}
+                                    type="button"
+                                    onClick={() => setBatchForm({ ...batchForm, color })}
+                                    className={`w-8 h-8 rounded-full border-2 ${batchForm.color === color ? 'border-gray-800 ring-2 ring-offset-2 ring-gray-300' : 'border-transparent'}`}
+                                    style={{ backgroundColor: color }}
+                                />
+                            ))}
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-gray-200 cursor-pointer" title="Custom Color">
+                                <input
+                                    type="color"
+                                    value={batchForm.color || '#3B82F6'}
+                                    onChange={e => setBatchForm({ ...batchForm, color: e.target.value })}
+                                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] p-0 border-0 cursor-pointer"
+                                />
+                            </div>
+                        </div>
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsBatchModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>

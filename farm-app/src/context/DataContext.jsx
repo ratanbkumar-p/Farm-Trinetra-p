@@ -29,7 +29,20 @@ const generateSimpleId = (type, name) => {
     return `${typeCode}${cleanName}${month}${year}${rand}`;
 };
 
+// Modified to support shorter IDs for Expenses as requested (3 letters + 2 numbers -> e.g. EXP-12)
+// But we need to ensure uniqueness.
 const generateId = (prefix) => {
+    if (prefix === 'E' || prefix === 'S') {
+        // Generate 3 random uppercase letters + 2 random numbers (e.g. ABC12)
+        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const numbers = '0123456789';
+        let rLetters = '';
+        for (let i = 0; i < 3; i++) rLetters += letters.charAt(Math.floor(Math.random() * letters.length));
+        let rNumbers = '';
+        for (let i = 0; i < 2; i++) rNumbers += numbers.charAt(Math.floor(Math.random() * numbers.length));
+
+        return `${rLetters}${rNumbers}`;
+    }
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 };
 
@@ -166,10 +179,12 @@ export const DataProvider = ({ children }) => {
 
     const addExpense = async (expense) => {
         const id = generateId('E');
-        // Ensure batchId is preserved in the global expense document
+        // Ensure linking IDs are preserved
         const newExpense = {
             ...expense,
             batchId: expense.batchId || null,
+            cropId: expense.cropId || null,
+            fruitId: expense.fruitId || null,
             createdAt: new Date().toISOString()
         };
 
@@ -186,6 +201,36 @@ export const DataProvider = ({ children }) => {
                 };
                 await updateDoc(doc(db, getCollectionName('batches'), expense.batchId), {
                     expenses: [...(batch.expenses || []), batchExpense]
+                });
+            }
+        }
+
+        // Use existing functions for Crop/Fruit specific updates if needed or handle here?
+        // Actually, for crops/fruits we have addCropExpense/addFruitExpense helper that calls this maybe?
+        // But if creating from Expense Tab, we need to push to them.
+        // Let's rely on the components calling the specific addCropExpense/addFruitExpense which calls THIS function?
+        // Checking addCropExpense... it adds to crop doc but uses a different ID maybe? 
+        // Let's standardise: Global 'addExpense' should be the main one.
+
+        // HOWEVER, to keep it simple and safe: 
+        // If created via "Add Expense" global modal, we need to check if we need to push to child docs.
+
+        if (expense.cropId) {
+            const crop = data.crops.find(c => c.id === expense.cropId);
+            if (crop) {
+                const subExpense = { id, type: expense.category, description: expense.description, cost: Number(expense.amount), date: expense.date };
+                await updateDoc(doc(db, getCollectionName('crops'), expense.cropId), {
+                    expenses: [...(crop.expenses || []), subExpense]
+                });
+            }
+        }
+
+        if (expense.fruitId) {
+            const fruit = data.fruits.find(f => f.id === expense.fruitId);
+            if (fruit) {
+                const subExpense = { id, type: expense.category, name: expense.description, cost: Number(expense.amount), date: expense.date };
+                await updateDoc(doc(db, getCollectionName('fruits'), expense.fruitId), {
+                    expenses: [...(fruit.expenses || []), subExpense]
                 });
             }
         }
@@ -214,15 +259,43 @@ export const DataProvider = ({ children }) => {
     };
 
     const addEmployee = async (employee) => {
-        // Fix: Employee ID max 4 chars (e.g., E123)
-        const rand = Math.floor(Math.random() * 900) + 100; // 100-999
-        const id = `E${rand}`;
+        const id = employee.id; // Manual ID as requested
         const newEmployee = {
             ...employee,
-            status: 'Active', // Default status
+            status: 'Active',
             createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, getCollectionName('employees'), id), newEmployee);
+    };
+
+    const updateEmployee = async (id, updates) => {
+        await updateDoc(doc(db, getCollectionName('employees'), id), updates);
+    };
+
+    const addEmployeePayment = async (employeeId, payment) => {
+        const paymentId = generateId('PAY');
+        const employeeRef = doc(db, getCollectionName('employees'), employeeId);
+
+        // We'll store payments in a 'payments' field within the employee doc for simplicity 
+        // given the app's current architecture, or better as a sub-collection if we want history.
+        // Actually, let's keep it simple and add to an array in the document if it's manageable.
+        // But for better scaling, a sub-collection is safer.
+        // Let's check how other things are handled... crops/fruits use arrays.
+        // I will use an array 'payments' within the employee doc as per existing patterns here.
+        const employee = data.employees.find(e => e.id === employeeId);
+        if (employee) {
+            const payments = [...(employee.payments || []), { ...payment, id: paymentId, createdAt: new Date().toISOString() }];
+            await updateDoc(employeeRef, { payments });
+        }
+    };
+
+    const deleteEmployeePayment = async (employeeId, paymentId) => {
+        const employeeRef = doc(db, getCollectionName('employees'), employeeId);
+        const employee = data.employees.find(e => e.id === employeeId);
+        if (employee) {
+            const payments = (employee.payments || []).filter(p => p.id !== paymentId);
+            await updateDoc(employeeRef, { payments });
+        }
     };
 
     const addCrop = async (crop) => {
@@ -372,6 +445,23 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    const revertSoldAnimal = async (batchId, animalId) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedAnimals = batch.animals.map(a => {
+                if (a.id === animalId) {
+                    const { soldPrice, soldDate, ...rest } = a; // Remove sold fields
+                    return {
+                        ...rest,
+                        status: 'Healthy' // Default back to healthy
+                    };
+                }
+                return a;
+            });
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
+        }
+    };
+
     const deleteCropSale = async (cropId, saleId) => {
         const crop = data.crops.find(c => c.id === cropId);
         if (crop) {
@@ -505,6 +595,7 @@ export const DataProvider = ({ children }) => {
             addWeightRecord,
             updateWeightRecord,
             sellSelectedAnimals,
+            revertSoldAnimal,
             deleteCropSale,
             updateCropSale,
             deleteFruitSale,
@@ -512,7 +603,10 @@ export const DataProvider = ({ children }) => {
             deleteExpense,
             updateExpense,
             updateBatchExpense,
-            deleteBatchExpense
+            deleteBatchExpense,
+            updateEmployee,
+            addEmployeePayment,
+            deleteEmployeePayment
         }}>
             {children}
         </DataContext.Provider>

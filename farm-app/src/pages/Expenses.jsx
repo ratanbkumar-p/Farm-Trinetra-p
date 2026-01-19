@@ -12,6 +12,9 @@ const Expenses = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isYearlyModalOpen, setIsYearlyModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('regular'); // 'regular' or 'yearly'
+    // Filter State
+    const [filterDate, setFilterDate] = useState('');
+    const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [filterBatchId, setFilterBatchId] = useState('all');
     const [editingExpense, setEditingExpense] = useState(null);
     const [editingYearlyExpense, setEditingYearlyExpense] = useState(null);
@@ -22,7 +25,9 @@ const Expenses = () => {
         description: '',
         amount: '',
         paidTo: '',
-        batchId: ''
+        batchId: '',
+        cropId: '',
+        fruitId: ''
     });
 
     const [newYearlyExpense, setNewYearlyExpense] = useState({
@@ -55,7 +60,9 @@ const Expenses = () => {
             description: '',
             amount: '',
             paidTo: '',
-            batchId: ''
+            batchId: '',
+            cropId: '',
+            fruitId: ''
         });
     };
 
@@ -67,7 +74,9 @@ const Expenses = () => {
             description: expense.description || '',
             amount: expense.amount?.toString() || '',
             paidTo: expense.paidTo || '',
-            batchId: expense.batchId || ''
+            batchId: expense.batchId || '',
+            cropId: expense.cropId || '',
+            fruitId: expense.fruitId || ''
         });
         setIsModalOpen(true);
     };
@@ -75,6 +84,7 @@ const Expenses = () => {
     const handleAddYearly = (e) => {
         e.preventDefault();
         if (editingYearlyExpense) {
+            // Edit Mode - FIXED: Use updateYearlyExpense
             updateYearlyExpense(editingYearlyExpense.id, {
                 ...newYearlyExpense,
                 amount: parseFloat(newYearlyExpense.amount)
@@ -106,12 +116,37 @@ const Expenses = () => {
         setIsYearlyModalOpen(true);
     };
 
-    // Calculate total expenses for current month
-    const currentMonth = new Date().getMonth();
+    // --- DATA AGGREGATION ---
+    // Merge global expenses with legacy batch-local expenses that haven't been synced
+    const allExpenses = [...data.expenses];
+    const globalIds = new Set(data.expenses.map(e => e.id));
 
-    // 1. Regular Expenses
-    const regularExpenses = data.expenses
-        .filter(e => new Date(e.date).getMonth() === currentMonth)
+    data.batches.forEach(batch => {
+        (batch.expenses || []).forEach(localExp => {
+            // Check if this expense ID exists in global
+            if (!globalIds.has(localExp.id)) {
+                // If not, add it to current view (Standardizing format)
+                allExpenses.push({
+                    ...localExp,
+                    batchId: batch.id, // Ensure it's linked
+                    amount: Number(localExp.amount) || Number(localExp.cost) || 0, // Handle 'cost' vs 'amount'
+                    category: localExp.type || localExp.category || 'Other',
+                    paidTo: localExp.paidTo || 'Unknown' // local expenses might miss this
+                });
+            }
+        });
+    });
+
+    // Calculate total expenses for SELECTED month (from filter)
+    const selectedYear = parseInt(filterMonth.split('-')[0]);
+    const selectedMonthIndex = parseInt(filterMonth.split('-')[1]) - 1;
+
+    // 1. Regular Expenses (For the Selected Month) from AGGREGATED list
+    const currentMonthRegular = allExpenses
+        .filter(e => {
+            const d = new Date(e.date);
+            return d.getMonth() === selectedMonthIndex && d.getFullYear() === selectedYear;
+        })
         .reduce((sum, e) => sum + (e.amount || 0), 0);
 
     // 2. Yearly Expenses (Monthly Portion)
@@ -123,15 +158,36 @@ const Expenses = () => {
         .filter(e => e.status === 'Active')
         .reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
 
-    const totalMonthlyExpenses = regularExpenses + yearlyMonthly + monthlySalaries;
+    const totalMonthlyExpenses = currentMonthRegular + yearlyMonthly + monthlySalaries;
 
-    // Filter expenses by batch
-    const filteredExpenses = filterBatchId === 'all'
-        ? data.expenses
-        : data.expenses.filter(e => e.batchId === filterBatchId);
+    // --- FILTER LOGIC ---
+    let filteredExpenses = allExpenses;
+
+    // 1. Month Filter (Default to current month if date not set, or specific month)
+    if (filterDate) {
+        filteredExpenses = filteredExpenses.filter(e => e.date === filterDate);
+    } else if (filterMonth) {
+        filteredExpenses = filteredExpenses.filter(e => e.date.startsWith(filterMonth));
+    }
+
+    // 2. Batch/Crop/Fruit Filter
+    if (filterBatchId !== 'all') {
+        filteredExpenses = filteredExpenses.filter(e => {
+            if (filterBatchId.startsWith('crop_')) return e.cropId === filterBatchId.replace('crop_', '');
+            if (filterBatchId.startsWith('fruit_')) return e.fruitId === filterBatchId.replace('fruit_', '');
+            return e.batchId === filterBatchId;
+        });
+    }
+
+    // Calculate Total of Filtered View
+    const filteredTotal = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     // Helper to get batch name by id
-    const getBatchName = (batchId, cropId) => {
+    const getBatchName = (batchId, cropId, fruitId) => {
+        if (fruitId) {
+            const fruit = data.fruits.find(f => f.id === fruitId);
+            return fruit ? `🍎 ${fruit.name}` : 'Fruit';
+        }
         if (cropId) {
             const crop = data.crops.find(c => c.id === cropId);
             return crop ? `🌱 ${crop.name}` : 'Crop';
@@ -146,11 +202,19 @@ const Expenses = () => {
     // Navigate to batch or crop detail
     const handleBatchClick = (expense, e) => {
         e.stopPropagation();
-        if (expense.cropId) {
+        if (expense.fruitId) {
+            navigate('/fruits'); // Or specific fruit detail if route exists
+        } else if (expense.cropId) {
             navigate('/agriculture');
         } else if (expense.batchId) {
             navigate('/livestock');
         }
+    };
+
+    const clearFilters = () => {
+        setFilterDate('');
+        setFilterMonth('');
+        setFilterBatchId('all');
     };
 
     return (
@@ -196,14 +260,91 @@ const Expenses = () => {
 
             {activeTab === 'regular' ? (
                 <>
+                    {/* Filters Bar */}
+                    <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-wrap items-end gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Month</label>
+                            <input
+                                type="month"
+                                value={filterMonth}
+                                max={new Date().toISOString().slice(0, 7)}
+                                onChange={e => { setFilterMonth(e.target.value); setFilterDate(''); }}
+                                className="px-3 py-2 bg-gray-50 rounded-lg text-sm border-none focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Specific Date</label>
+                            <input
+                                type="date"
+                                value={filterDate}
+                                max={new Date().toISOString().split('T')[0]}
+                                onChange={e => { setFilterDate(e.target.value); setFilterMonth(''); }}
+                                className="px-3 py-2 bg-gray-50 rounded-lg text-sm border-none focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                        </div>
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Filter by Source</label>
+                            <select
+                                value={filterBatchId}
+                                onChange={e => setFilterBatchId(e.target.value)}
+                                className="w-full px-3 py-2 bg-gray-50 rounded-lg border-none outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
+                            >
+                                <option value="all">All Sources</option>
+                                <option value="">General (No Batch)</option>
+                                <optgroup label="Livestock Batches">
+                                    {[...new Set(data.expenses.filter(e => e.batchId).map(e => e.batchId))].map(id => {
+                                        const batch = data.batches.find(b => b.id === id);
+                                        return batch ? (
+                                            <option key={id} value={id}>
+                                                {batch.name} ({batch.type})
+                                            </option>
+                                        ) : null;
+                                    })}
+                                </optgroup>
+                                <optgroup label="Crops">
+                                    {[...new Set(data.expenses.filter(e => e.cropId).map(e => e.cropId))].map(id => {
+                                        const crop = data.crops.find(c => c.id === id);
+                                        return crop ? (
+                                            <option key={id} value={`crop_${id}`}>
+                                                {crop.name}
+                                            </option>
+                                        ) : null;
+                                    })}
+                                </optgroup>
+                                <optgroup label="Fruits">
+                                    {[...new Set(data.expenses.filter(e => e.fruitId).map(e => e.fruitId))].map(id => {
+                                        const fruit = data.fruits.find(f => f.id === id);
+                                        return fruit ? (
+                                            <option key={id} value={`fruit_${id}`}>
+                                                {fruit.name}
+                                            </option>
+                                        ) : null;
+                                    })}
+                                </optgroup>
+                            </select>
+                        </div>
+                        <button onClick={clearFilters} className="text-sm text-gray-500 underline hover:text-red-600 pb-2">Clear</button>
+                    </div>
+
                     {/* Summary Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {/* Dynamic Filtered Total */}
+                        <div className="bg-red-50 p-5 rounded-2xl border border-red-100 shadow-sm flex items-center gap-4">
+                            <div className="p-3 bg-white rounded-xl text-red-600 shadow-sm">
+                                <Filter className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-red-700/70">Filtered Total</p>
+                                <h3 className="text-2xl font-bold text-red-700">₹ {filteredTotal.toLocaleString()}</h3>
+                            </div>
+                        </div>
+
                         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
                             <div className="p-3 bg-red-50 rounded-xl text-red-600">
                                 <TrendingDown className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-sm text-gray-500">Total Monthly</p>
+                                <p className="text-sm text-gray-500">Month Total (Selected)</p>
                                 <h3 className="text-xl font-bold text-gray-800">₹ {totalMonthlyExpenses.toLocaleString()}</h3>
                             </div>
                         </div>
@@ -227,29 +368,6 @@ const Expenses = () => {
                                 <h3 className="text-xl font-bold text-blue-600">₹ {yearlyMonthly.toLocaleString()}</h3>
                             </div>
                         </div>
-
-                        {/* Batch Filter */}
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-                            <div className="p-3 bg-gray-50 rounded-xl text-gray-600">
-                                <Filter className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1">
-                                <p className="text-sm text-gray-500 mb-1">Filter by Batch</p>
-                                <select
-                                    value={filterBatchId}
-                                    onChange={e => setFilterBatchId(e.target.value)}
-                                    className="w-full px-3 py-1.5 bg-gray-50 rounded-lg border-none outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
-                                >
-                                    <option value="all">All Expenses</option>
-                                    <option value="">General (No Batch)</option>
-                                    {data.batches.map(batch => (
-                                        <option key={batch.id} value={batch.id}>
-                                            {batch.name} ({batch.type})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
                     </div>
 
                     <Table
@@ -260,12 +378,15 @@ const Expenses = () => {
                                 <td className="px-6 py-4 font-medium text-gray-900">{item.id}</td>
                                 <td className="px-6 py-4">{item.date}</td>
                                 <td className="px-6 py-4">
-                                    {(item.batchId || item.cropId) ? (
+                                    {(item.batchId || item.cropId || item.fruitId) ? (
                                         <button
                                             onClick={(e) => handleBatchClick(item, e)}
-                                            className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity ${item.cropId ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}
+                                            className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity ${item.fruitId ? 'bg-red-100 text-red-700' :
+                                                item.cropId ? 'bg-green-100 text-green-700' :
+                                                    'bg-blue-100 text-blue-700'
+                                                }`}
                                         >
-                                            {getBatchName(item.batchId, item.cropId)} →
+                                            {getBatchName(item.batchId, item.cropId, item.fruitId)} →
                                         </button>
                                     ) : (
                                         <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-600">
