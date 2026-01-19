@@ -207,6 +207,12 @@ export const DataProvider = ({ children }) => {
         await deleteDoc(doc(db, getCollectionName('yearlyExpenses'), expenseId));
     };
 
+    const updateYearlyExpense = async (expenseId, updates) => {
+        const monthlyAmount = updates.amount ? Math.round(Number(updates.amount) / 12) : undefined;
+        const finalUpdates = monthlyAmount !== undefined ? { ...updates, monthlyAmount } : updates;
+        await updateDoc(doc(db, getCollectionName('yearlyExpenses'), expenseId), finalUpdates);
+    };
+
     const addEmployee = async (employee) => {
         // Fix: Employee ID max 4 chars (e.g., E123)
         const rand = Math.floor(Math.random() * 900) + 100; // 100-999
@@ -450,6 +456,26 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    const updateCropSale = async (cropId, saleId, updates) => {
+        const crop = data.crops.find(c => c.id === cropId);
+        if (crop) {
+            const updatedSales = (crop.sales || []).map(s =>
+                s.id === saleId ? { ...s, ...updates } : s
+            );
+            await updateDoc(doc(db, getCollectionName('crops'), cropId), { sales: updatedSales });
+        }
+    };
+
+    const updateFruitSale = async (fruitId, saleId, updates) => {
+        const fruit = data.fruits.find(f => f.id === fruitId);
+        if (fruit) {
+            const updatedSales = (fruit.sales || []).map(s =>
+                s.id === saleId ? { ...s, ...updates } : s
+            );
+            await updateDoc(doc(db, getCollectionName('fruits'), fruitId), { sales: updatedSales });
+        }
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -460,6 +486,7 @@ export const DataProvider = ({ children }) => {
             addExpense,
             addYearlyExpense,
             deleteYearlyExpense,
+            updateYearlyExpense,
             addEmployee,
             addCrop,
             updateCrop,
@@ -479,7 +506,9 @@ export const DataProvider = ({ children }) => {
             updateWeightRecord,
             sellSelectedAnimals,
             deleteCropSale,
+            updateCropSale,
             deleteFruitSale,
+            updateFruitSale,
             deleteExpense,
             updateExpense,
             updateBatchExpense,

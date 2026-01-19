@@ -10,7 +10,7 @@ import { useSettings } from '../context/SettingsContext';
 const LABOR_TYPES = ['Sowing', 'Weeding', 'Harvesting', 'Fertilizer Application', 'Pesticide Application', 'Irrigation', 'Other'];
 
 const Agriculture = () => {
-    const { data, addCrop, updateCrop, deleteCrop, addCropSale, addCropExpense, deleteCropSale, deleteExpense } = useData();
+    const { data, addCrop, updateCrop, deleteCrop, addCropSale, updateCropSale, addCropExpense, deleteCropSale, deleteExpense, updateExpense } = useData();
     const { isSuperAdmin } = useAuth();
     const { settings } = useSettings();
 
@@ -21,6 +21,8 @@ const Agriculture = () => {
     const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
     const [isPesticideModalOpen, setIsPesticideModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
+    const [editingSale, setEditingSale] = useState(null);
+    const [editingExpense, setEditingExpense] = useState(null);
     const [cropTab, setCropTab] = useState('sales'); // 'sales' | 'labor' | 'pesticides'
 
     // Forms
@@ -149,10 +151,21 @@ const Agriculture = () => {
         setIsCropModalOpen(false);
     };
 
+    const openEditSaleModal = (sale) => {
+        setSaleForm(sale);
+        setEditingSale(sale);
+        setIsSaleModalOpen(true);
+    };
+
     const handleSaleSubmit = (e) => {
         e.preventDefault();
-        addCropSale(selectedCrop.id, saleForm);
+        if (editingSale) {
+            updateCropSale(selectedCrop.id, editingSale.id, saleForm);
+        } else {
+            addCropSale(selectedCrop.id, saleForm);
+        }
         setIsSaleModalOpen(false);
+        setEditingSale(null);
         setSaleForm({
             date: new Date().toISOString().split('T')[0],
             quantity: '',
@@ -161,16 +174,35 @@ const Agriculture = () => {
         });
     };
 
+    const openEditExpenseModal = (expense) => {
+        setLaborForm({
+            date: expense.date,
+            laborType: LABOR_TYPES.includes(expense.category) ? expense.category : 'Other',
+            description: expense.description || '',
+            amount: expense.amount
+        });
+        setEditingExpense(expense);
+        setIsLaborModalOpen(true);
+    };
+
     const handleLaborSubmit = (e) => {
         e.preventDefault();
-        addCropExpense(selectedCrop.id, {
+        const expenseData = {
             date: laborForm.date,
             laborType: laborForm.laborType,
+            category: laborForm.laborType,
             description: laborForm.description,
             amount: Number(laborForm.amount),
             paidTo: 'Labor'
-        });
+        };
+
+        if (editingExpense) {
+            updateExpense(editingExpense.id, expenseData);
+        } else {
+            addCropExpense(selectedCrop.id, expenseData);
+        }
         setIsLaborModalOpen(false);
+        setEditingExpense(null);
         setLaborForm({
             date: new Date().toISOString().split('T')[0],
             laborType: 'Sowing',
@@ -525,16 +557,24 @@ const Agriculture = () => {
                                     <div className="flex items-center gap-4">
                                         <span className="font-bold text-green-600">+ ₹ {Number(sale.amount).toLocaleString()}</span>
                                         {isSuperAdmin && (
-                                            <button
-                                                onClick={() => {
-                                                    if (window.confirm('Delete this sale record?')) {
-                                                        deleteCropSale(selectedCrop.id, sale.id);
-                                                    }
-                                                }}
-                                                className="text-gray-400 hover:text-red-500"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => openEditSaleModal(sale)}
+                                                    className="text-gray-400 hover:text-blue-500"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm('Delete this sale record?')) {
+                                                            deleteCropSale(selectedCrop.id, sale.id);
+                                                        }
+                                                    }}
+                                                    className="text-gray-400 hover:text-red-500"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -571,16 +611,24 @@ const Agriculture = () => {
                                     <div className="flex items-center gap-4">
                                         <span className="font-bold text-red-500">- ₹ {Number(exp.amount).toLocaleString()}</span>
                                         {isSuperAdmin && (
-                                            <button
-                                                onClick={() => {
-                                                    if (window.confirm('Delete this expense record?')) {
-                                                        deleteExpense(exp.id);
-                                                    }
-                                                }}
-                                                className="text-gray-400 hover:text-red-500"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => openEditExpenseModal(exp)}
+                                                    className="text-gray-400 hover:text-blue-500"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm('Delete this expense record?')) {
+                                                            deleteExpense(exp.id);
+                                                        }
+                                                    }}
+                                                    className="text-gray-400 hover:text-red-500"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -640,8 +688,17 @@ const Agriculture = () => {
                 </div>
             )}
 
-            {/* Add Sale Modal */}
-            <Modal isOpen={isSaleModalOpen} onClose={() => setIsSaleModalOpen(false)} title="Record Sale">
+            {/* Add/Edit Sale Modal */}
+            <Modal isOpen={isSaleModalOpen} onClose={() => {
+                setIsSaleModalOpen(false);
+                setEditingSale(null);
+                setSaleForm({
+                    date: new Date().toISOString().split('T')[0],
+                    quantity: '',
+                    unit: 'kg',
+                    amount: ''
+                });
+            }} title={editingSale ? "Edit Sale" : "Record Sale"}>
                 <form onSubmit={handleSaleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -696,8 +753,17 @@ const Agriculture = () => {
                 </form>
             </Modal>
 
-            {/* Add Labor Modal */}
-            <Modal isOpen={isLaborModalOpen} onClose={() => setIsLaborModalOpen(false)} title="Add Labor Expense">
+            {/* Add/Edit Labor Modal */}
+            <Modal isOpen={isLaborModalOpen} onClose={() => {
+                setIsLaborModalOpen(false);
+                setEditingExpense(null);
+                setLaborForm({
+                    date: new Date().toISOString().split('T')[0],
+                    laborType: 'Sowing',
+                    description: '',
+                    amount: ''
+                });
+            }} title={editingExpense ? "Edit Labor Expense" : "Add Labor Expense"}>
                 <form onSubmit={handleLaborSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
