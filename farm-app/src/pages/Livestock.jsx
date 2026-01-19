@@ -880,14 +880,7 @@ const Livestock = () => {
                         <p className="text-gray-500">Manage your farm by batches.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        {isSuperAdmin && (
-                            <button
-                                onClick={handleMigrateIds}
-                                className="flex items-center gap-2 bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-2.5 rounded-xl transition-all font-medium"
-                            >
-                                Fix IDs
-                            </button>
-                        )}
+
                         <button
                             onClick={() => openBatchModal()}
                             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-medium"

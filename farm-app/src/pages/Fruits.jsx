@@ -99,12 +99,22 @@ const Fruits = () => {
     const getFruitStats = (fruit) => {
         const seedCost = Number(fruit.seedCost) || 0;
         const revenue = (fruit.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-        const laborCost = data.expenses
-            .filter(e => e.fruitId === fruit.id)
+
+        // Labor Cost (Expenses linked to fruit, but excluding Pesticide type if needed, 
+        // OR we just match categories. For now, let's assume specific categories for Pesticides vs Labor)
+        const fruitExpenses = data.expenses.filter(e => e.fruitId === fruit.id);
+
+        const pesticideCost = fruitExpenses
+            .filter(e => e.category === 'Pesticide Application' || e.paidTo === 'Pesticide')
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-        const totalCost = seedCost + laborCost;
+
+        const laborCost = fruitExpenses
+            .filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide')
+            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+        const totalCost = seedCost + laborCost + pesticideCost;
         const margin = revenue - totalCost;
-        return { seedCost, laborCost, totalCost, revenue, margin };
+        return { seedCost, laborCost, pesticideCost, totalCost, revenue, margin };
     };
 
     const stats = getTotalStats();
@@ -449,7 +459,7 @@ const Fruits = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Plant Cost</p>
                     <p className="text-lg font-bold">₹ {fruitStats.seedCost.toLocaleString()}</p>
@@ -457,6 +467,10 @@ const Fruits = () => {
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Labor Cost</p>
                     <p className="text-lg font-bold text-orange-600">₹ {fruitStats.laborCost.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-xs text-gray-500 uppercase">Pesticide Cost</p>
+                    <p className="text-lg font-bold text-yellow-600">₹ {fruitStats.pesticideCost.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Total Cost</p>

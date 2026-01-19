@@ -95,12 +95,20 @@ const Agriculture = () => {
     const getCropStats = (crop) => {
         const seedCost = Number(crop.seedCost) || 0;
         const revenue = (crop.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-        const laborCost = data.expenses
-            .filter(e => e.cropId === crop.id)
+
+        const cropExpenses = data.expenses.filter(e => e.cropId === crop.id);
+
+        const pesticideCost = cropExpenses
+            .filter(e => e.category === 'Pesticide Application' || e.paidTo === 'Pesticide' || e.laborType === 'Pesticide Application')
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-        const totalCost = seedCost + laborCost;
+
+        const laborCost = cropExpenses
+            .filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide' && e.laborType !== 'Pesticide Application')
+            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+        const totalCost = seedCost + laborCost + pesticideCost;
         const margin = revenue - totalCost;
-        return { seedCost, laborCost, totalCost, revenue, margin };
+        return { seedCost, laborCost, pesticideCost, totalCost, revenue, margin };
     };
 
     const stats = getTotalStats();
@@ -441,7 +449,7 @@ const Agriculture = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Seed Cost</p>
                     <p className="text-lg font-bold">₹ {cropStats.seedCost.toLocaleString()}</p>
@@ -449,6 +457,10 @@ const Agriculture = () => {
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Labor Cost</p>
                     <p className="text-lg font-bold text-orange-600">₹ {cropStats.laborCost.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-xs text-gray-500 uppercase">Pesticide Cost</p>
+                    <p className="text-lg font-bold text-yellow-600">₹ {cropStats.pesticideCost.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-xs text-gray-500 uppercase">Total Cost</p>
