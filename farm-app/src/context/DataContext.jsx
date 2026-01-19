@@ -272,6 +272,10 @@ export const DataProvider = ({ children }) => {
         await updateDoc(doc(db, getCollectionName('employees'), id), updates);
     };
 
+    const deleteEmployee = async (id) => {
+        await deleteDoc(doc(db, getCollectionName('employees'), id));
+    };
+
     const addEmployeePayment = async (employeeId, payment) => {
         const paymentId = generateId('PAY');
         const employeeRef = doc(db, getCollectionName('employees'), employeeId);
@@ -605,6 +609,7 @@ export const DataProvider = ({ children }) => {
             updateBatchExpense,
             deleteBatchExpense,
             updateEmployee,
+            deleteEmployee,
             addEmployeePayment,
             deleteEmployeePayment
         }}>

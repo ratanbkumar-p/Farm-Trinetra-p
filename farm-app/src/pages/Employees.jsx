@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { compressImage } from '../lib/utils';
 
 const Employees = () => {
-    const { data, addEmployee, updateEmployee, addEmployeePayment, deleteEmployeePayment } = useData();
+    const { data, addEmployee, updateEmployee, deleteEmployee, addEmployeePayment, deleteEmployeePayment } = useData();
     const { isSuperAdmin } = useAuth();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -568,6 +568,21 @@ const Employees = () => {
                     <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0">
                         Update Employee Details
                     </button>
+                    {isSuperAdmin && (
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (window.confirm('Are you sure you want to PERMANENTLY delete this employee? This action cannot be undone.')) {
+                                    await deleteEmployee(editForm.id);
+                                    setIsEditModalOpen(false);
+                                    setExpandedId(null);
+                                }
+                            }}
+                            className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold border border-red-100 hover:bg-red-100 transition-all mt-4"
+                        >
+                            Delete Employee
+                        </button>
+                    )}
                 </form>
             </Modal>
         </div>
