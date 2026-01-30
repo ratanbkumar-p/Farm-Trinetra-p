@@ -376,40 +376,62 @@ const Dashboard = () => {
     const getAlerts = () => {
         const alerts = [];
         const today = new Date();
-        const notificationBuffer = settings?.dewormingNotificationDays || 7;
+        const meds = settings?.scheduledMedications || [];
 
+        // Loop through all batches
         data.batches.forEach(batch => {
             if (batch.status === 'Completed' || batch.status === 'Archived') return;
 
-            const scheduleDays = settings?.dewormingSchedule?.[batch.type] || 90; // Default 90 days
+            // Loop through all configured scheduled medications
+            meds.forEach(med => {
+                // Skip incomplete configurations
+                if (!med.name || med.name === 'New Medication') return;
 
-            // Find last de-worming date
-            const medicalRecords = batch.medical || [];
-            const lastDeworming = medicalRecords
-                .filter(m => m.type === 'De-worming')
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                const scheduleDays = parseInt(med.schedules?.[batch.type] || 0);
+                if (!scheduleDays || scheduleDays <= 0) return; // No schedule for this animal type
 
-            let lastDate = lastDeworming ? new Date(lastDeworming.date) : new Date(batch.startDate);
+                const notificationBuffer = med.notificationDays || 7;
 
-            // Check if start date is valid, if not ignore (avoid NaN)
-            if (isNaN(lastDate.getTime())) return;
+                // Find last occurrence
+                const medicalRecords = batch.medical || [];
 
-            const nextDueDate = new Date(lastDate);
-            nextDueDate.setDate(nextDueDate.getDate() + scheduleDays);
+                // Match either new style or legacy style (if med is Deworming)
+                const lastRecord = medicalRecords
+                    .filter(m => {
+                        if (m.type === 'Scheduled Medication' && m.name === med.name) return true;
+                        // Legacy support for existing Deworming records
+                        if (med.name === 'Deworming' && m.type === 'De-worming') return true;
+                        return false;
+                    })
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
 
-            const daysRemaining = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24));
+                // Robust date fallback: lastRecord -> batch.startDate -> batch.date
+                let dateStr = lastRecord ? lastRecord.date : (batch.startDate || batch.date);
+                if (!dateStr) return; // Skip if no valid date found
 
-            if (daysRemaining <= notificationBuffer) {
-                alerts.push({
-                    id: batch.id + '_deworm',
-                    type: 'Deworming',
-                    batchName: batch.name || `Batch ${batch.id}`,
-                    batchType: batch.type,
-                    daysRemaining,
-                    dueDate: nextDueDate.toLocaleDateString(),
-                    severity: daysRemaining < 0 ? 'critical' : 'warning'
-                });
-            }
+                let lastDate = new Date(dateStr);
+                if (isNaN(lastDate.getTime())) return;
+
+                const nextDueDate = new Date(lastDate);
+                nextDueDate.setDate(nextDueDate.getDate() + scheduleDays);
+
+                const daysRemaining = Math.ceil((nextDueDate - today) / (1000 * 60 * 60 * 24));
+
+                if (daysRemaining <= notificationBuffer) {
+                    alerts.push({
+                        id: `${batch.id}_${med.name.replace(/\s+/g, '')}`,
+                        type: med.name,
+                        batchName: batch.name || `Batch ${batch.id}`,
+                        batchType: batch.type,
+                        daysRemaining,
+                        dueDate: nextDueDate.toLocaleDateString(),
+                        severity: daysRemaining < 0 ? 'critical' : 'warning',
+                        // Debug/Context info
+                        interval: scheduleDays,
+                        basis: lastRecord ? `Last: ${new Date(lastRecord.date).toLocaleDateString()}` : `Start: ${new Date(batch.startDate || batch.date).toLocaleDateString()}`
+                    });
+                }
+            });
         });
 
         return alerts;
@@ -434,17 +456,23 @@ const Dashboard = () => {
                         {alerts.map(alert => (
                             <div
                                 key={alert.id}
-                                className={`p-4 rounded-xl border flex items-start justify-between ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-yellow-50 border-yellow-100'
+                                className={`p-4 rounded-xl border flex flex-col justify-between ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-yellow-50 border-yellow-100'
                                     }`}
                             >
-                                <div>
+                                <div className="mb-2">
                                     <h4 className={`font-bold text-sm ${alert.severity === 'critical' ? 'text-red-800' : 'text-yellow-800'}`}>
                                         {alert.type} Due
                                     </h4>
                                     <p className="text-sm font-medium text-gray-700 mt-1">{alert.batchName} ({alert.batchType})</p>
-                                    <p className="text-xs text-gray-500 mt-1">Due: {alert.dueDate}</p>
+                                    <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+                                        <span>Due: {alert.dueDate}</span>
+                                        <span>Every {alert.interval}d</span>
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">
+                                        From {alert.basis}
+                                    </p>
                                 </div>
-                                <div className={`px-2 py-1 rounded text-xs font-bold ${alert.severity === 'critical' ? 'bg-red-200 text-red-800' : 'bg-yellow-200 text-yellow-800'
+                                <div className={`self-start px-2 py-1 rounded text-xs font-bold ${alert.severity === 'critical' ? 'bg-red-200 text-red-800' : 'bg-yellow-200 text-yellow-800'
                                     }`}>
                                     {alert.daysRemaining < 0 ? `${Math.abs(alert.daysRemaining)} Days Overdue` : `In ${alert.daysRemaining} Days`}
                                 </div>

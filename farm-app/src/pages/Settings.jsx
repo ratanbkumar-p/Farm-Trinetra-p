@@ -380,55 +380,132 @@ const Settings = () => {
                         </div>
                     </div>
 
-                    {/* Deworming Schedule Section */}
+                    {/* Scheduled Medications Section */}
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100">
-                        <div className="flex items-center gap-2 mb-4">
-                            <div className="p-2 bg-green-100 rounded-lg">
-                                <Clock className="w-5 h-5 text-green-600" />
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-green-100 rounded-lg">
+                                    <Clock className="w-5 h-5 text-green-600" />
+                                </div>
+                                <h3 className="font-bold text-gray-800">Scheduled Medications</h3>
                             </div>
-                            <h3 className="font-bold text-gray-800">Deworming Schedule</h3>
+                            <button
+                                onClick={() => {
+                                    if (window.confirm('Are you sure? This will RESET all schedules to defaults (0 days) and remove custom medications. This cannot be undone.')) {
+                                        updateSetting('scheduledMedications', [
+                                            {
+                                                id: 'deworming',
+                                                name: 'Deworming',
+                                                schedules: { Goat: 0, Sheep: 0, Cow: 0, Buffalo: 0, Poultry: 0, Chicken: 0 },
+                                                notificationDays: 7
+                                            }
+                                        ]);
+                                    }
+                                }}
+                                className="text-xs text-red-500 hover:text-red-700 underline"
+                            >
+                                Reset / Fix Issues
+                            </button>
                         </div>
-                        <p className="text-sm text-gray-500 mb-4">Set the interval (in days) for deworming each animal type.</p>
+                        <p className="text-sm text-gray-500 mb-4">Configure schedules for periodic treatments like Deworming, Vaccinations, etc.</p>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                            {['Goat', 'Sheep', 'Cattle', 'Buffalo'].map((type) => (
-                                <div key={type} className="space-y-1">
-                                    <label className="text-xs font-semibold text-gray-600 uppercase">{type}</label>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="number"
-                                            value={settings?.dewormingSchedule?.[type] || 90}
-                                            onChange={(e) => {
-                                                updateSetting('dewormingSchedule', {
-                                                    ...(settings?.dewormingSchedule || {}),
-                                                    [type]: parseInt(e.target.value) || 0
-                                                });
+                        <div className="space-y-6">
+                            {(settings?.scheduledMedications || []).map((med, index) => (
+                                <div key={med.id || index} className="p-4 bg-orange-50/50 rounded-xl border border-orange-100 relative">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="flex-1">
+                                            <label className="text-xs font-semibold text-gray-500 uppercase">Medication Name</label>
+                                            <input
+                                                type="text"
+                                                value={med.name}
+                                                onChange={(e) => {
+                                                    const updated = [...(settings.scheduledMedications || [])];
+                                                    updated[index] = { ...updated[index], name: e.target.value };
+                                                    updateSetting('scheduledMedications', updated);
+                                                }}
+                                                className="block w-full text-lg font-bold text-gray-800 bg-transparent border-b border-transparent focus:border-orange-300 focus:outline-none placeholder-gray-400"
+                                                placeholder="e.g. Livertonic"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                if (window.confirm('Delete this schedule configuration?')) {
+                                                    const updated = settings.scheduledMedications.filter((_, i) => i !== index);
+                                                    updateSetting('scheduledMedications', updated);
+                                                }
                                             }}
-                                            className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none bg-blue-50/30"
-                                        />
-                                        <span className="text-sm text-gray-500">days</span>
+                                            className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                                            title="Delete Schedule"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                        {['Goat', 'Sheep', 'Cow', 'Buffalo', 'Chicken'].map((type) => (
+                                            <div key={type} className="space-y-1">
+                                                <label className="text-xs font-semibold text-gray-600 uppercase">{type}</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={med.schedules?.[type] || 0}
+                                                        onChange={(e) => {
+                                                            const updated = [...(settings.scheduledMedications || [])];
+                                                            updated[index] = {
+                                                                ...updated[index],
+                                                                schedules: {
+                                                                    ...(updated[index].schedules || {}),
+                                                                    [type]: parseInt(e.target.value) || 0
+                                                                }
+                                                            };
+                                                            updateSetting('scheduledMedications', updated);
+                                                        }}
+                                                        className="w-full px-3 py-2 border border-orange-200 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none bg-white"
+                                                    />
+                                                    <span className="text-sm text-gray-500">days</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="pt-3 border-t border-orange-200/50">
+                                        <div className="flex items-center gap-3">
+                                            <Bell className="w-4 h-4 text-orange-400" />
+                                            <div className="flex-1">
+                                                <label className="text-xs font-medium text-gray-700">Notification Alert Buffer</label>
+                                            </div>
+                                            <div className="flex items-center gap-2 w-32">
+                                                <input
+                                                    type="number"
+                                                    value={med.notificationDays || 7}
+                                                    onChange={(e) => {
+                                                        const updated = [...(settings.scheduledMedications || [])];
+                                                        updated[index] = { ...updated[index], notificationDays: parseInt(e.target.value) || 0 };
+                                                        updateSetting('scheduledMedications', updated);
+                                                    }}
+                                                    className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm"
+                                                />
+                                                <span className="text-xs text-gray-500">days</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
-                        </div>
 
-                        <div className="pt-4 border-t border-gray-100">
-                            <div className="flex items-center gap-3">
-                                <Bell className="w-5 h-5 text-red-500" />
-                                <div className="flex-1">
-                                    <label className="text-sm font-medium text-gray-700">Notification Alert Buffer</label>
-                                    <p className="text-xs text-gray-500">Show alert dashboard this many days before due date.</p>
-                                </div>
-                                <div className="flex items-center gap-2 w-32">
-                                    <input
-                                        type="number"
-                                        value={settings.dewormingNotificationDays || 7}
-                                        onChange={(e) => updateSetting('dewormingNotificationDays', parseInt(e.target.value))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-center"
-                                    />
-                                    <span className="text-sm text-gray-500">days</span>
-                                </div>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    const newMed = {
+                                        id: Date.now().toString(),
+                                        name: 'New Medication',
+                                        schedules: { Goat: 0, Sheep: 0, Cow: 0, Buffalo: 0, Poultry: 0, Chicken: 0 },
+                                        notificationDays: 7
+                                    };
+                                    updateSetting('scheduledMedications', [...(settings.scheduledMedications || []), newMed]);
+                                }}
+                                className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 font-medium hover:border-green-500 hover:text-green-600 hover:bg-green-50 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Plus className="w-5 h-5" /> Add New Schedule
+                            </button>
                         </div>
                     </div>
                 </div>

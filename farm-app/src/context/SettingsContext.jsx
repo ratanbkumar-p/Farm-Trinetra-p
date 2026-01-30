@@ -37,7 +37,22 @@ export const SettingsProvider = ({ children }) => {
             Cow: 90,
             Chicken: 30
         },
-        dewormingNotificationDays: 7
+        dewormingNotificationDays: 7,
+        scheduledMedications: [
+            {
+                id: 'deworming',
+                name: 'Deworming',
+                schedules: {
+                    Goat: 0,
+                    Sheep: 0,
+                    Cow: 0,
+                    Buffalo: 0,
+                    Poultry: 0,
+                    Chicken: 0
+                },
+                notificationDays: 7
+            }
+        ]
     };
 
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);

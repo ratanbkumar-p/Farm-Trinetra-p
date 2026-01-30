@@ -2106,13 +2106,48 @@ const Livestock = () => {
                             <select value={medicalForm.type} onChange={e => setMedicalForm({ ...medicalForm, type: e.target.value, name: '' })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20">
                                 <option value="Vaccination">Vaccination</option>
                                 <option value="Medicine">Medicine</option>
-                                <option value="De-worming">De-worming</option>
+                                <option value="Scheduled Medication">Scheduled Medication</option>
                             </select>
                         </div>
                     </div>
 
                     {/* Name Selection based on Type */}
-                    {medicalForm.type !== 'De-worming' ? (
+                    {medicalForm.type === 'Scheduled Medication' ? (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Medication Name</label>
+                                <select
+                                    value={medicalForm.name}
+                                    onChange={e => setMedicalForm({ ...medicalForm, name: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20"
+                                >
+                                    <option value="">Select Medication...</option>
+                                    {(settings?.scheduledMedications || []).map((med, idx) => (
+                                        <option key={idx} value={med.name}>{med.name}</option>
+                                    ))}
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+
+                            {medicalForm.name && medicalForm.name !== 'Other' && (
+                                <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+                                    <h5 className="font-bold text-green-800 text-sm mb-1">{medicalForm.name} Schedule</h5>
+                                    {(() => {
+                                        const med = settings?.scheduledMedications?.find(m => m.name === medicalForm.name);
+                                        const interval = med?.schedules?.[selectedBatch?.type];
+                                        return (
+                                            <>
+                                                <p className="text-xs text-green-700 mb-2">
+                                                    Recommended interval for {selectedBatch?.type}: <strong>{interval || 'N/A'} days</strong>.
+                                                </p>
+                                                <p className="text-xs text-gray-500">The system will remind you based on this schedule.</p>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                             <select
@@ -2136,14 +2171,6 @@ const Livestock = () => {
                                     className="w-full px-3 py-2 border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20 bg-blue-50"
                                 />
                             )}
-                        </div>
-                    ) : (
-                        <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-                            <h5 className="font-bold text-green-800 text-sm mb-1">De-worming Schedule</h5>
-                            <p className="text-xs text-green-700 mb-2">
-                                Recommended interval for {selectedBatch?.type}: <strong>{settings?.dewormingSchedule?.[selectedBatch?.type] || 90} days</strong>.
-                            </p>
-                            <p className="text-xs text-gray-500">The system will remind you based on this schedule.</p>
                         </div>
                     )}
 
