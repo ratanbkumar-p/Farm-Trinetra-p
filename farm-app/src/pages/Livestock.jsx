@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, DollarSign, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
@@ -70,7 +70,10 @@ const Livestock = () => {
         status: 'Healthy',
         ageYears: '',
         ageMonths: '',
-        category: 'Kid'
+        ageMonths: '',
+        ageDays: '',
+        category: 'Kid',
+        date: new Date().toISOString().split('T')[0]
     });
 
     const [expenseForm, setExpenseForm] = useState({
@@ -128,6 +131,164 @@ const Livestock = () => {
         setExpandedAnimalId(prev => prev === id ? null : id);
     };
 
+
+
+    // Flock Management State (Chicken/Poultry)
+    const [isBulkDeceasedOpen, setIsBulkDeceasedOpen] = useState(false);
+    const [isBulkSaleOpen, setIsBulkSaleOpen] = useState(false);
+    const [isFlockEditOpen, setIsFlockEditOpen] = useState(false);
+
+    const [bulkDeceasedForm, setBulkDeceasedForm] = useState({ count: '', reason: 'Sickness', notes: '' });
+    const [bulkSaleForm, setBulkSaleForm] = useState({ count: '', pricePerAnimal: '', soldDate: new Date().toISOString().split('T')[0] });
+    const [flockEditForm, setFlockEditForm] = useState({ avgWeight: '', avgCost: '', status: 'Healthy', notes: '', boughtDate: '', targetGroup: 'Healthy' });
+
+    // Sick Transition State
+    // Sick Transition State
+    const [isSickTransitionOpen, setIsSickTransitionOpen] = useState(false);
+    const [sickTransitionForm, setSickTransitionForm] = useState({ count: '', fromStatus: '', toStatus: '', notes: '' });
+
+    // Dashboard Expansion State
+    const [expandedCard, setExpandedCard] = useState(null); // 'active', 'sick', 'mortality', 'sold'
+
+    // --- HANDLERS FOR FLOCK ---
+    const handleBulkDeceased = async (e) => {
+        e.preventDefault();
+        const count = parseInt(bulkDeceasedForm.count);
+        if (isNaN(count) || count <= 0) return alert("Invalid count");
+
+        // Get sorted active active animals
+        const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+
+        // Sort by ID to take "next sequence" (approximate by ID string or numeric parts)
+        // IDs: P1-1, P1-2... 
+        // We want to remove lowest numbers first? Or generally just "any N". 
+        // User said "it takes from 1 to 20". So we should sort by ID.
+        active.sort((a, b) => {
+            const numA = parseInt(a.id.split('-').pop());
+            const numB = parseInt(b.id.split('-').pop());
+            return numA - numB;
+        });
+
+        if (count > active.length) return alert(`Only ${active.length} active animals available.`);
+
+        const toUpdate = active.slice(0, count);
+        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+            if (toUpdate.find(u => u.id === a.id)) {
+                return { ...a, status: 'Deceased', deathReason: bulkDeceasedForm.reason, notes: bulkDeceasedForm.notes };
+            }
+            return a;
+        });
+
+        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+        setIsBulkDeceasedOpen(false);
+        setBulkDeceasedForm({ count: '', reason: 'Sickness', notes: '' });
+    };
+
+    const handleBulkSale = async (e) => {
+        e.preventDefault();
+        const count = parseInt(bulkSaleForm.count);
+        if (isNaN(count) || count <= 0) return alert("Invalid count");
+
+        const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+        // Sort by ID
+        active.sort((a, b) => {
+            const numA = parseInt(a.id.split('-').pop());
+            const numB = parseInt(b.id.split('-').pop());
+            return numA - numB;
+        });
+
+        if (count > active.length) return alert(`Only ${active.length} active animals available.`);
+
+        const toUpdate = active.slice(0, count);
+        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+            if (toUpdate.find(u => u.id === a.id)) {
+                return { ...a, status: 'Sold', soldPrice: Number(bulkSaleForm.pricePerAnimal), soldDate: bulkSaleForm.soldDate };
+            }
+            return a;
+        });
+
+        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+        setIsBulkSaleOpen(false);
+        setBulkSaleForm({ count: '', pricePerAnimal: '', soldDate: new Date().toISOString().split('T')[0] });
+    };
+
+    const handleFlockEdit = async (e) => {
+        e.preventDefault();
+        // Determine target animals based on targetGroup
+        const targetStatus = flockEditForm.targetGroup === 'Sick' ? 'Sick' : 'Healthy';
+
+        // Find animals matching the target status (Healthy ones might have undefined or 'Healthy' status)
+        const targetAnimals = (selectedBatch?.animals || []).filter(a => {
+            const status = a.status || 'Healthy';
+            return status === targetStatus;
+        });
+
+        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+            const currentStatus = a.status || 'Healthy';
+
+            // Only update animals in the target group
+            if (currentStatus === targetStatus) {
+                // Update weight history if changed
+                let newHistory = a.weightHistory || [];
+                if (flockEditForm.avgWeight && Number(flockEditForm.avgWeight) !== Number(a.weight)) {
+                    newHistory = [...newHistory, { date: new Date().toISOString().split('T')[0], weight: Number(flockEditForm.avgWeight) }];
+                }
+
+                // Preserve existing fields if form value is empty/null, otherwise update
+                return {
+                    ...a,
+                    weight: flockEditForm.avgWeight ? Number(flockEditForm.avgWeight) : a.weight,
+                    // Only update status if explicitly changed (though usually this edit is for attributes, not status change)
+                    // status: flockEditForm.status || a.status, 
+                    // Revised: If we are 'treating' sick animals, maybe we just update weight/notes, not status here. 
+                    // Status change is handled by Transition.
+
+                    weightHistory: newHistory,
+                    // Apply new fields
+                    purchaseCost: flockEditForm.avgCost ? Number(flockEditForm.avgCost) : a.purchaseCost,
+                    boughtDate: flockEditForm.boughtDate || a.boughtDate,
+                    notes: flockEditForm.notes ? (a.notes ? a.notes + '; ' + flockEditForm.notes : flockEditForm.notes) : a.notes
+                };
+            }
+            return a;
+        });
+
+        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+        setIsFlockEditOpen(false);
+    };
+
+    const handleSickTransition = async (e) => {
+        e.preventDefault();
+        const count = parseInt(sickTransitionForm.count);
+        if (isNaN(count) || count <= 0) return alert("Invalid count");
+
+        // Filter source animals (Healthy or Sick)
+        const sourceAnimals = (selectedBatch?.animals || []).filter(a => {
+            const status = a.status || 'Healthy';
+            return status === sickTransitionForm.fromStatus;
+        });
+
+        // Sort by ID to take next available
+        sourceAnimals.sort((a, b) => {
+            const numA = parseInt(a.id.split('-').pop());
+            const numB = parseInt(b.id.split('-').pop());
+            return numA - numB;
+        });
+
+        if (count > sourceAnimals.length) return alert(`Only ${sourceAnimals.length} animals available in ${sickTransitionForm.fromStatus} state.`);
+
+        const toUpdate = sourceAnimals.slice(0, count);
+        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+            if (toUpdate.find(u => u.id === a.id)) {
+                return { ...a, status: sickTransitionForm.toStatus, notes: sickTransitionForm.notes ? (a.notes ? a.notes + '; ' + sickTransitionForm.notes : sickTransitionForm.notes) : a.notes };
+            }
+            return a;
+        });
+
+        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+        setIsSickTransitionOpen(false);
+        setSickTransitionForm({ count: '', fromStatus: '', toStatus: '', notes: '' });
+    };
 
 
     // --- DERIVED DATA ---
@@ -199,7 +360,28 @@ const Livestock = () => {
         if (selectedBatch) {
             updateBatch(selectedBatch.id, batchForm);
         } else {
-            addBatch(batchForm);
+            // New Batch: Generate Short ID (G1, S1, P1, C1...)
+            // 1. Get Prefix
+            const typePrefixMap = { 'Goat': 'G', 'Sheep': 'S', 'Poultry': 'P', 'Chicken': 'P', 'Cow': 'C' }; // Mapping Poultry/Chicken to P as per user
+            const prefix = typePrefixMap[batchForm.type] || batchForm.type[0].toUpperCase();
+
+            // 2. Count existing batches of this type
+            const existingCount = data.batches.filter(b => {
+                // Match type strictly? Or match prefix? 
+                // If user mixes 'Chicken' and 'Poultry', they should share sequence if mapped to 'P'
+                // But wait, existing batches might not have shortId. 
+                // So we rely on 'type'. 
+                // If batchForm.type is 'Chicken', we count 'Chicken' and 'Poultry'?
+                if (batchForm.type === 'Chicken' || batchForm.type === 'Poultry') {
+                    return b.type === 'Chicken' || b.type === 'Poultry';
+                }
+                return b.type === batchForm.type;
+            }).length;
+
+            const nextNum = existingCount + 1;
+            const newShortId = `${prefix}${nextNum}`;
+
+            addBatch({ ...batchForm, shortId: newShortId });
         }
         setIsBatchModalOpen(false);
         setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising', color: '#3B82F6' });
@@ -323,6 +505,7 @@ const Livestock = () => {
                 } else {
                     // Add new animals
                     const type = selectedBatch.type;
+                    const isChickenType = type === 'Chicken' || type === 'Poultry';
                     const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Poultry': 'PL', 'Chicken': 'CH' };
 
                     if (!typeMap[type]) {
@@ -340,19 +523,32 @@ const Livestock = () => {
                     // Existing types uses: TYPE + MONTH + GENDER + YEAR. e.g. GTJANM26
                     // For Chicken (Generic): CH + JAN + 26 + - + NUM? -> CHJAN26-1
                     let genderChar = animalForm.gender === 'Male' ? 'M' : 'F';
-                    if (type === 'Chicken') {
-                        // If specific gender is known, we could keep it, but user said "without fm".
-                        // So let's OMIT gender char for Chickens entirely in the prefix.
+                    if (isChickenType) {
                         genderChar = '';
                     }
 
-                    // Prefix Base
-                    // Goat/Sheep: GTJANM26
-                    // Chicken: CHJAN26
-                    const prefixBase = `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${genderChar}${year}`;
+                    // Prefix Strategy:
+                    // Always calculate the Legacy Base (e.g. GTJANM26 or CHJAN26)
+                    let basePrefix = '';
+
+                    let batchCode = '';
+                    if (isChickenType) {
+                        const cleanName = selectedBatch.name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                        batchCode = cleanName.substring(0, 3) || '000';
+                        if (batchCode.length < 3) batchCode = batchCode.padEnd(3, 'X');
+                    }
+
+                    basePrefix = isChickenType
+                        ? `${typeMap[type] || 'CH'}${month}${year}-${batchCode}`
+                        : `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${genderChar}${year}`;
+
+                    // If ShortID exists (G1), prepend it -> G1-GTJANM26
+                    const fullPrefix = selectedBatch.shortId
+                        ? `${selectedBatch.shortId}-${basePrefix}`
+                        : basePrefix;
 
                     // Category Logic: Chicken has no category distinction in ID
-                    const useSuffix = type !== 'Chicken';
+                    const useSuffix = !isChickenType;
                     const category = animalForm.category || 'Kid';
 
                     // Find max sequence
@@ -362,26 +558,22 @@ const Livestock = () => {
 
                     let maxNum = 0;
                     allAnimalsOfType.forEach(a => {
-                        if (a.id && a.id.startsWith(prefixBase)) {
+                        if (a.id && a.id.startsWith(fullPrefix)) {
+                            // Universal approach: Get the part AFTER the fullPrefix
+                            // fullPrefix: "G1-GTJANM26" or "GTJANM26"
+                            // ID: "G1-GTJANM26-K-1"
+                            const rest = a.id.substring(fullPrefix.length);
+                            // rest: "-K-1" or "-1"
+                            const parts = rest.split('-');
+                            // parts: ["", "K", "1"] or ["", "1"]
+                            const lastPart = parts[parts.length - 1];
+                            const num = parseInt(lastPart);
+                            if (!isNaN(num) && num > maxNum) maxNum = num;
+                        } else if (a.id && useShortIdStrategy && a.id.startsWith(selectedBatch.shortId + '-')) {
+                            // Backup check: If fullPrefix logic missed (e.g. prefixBase different), check ShortID match
                             const parts = a.id.split('-');
-                            // parts[0] is Prefix
-                            // Adjust parsing logic for Chicken (No suffix) vs Others (Suffix)
-                            let num = 0;
-                            if (type === 'Chicken') {
-                                // Format: PREFIX-NUM (e.g. CHJAN26-1)
-                                if (parts.length === 2 && parts[0] === prefixBase) {
-                                    num = parseInt(parts[1]);
-                                }
-                            } else {
-                                // Format: PREFIX-SUFFIX-NUM
-                                if (parts.length === 3) {
-                                    num = parseInt(parts[2]);
-                                } else if (parts.length === 2) {
-                                    // Legacy support
-                                    num = parseInt(parts[1]);
-                                }
-                            }
-
+                            // P1-CH...-1
+                            const num = parseInt(parts[parts.length - 1]);
                             if (!isNaN(num) && num > maxNum) maxNum = num;
                         }
                     });
@@ -390,12 +582,18 @@ const Livestock = () => {
 
                     const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
                         maxNum++;
-                        // ID Gen
+                        // ID Gen: [FULL_PREFIX]-[SUFFIX?]-[NUM]
+                        // fullPrefix already contains ShortID if applicable.
+
                         let sequentialId;
-                        if (type === 'Chicken') {
-                            sequentialId = `${prefixBase}-${maxNum}`;
+                        if (isChickenType) {
+                            // Chicken: No Suffix
+                            // Format: P1-CHJAN26-ABC-1
+                            sequentialId = `${fullPrefix}-${maxNum}`;
                         } else {
-                            sequentialId = `${prefixBase}-${suffix}-${maxNum}`;
+                            // Others: With Suffix (K/A)
+                            // Format: G1-GTJANM26-K-1
+                            sequentialId = `${fullPrefix}-${suffix}-${maxNum}`;
                         }
 
                         return {
@@ -404,7 +602,7 @@ const Livestock = () => {
                             weight: animalForm.weight,
                             status: animalForm.status,
                             purchaseCost: Number(animalForm.cost),
-                            boughtDate: selectedBatch.date || selectedBatch.startDate || new Date().toISOString().split('T')[0],
+                            boughtDate: animalForm.date || selectedBatch.date || selectedBatch.startDate || new Date().toISOString().split('T')[0],
                             age: formattedAge,
                             category: category,
                             weightHistory: [{
@@ -420,7 +618,7 @@ const Livestock = () => {
             }
 
             setIsAnimalModalOpen(false);
-            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', age: '', category: 'Kid' });
+            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', ageYears: '', ageMonths: '', ageDays: '', category: 'Kid', date: new Date().toISOString().split('T')[0] });
         } catch (error) {
             console.error('Error adding animals:', error);
         }
@@ -452,6 +650,10 @@ const Livestock = () => {
         let targetIds = [];
         if (medicalTargetMode === 'All') {
             targetIds = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').map(a => a.id);
+        } else if (medicalTargetMode === 'ActiveFlock') {
+            targetIds = (selectedBatch.animals || []).filter(a => (a.status === 'Healthy' || !a.status) && a.status !== 'Sold' && a.status !== 'Deceased' && a.status !== 'Sick').map(a => a.id);
+        } else if (medicalTargetMode === 'SickBay') {
+            targetIds = (selectedBatch.animals || []).filter(a => a.status === 'Sick').map(a => a.id);
         } else {
             targetIds = selectedMedicalAnimals;
         }
@@ -712,14 +914,51 @@ const Livestock = () => {
 
     const handleWeightSubmit = async (e) => {
         e.preventDefault();
-        if (!selectedBatch || !selectedAnimalForWeight) return;
+        if (!selectedBatch) return;
+
+        // Group Logic for Poultry
+        let targetIds = [];
+        if (selectedAnimalForWeight === 'Active') {
+            targetIds = (selectedBatch.animals || []).filter(a => (a.status === 'Healthy' || !a.status) && a.status !== 'Sold' && a.status !== 'Deceased' && a.status !== 'Sick').map(a => a.id);
+        } else if (selectedAnimalForWeight === 'Sick') {
+            targetIds = (selectedBatch.animals || []).filter(a => a.status === 'Sick').map(a => a.id);
+        } else if (selectedAnimalForWeight) {
+            targetIds = [selectedAnimalForWeight];
+        } else {
+            return;
+        }
 
         try {
+            const newWeight = Number(weightForm.weight);
+            const date = weightForm.date;
+
+            // Prepare Bulk Updates
+            const updatedAnimals = (selectedBatch.animals || []).map(a => {
+                if (targetIds.includes(a.id)) {
+                    // Update current weight and history
+                    const history = a.weightHistory || [];
+
+                    // Check if date exists, update or append
+                    // For bulk, let's just append or replace last if same date? 
+                    // To be safe/clean: Remove any existing entry for this date, then add new.
+                    const newHistory = history.filter(h => h.date !== date);
+                    newHistory.push({ date, weight: newWeight });
+
+                    return { ...a, weight: newWeight, weightHistory: newHistory };
+                }
+                return a;
+            });
+
+            await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+
+            /* Legacy Individual Logic (Disabled/Replaced by Bulk above)
             if (editingWeightRecord) {
                 await updateWeightRecord(selectedBatch.id, selectedAnimalForWeight, editingWeightRecord.date, weightForm.date, Number(weightForm.weight));
             } else {
                 await addWeightRecord(selectedBatch.id, selectedAnimalForWeight, Number(weightForm.weight), weightForm.date);
             }
+            */
+
             setIsWeightModalOpen(false);
             setEditingWeightRecord(null);
             setWeightForm({ weight: '', date: new Date().toISOString().split('T')[0] });
@@ -1047,7 +1286,10 @@ const Livestock = () => {
                                 >
                                     <div className="flex justify-between items-start mb-4">
                                         <div>
-                                            <h3 className="text-xl font-bold" style={{ color: batch.color || '#1F2937' }}>{batch.name}</h3>
+                                            <h3 className="text-xl font-bold" style={{ color: batch.color || '#1F2937' }}>
+                                                {batch.name}
+                                                {batch.shortId && <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-md border border-gray-200">#{batch.shortId}</span>}
+                                            </h3>
                                             <span className="text-sm text-gray-500">{batch.type} Batch</span>
                                         </div>
                                         <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">{f.activeAnimals} Active</span>
@@ -1247,7 +1489,14 @@ const Livestock = () => {
 
     // --- RENDER: BATCH DETAILS VIEW ---
     const financials = calculateBatchFinancials(selectedBatch);
-    const activeAnimals = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+
+    // Derived Animal Lists for Dashboard
+    // 'Active' (Healthy) means status is 'Healthy' or undefined (legacy default), AND not Sold/Deceased/Sick
+    const activeAnimals = (selectedBatch?.animals || []).filter(a => (a.status === 'Healthy' || !a.status) && a.status !== 'Sold' && a.status !== 'Deceased' && a.status !== 'Sick');
+    const sickAnimals = (selectedBatch?.animals || []).filter(a => a.status === 'Sick');
+    const deceasedAnimals = (selectedBatch?.animals || []).filter(a => a.status === 'Deceased');
+    const soldAnimals = (selectedBatch?.animals || []).filter(a => a.status === 'Sold');
+    const soldRevenue = soldAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
 
     return (
         <div className="space-y-6 mb-20">
@@ -1259,12 +1508,15 @@ const Livestock = () => {
             <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h1 className="text-3xl font-bold" style={{ color: selectedBatch.color || '#1F2937' }}>{selectedBatch.name}</h1>
+                        <h1 className="text-3xl font-bold flex items-center gap-3" style={{ color: selectedBatch.color || '#1F2937' }}>
+                            {selectedBatch.name}
+                            {selectedBatch.shortId && <span className="px-3 py-1 bg-gray-100 text-gray-500 text-sm rounded-lg border border-gray-200 font-mono">#{selectedBatch.shortId}</span>}
+                        </h1>
                         <button onClick={() => openBatchModal(selectedBatch)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><Edit2 className="w-4 h-4" /></button>
                         {/* Sell Button - Now in Header */}
                         {activeAnimals.length > 0 && (
                             <button onClick={openSellModal} className="p-2 text-green-600 hover:bg-green-50 rounded-full transition-colors flex items-center gap-1" title="Sell Animals">
-                                <DollarSign className="w-4 h-4" />
+                                <IndianRupee className="w-4 h-4" />
                                 <span className="text-sm font-bold">Sell</span>
                             </button>
                         )}
@@ -1308,7 +1560,7 @@ const Livestock = () => {
                         </div>
 
                         {/* Adults Section - Only for Non-Chicken */}
-                        {selectedBatch?.type !== 'Chicken' && (
+                        {selectedBatch?.type !== 'Chicken' && selectedBatch?.type !== 'Poultry' && (
                             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                                 <div
                                     onClick={() => setIsAdultsOpen(!isAdultsOpen)}
@@ -1444,81 +1696,291 @@ const Livestock = () => {
                         )}
 
                         {/* Chicken 'Flock' Section - Simplified View for Large Numbers */}
-                        {selectedBatch?.type === 'Chicken' && (
-                            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                                <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                                    <h4 className="font-bold text-gray-700 flex items-center gap-2">
-                                        <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
-                                        Flock Overview ({activeAnimals.length})
-                                    </h4>
-                                </div>
-                                <div className="divide-y divide-gray-50">
-                                    {activeAnimals.length > 0 ? (
-                                        activeAnimals.map(animal => (
-                                            <div key={animal.id} className="border-b border-gray-50 last:border-0">
-                                                <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold bg-orange-100 text-orange-600`}>
-                                                            {animal.gender ? animal.gender[0] : 'C'}
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                                {animal.id}
-                                                                <span className="text-gray-300 text-xs font-normal">|</span>
-                                                                <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
-                                                            </div>
-                                                            <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                                <span>{formatWeight(animal.weight)}</span>
-                                                                <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
-                                                            </div>
-                                                        </div>
+                        {/* Chicken 'Flock' Dashboard - Simplified View for Large Numbers */}
+                        {/* Chicken 'Flock' Dashboard - Enhanced Grid */}
+                        {['chicken', 'poultry'].includes(selectedBatch?.type?.toLowerCase()) && (
+                            <div className="space-y-8">
+                                {/* Dashboard Grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Active (Healthy) Card */}
+                                    <div className={`bg-white rounded-2xl p-6 border transition-all cursor-pointer ${expandedCard === 'active' ? 'ring-2 ring-green-500 border-green-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}
+                                        onClick={() => setExpandedCard(expandedCard === 'active' ? null : 'active')}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Active</div>
+                                                <div className="text-4xl font-bold text-gray-800">{activeAnimals.length}</div>
+                                            </div>
+                                            <div className="p-2 bg-green-50 rounded-xl text-green-600">
+                                                <Check className="w-6 h-6" />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 mb-3">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Move to Sick Modal
+                                                    setSickTransitionForm({ count: '', fromStatus: 'Healthy', toStatus: 'Sick', notes: '' });
+                                                    setIsSickTransitionOpen(true);
+                                                }}
+                                                className="flex-1 py-2 px-3 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100 transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Stethoscope className="w-4 h-4" /> Move to Sick
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Edit Attributes
+                                                    const weights = activeAnimals.map(a => Number(a.weight) || 0).filter(w => w > 0);
+                                                    const currentAvg = weights.length > 0 ? (weights.reduce((a, b) => a + b, 0) / weights.length) : '';
+                                                    setFlockEditForm({
+                                                        avgWeight: currentAvg,
+                                                        status: 'Healthy',
+                                                        notes: '',
+                                                        targetGroup: 'Healthy'
+                                                    });
+                                                    setIsFlockEditOpen(true);
+                                                }}
+                                                className="flex-1 py-2 px-3 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Edit2 className="w-4 h-4" /> Edit Details
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-center">
+                                            {expandedCard === 'active' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                        </div>
+
+                                        {expandedCard === 'active' && (
+                                            <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Avg Weight History</h5>
+                                                        {(() => {
+                                                            // Calculate Avg Weight History for Active Group
+                                                            const dateMap = new Map();
+                                                            activeAnimals.forEach(a => {
+                                                                (a.weightHistory || []).forEach(rec => {
+                                                                    if (!dateMap.has(rec.date)) dateMap.set(rec.date, { total: 0, count: 0 });
+                                                                    const entry = dateMap.get(rec.date);
+                                                                    entry.total += Number(rec.weight);
+                                                                    entry.count += 1;
+                                                                });
+                                                            });
+                                                            const history = Array.from(dateMap.entries())
+                                                                .map(([date, data]) => ({ date, weight: (data.total / data.count).toFixed(2) }))
+                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                .slice(0, 5);
+
+                                                            return history.length > 0 ? (
+                                                                <div className="space-y-1">
+                                                                    {history.map((h, i) => (
+                                                                        <div key={i} className="flex justify-between text-xs text-gray-600 bg-gray-50 p-1 rounded">
+                                                                            <span>{h.date}</span>
+                                                                            <span className="font-bold">{h.weight} kg</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : <p className="text-xs text-gray-400 italic">No weight records.</p>;
+                                                        })()}
                                                     </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="text-gray-400 group-hover:text-blue-600">
-                                                            {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                                        </div>
-                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                                            <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
-                                                                <TrendingUp className="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                                                                <Edit2 className="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
+                                                    <div>
+                                                        <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
+                                                        {(() => {
+                                                            // Filter Medical for Active Group (records that touched 'active' animals)
+                                                            // Logic: If record.animalIds includes majority of active animals?
+                                                            // Or just show latest from 'Active' context
+                                                            const recentMedical = (selectedBatch.medical || [])
+                                                                .filter(m => (m.animalIds || []).some(id => activeAnimals.some(a => a.id === id)))
+                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                .slice(0, 5);
+
+                                                            return recentMedical.length > 0 ? (
+                                                                <div className="space-y-1">
+                                                                    {recentMedical.map((m, i) => (
+                                                                        <div key={i} className="text-xs text-gray-600 bg-gray-50 p-1 rounded">
+                                                                            <div className="flex justify-between font-medium">
+                                                                                <span>{m.type}</span>
+                                                                                <span>{m.date}</span>
+                                                                            </div>
+                                                                            <div className="truncate text-gray-500">{m.name}</div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : <p className="text-xs text-gray-400 italic">No medical records.</p>;
+                                                        })()}
                                                     </div>
                                                 </div>
-                                                {/* Expanded Details - Reuse existing logic or simplified? Reusing existing logic but need to handle duplicate code if trying to be dry. 
-                                                    For safety, I'll copy the expansion logic but simplified for brevity in this replace block, 
-                                                    or better yet, since the expansion logic is quite long (lines 1450-1500), 
-                                                    I will rely on the fact that existing expansion logic works if I could reuse the component. 
-                                                    But this is a "Flock" specific render. 
-                                                    I'll verify if I can just let the user expand it. The logic above COPIED the expansion logic from Adults SECTION? 
-                                                    No, I need to include the expansion content here. */}
-                                                {expandedAnimalId === animal.id && (
-                                                    <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Weight</span> <span className="font-semibold text-gray-700">{formatWeight(animal.weight)}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
-                                                        </div>
-                                                    </div>
-                                                )}
                                             </div>
-                                        ))
-                                    ) : (
-                                        <div className="p-8 text-center text-gray-400 text-sm">No animals in flock.</div>
-                                    )}
+                                        )}
+                                    </div>
+
+                                    {/* Sick Bay Card */}
+                                    <div className={`bg-white rounded-2xl p-6 border transition-all cursor-pointer ${expandedCard === 'sick' ? 'ring-2 ring-red-500 border-red-500 shadow-md' : 'border-red-50 shadow-sm hover:shadow-md'}`}
+                                        onClick={() => setExpandedCard(expandedCard === 'sick' ? null : 'sick')}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Sick Bay</div>
+                                                <div className="text-4xl font-bold text-red-600">{sickAnimals.length}</div>
+                                            </div>
+                                            <div className="p-2 bg-red-50 rounded-xl text-red-600">
+                                                <Stethoscope className="w-6 h-6" />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 mb-3">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Recover Modal
+                                                    setSickTransitionForm({ count: '', fromStatus: 'Sick', toStatus: 'Healthy', notes: '' });
+                                                    setIsSickTransitionOpen(true);
+                                                }}
+                                                className="flex-1 py-2 px-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
+                                                disabled={sickAnimals.length === 0}
+                                            >
+                                                <Check className="w-4 h-4" /> Recover
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Treat Sick
+                                                    setFlockEditForm({
+                                                        avgWeight: '',
+                                                        status: 'Sick',
+                                                        notes: '',
+                                                        targetGroup: 'Sick'
+                                                    });
+                                                    setIsFlockEditOpen(true);
+                                                }}
+                                                className="flex-1 py-2 px-3 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                                                disabled={sickAnimals.length === 0}
+                                            >
+                                                <Syringe className="w-4 h-4" /> Treat/Edit
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-center">
+                                            {expandedCard === 'sick' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                        </div>
+
+                                        {expandedCard === 'sick' && (
+                                            <div className="mt-4 pt-4 border-t border-red-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <h5 className="font-bold text-red-800 text-xs uppercase mb-2">Recent Weights (Avg)</h5>
+                                                        {(() => {
+                                                            // Calculate Avg Weight History for Sick
+                                                            const dateMap = new Map();
+                                                            sickAnimals.forEach(a => {
+                                                                (a.weightHistory || []).forEach(rec => {
+                                                                    if (!dateMap.has(rec.date)) dateMap.set(rec.date, { total: 0, count: 0 });
+                                                                    const entry = dateMap.get(rec.date);
+                                                                    entry.total += Number(rec.weight);
+                                                                    entry.count += 1;
+                                                                });
+                                                            });
+                                                            const history = Array.from(dateMap.entries())
+                                                                .map(([date, data]) => ({ date, weight: (data.total / data.count).toFixed(2) }))
+                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                .slice(0, 5);
+
+                                                            return history.length > 0 ? (
+                                                                <div className="space-y-1">
+                                                                    {history.map((h, i) => (
+                                                                        <div key={i} className="flex justify-between text-xs text-red-700 bg-red-50 p-1 rounded">
+                                                                            <span>{h.date}</span>
+                                                                            <span className="font-bold">{h.weight} kg</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : <p className="text-xs text-red-400 italic">No weight records.</p>;
+                                                        })()}
+                                                    </div>
+                                                    <div>
+                                                        <h5 className="font-bold text-red-800 text-xs uppercase mb-2">Recent Treatments</h5>
+                                                        {(() => {
+                                                            // Filter Medical for Sick Group (approx logic: targeted sick animals)
+                                                            // Simplified: Show records where at least one current sick animal was involved
+                                                            const recentMedical = (selectedBatch.medical || [])
+                                                                .filter(m => (m.animalIds || []).some(id => sickAnimals.some(sick => sick.id === id)))
+                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                .slice(0, 5);
+
+                                                            return recentMedical.length > 0 ? (
+                                                                <div className="space-y-1">
+                                                                    {recentMedical.map((m, i) => (
+                                                                        <div key={i} className="text-xs text-red-700 bg-red-50 p-1 rounded">
+                                                                            <div className="flex justify-between font-medium">
+                                                                                <span>{m.type}</span>
+                                                                                <span>{m.date}</span>
+                                                                            </div>
+                                                                            <div className="truncate text-red-500">{m.name}</div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : <p className="text-xs text-red-400 italic">No medical records.</p>;
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Mortality Card */}
+                                    <div className={`bg-white rounded-2xl p-6 border transition-all ${expandedCard === 'mortality' ? 'ring-2 ring-red-500 border-red-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Mortality</div>
+                                                <div className="text-4xl font-bold text-gray-800">{deceasedAnimals.length}</div>
+                                            </div>
+                                            <div className="p-2 bg-gray-100 rounded-xl text-gray-600">
+                                                <Trash2 className="w-6 h-6" />
+                                            </div>
+                                        </div>
+                                        <div className="mb-3">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIsBulkDeceasedOpen(true);
+                                                }}
+                                                className="w-full py-2 px-3 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Plus className="w-4 h-4" /> Record Death
+                                            </button>
+                                        </div>
+                                        {/* No Expansion for Mortality as per request */}
+                                    </div>
+
+                                    {/* Sold Card */}
+                                    <div className={`bg-white rounded-2xl p-6 border transition-all ${expandedCard === 'sold' ? 'ring-2 ring-blue-500 border-blue-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Sold</div>
+                                                <div className="text-4xl font-bold text-gray-800">{soldAnimals.length}</div>
+                                                <div className="text-xs text-blue-600 mt-1 font-medium">Revenue: ₹{Math.round(soldRevenue).toLocaleString()}</div>
+                                            </div>
+                                            <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                                                <IndianRupee className="w-6 h-6" />
+                                            </div>
+                                        </div>
+                                        <div className="mb-3">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIsBulkSaleOpen(true);
+                                                }}
+                                                className="w-full py-2 px-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Plus className="w-4 h-4" /> Record Sale
+                                            </button>
+                                        </div>
+                                        {/* No expansion for Sold */}
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         {/* Kids Section - Only for Non-Chicken */}
-                        {selectedBatch?.type !== 'Chicken' && (
+                        {selectedBatch?.type !== 'Chicken' && selectedBatch?.type !== 'Poultry' && (
                             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                                 <div
                                     onClick={() => setIsKidsOpen(!isKidsOpen)}
@@ -1710,11 +2172,44 @@ const Livestock = () => {
                         <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                             <h4 className="font-bold text-gray-700 mb-4">Weight History</h4>
                             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden min-h-[300px]">
-                                {selectedAnimalForWeight && (selectedBatch.animals.find(a => a.id === selectedAnimalForWeight)?.weightHistory || []).length > 0 ? (
+                                {selectedAnimalForWeight ? (
                                     (() => {
-                                        const animal = selectedBatch.animals.find(a => a.id === selectedAnimalForWeight);
-                                        // Sort Descending (Newest first)
-                                        const history = [...(animal?.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+                                        // Handle Group Selection (Active/Sick)
+                                        let history = [];
+
+                                        if (selectedAnimalForWeight === 'Active' || selectedAnimalForWeight === 'Sick') {
+                                            const targetStatus = selectedAnimalForWeight === 'Active' ? 'Healthy' : 'Sick';
+                                            // Get all relevant animals
+                                            const groupAnimals = selectedBatch.animals.filter(a => {
+                                                if (selectedAnimalForWeight === 'Active') return (a.status === 'Healthy' || !a.status) && a.status !== 'Sold' && a.status !== 'Deceased' && a.status !== 'Sick';
+                                                return a.status === 'Sick';
+                                            });
+
+                                            // Collect all unique dates
+                                            const dateMap = new Map(); // date -> { totalWeight, count }
+
+                                            groupAnimals.forEach(a => {
+                                                (a.weightHistory || []).forEach(rec => {
+                                                    if (!dateMap.has(rec.date)) {
+                                                        dateMap.set(rec.date, { total: 0, count: 0 });
+                                                    }
+                                                    const entry = dateMap.get(rec.date);
+                                                    entry.total += Number(rec.weight);
+                                                    entry.count += 1;
+                                                });
+                                            });
+
+                                            // Convert to history array
+                                            history = Array.from(dateMap.entries()).map(([date, data]) => ({
+                                                date,
+                                                weight: (data.total / data.count).toFixed(2) // Average Weight
+                                            })).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                                        } else {
+                                            // Individual Animal Selection
+                                            const animal = selectedBatch.animals.find(a => a.id === selectedAnimalForWeight);
+                                            history = [...(animal?.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+                                        }
 
                                         return (
                                             <div className="overflow-x-auto">
@@ -1795,11 +2290,30 @@ const Livestock = () => {
                         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 max-h-[400px] overflow-y-auto">
                             <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Select Animal</h4>
                             <div className="space-y-2">
-                                {activeAnimals.map(animal => (
-                                    <button key={animal.id} onClick={() => setSelectedAnimalForWeight(animal.id)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForWeight === animal.id ? 'bg-blue-50 text-blue-700 font-medium ring-2 ring-blue-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
-                                        <div className="flex justify-between items-center"><span>{animal.id}</span><span className="text-sm text-gray-400">{animal.weight} kg</span></div>
-                                    </button>
-                                ))}
+                                {selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry' ? (
+                                    <>
+                                        {/* Poultry Group Selectors */}
+                                        <button onClick={() => setSelectedAnimalForWeight('Active')} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForWeight === 'Active' ? 'bg-green-50 text-green-700 font-medium ring-2 ring-green-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <span className="flex items-center gap-2"><Check className="w-4 h-4" /> Active Flock</span>
+                                                <span className="text-sm text-gray-400">{activeAnimals.length} birds</span>
+                                            </div>
+                                        </button>
+                                        <button onClick={() => setSelectedAnimalForWeight('Sick')} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForWeight === 'Sick' ? 'bg-orange-50 text-orange-700 font-medium ring-2 ring-orange-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <span className="flex items-center gap-2"><Stethoscope className="w-4 h-4" /> Sick Bay</span>
+                                                <span className="text-sm text-gray-400">{sickAnimals.length} birds</span>
+                                            </div>
+                                        </button>
+                                    </>
+                                ) : (
+                                    /* Individual Selectors for Others */
+                                    activeAnimals.map(animal => (
+                                        <button key={animal.id} onClick={() => setSelectedAnimalForWeight(animal.id)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForWeight === animal.id ? 'bg-blue-50 text-blue-700 font-medium ring-2 ring-blue-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center"><span>{animal.id}</span><span className="text-sm text-gray-400">{animal.weight} kg</span></div>
+                                        </button>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1832,7 +2346,7 @@ const Livestock = () => {
                                     </button>
                                 )}
                             </div>
-                            {(selectedBatch.medical || []).filter(m => !selectedAnimalForMedical || (m.animalIds || []).includes(selectedAnimalForMedical)).length > 0 ? (
+                            {(selectedBatch.medical || []).filter(m => !selectedAnimalForMedical || (m.animalIds || []).includes(selectedAnimalForMedical) || (selectedAnimalForMedical === 'Active' && m.animalIds?.every(id => activeAnimals.some(a => a.id === id))) || (selectedAnimalForMedical === 'Sick' && m.animalIds?.every(id => sickAnimals.some(a => a.id === id)))).length > 0 ? (
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-orange-50 text-orange-800 uppercase text-xs">
                                         <tr>
@@ -1847,7 +2361,7 @@ const Livestock = () => {
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {[...(selectedBatch.medical || [])]
-                                            .filter(m => !selectedAnimalForMedical || (m.animalIds || []).includes(selectedAnimalForMedical))
+                                            .filter(m => !selectedAnimalForMedical || (m.animalIds || []).includes(selectedAnimalForMedical) || (selectedAnimalForMedical === 'Active' && m.animalIds?.every(id => activeAnimals.some(a => a.id === id))) || (selectedAnimalForMedical === 'Sick' && m.animalIds?.every(id => sickAnimals.some(a => a.id === id))))
                                             .sort((a, b) => new Date(b.date) - new Date(a.date))
                                             .map((record) => (
                                                 <tr key={record.id} className="hover:bg-gray-50/50">
@@ -1893,23 +2407,47 @@ const Livestock = () => {
                         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 max-h-[600px] overflow-y-auto">
                             <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Filter by Animal</h4>
                             <div className="space-y-2">
-                                <button onClick={() => setSelectedAnimalForMedical(null)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${!selectedAnimalForMedical ? 'bg-orange-50 text-orange-700 font-medium ring-2 ring-orange-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
-                                    <div className="flex justify-between items-center"><span>All Animals</span><span className="text-sm text-gray-400">View All</span></div>
-                                </button>
-                                {activeAnimals.map(animal => (
-                                    <button key={animal.id} onClick={() => setSelectedAnimalForMedical(animal.id)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForMedical === animal.id ? 'bg-orange-50 text-orange-700 font-medium ring-2 ring-orange-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
-                                        <div className="flex justify-between items-center">
-                                            <span>{animal.id}</span>
-                                            <span className="text-xs px-2 py-0.5 bg-gray-100 rounded text-gray-500">
-                                                {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).length} recs
-                                            </span>
-                                        </div>
-                                    </button>
-                                ))}
+                                {selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry' ? (
+                                    <>
+                                        {/* Poultry Group Selectors */}
+                                        <button onClick={() => setSelectedAnimalForMedical(null)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${!selectedAnimalForMedical ? 'bg-gray-100 text-gray-800 font-medium' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center"><span>All Records</span></div>
+                                        </button>
+                                        <div className="pt-2 border-t border-gray-100 mt-2"></div>
+                                        <p className="px-2 text-xs text-gray-400 uppercase font-semibold mb-1">Filter by Group</p>
+                                        <button onClick={() => setSelectedAnimalForMedical('Active')} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForMedical === 'Active' ? 'bg-green-50 text-green-700 font-medium ring-2 ring-green-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <span className="flex items-center gap-2"><Check className="w-4 h-4" /> Active Flock</span>
+                                            </div>
+                                        </button>
+                                        <button onClick={() => setSelectedAnimalForMedical('Sick')} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForMedical === 'Sick' ? 'bg-orange-50 text-orange-700 font-medium ring-2 ring-orange-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <span className="flex items-center gap-2"><Stethoscope className="w-4 h-4" /> Sick Bay</span>
+                                            </div>
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button onClick={() => setSelectedAnimalForMedical(null)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${!selectedAnimalForMedical ? 'bg-orange-50 text-orange-700 font-medium ring-2 ring-orange-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                            <div className="flex justify-between items-center"><span>All Animals</span><span className="text-sm text-gray-400">View All</span></div>
+                                        </button>
+                                        {activeAnimals.map(animal => (
+                                            <button key={animal.id} onClick={() => setSelectedAnimalForMedical(animal.id)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForMedical === animal.id ? 'bg-blue-50 text-blue-700 font-medium ring-2 ring-blue-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
+                                                <div className="flex justify-between items-center">
+                                                    <span>{animal.id}</span>
+                                                    <span className="text-xs px-2 py-0.5 bg-gray-100 rounded text-gray-500">
+                                                        {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).length} recs
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
+
             )}
 
             {/* --- MODALS --- */}
@@ -1923,7 +2461,7 @@ const Livestock = () => {
                                 required
                                 type="number"
                                 min="1"
-                                max={selectedBatch?.type === 'Chicken' ? "10000" : "50"}
+                                max={(selectedBatch?.type === 'Chicken' || selectedBatch?.type === 'Poultry') ? "10000" : "50"}
                                 value={animalForm.count}
                                 onChange={e => setAnimalForm({ ...animalForm, count: e.target.value })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
@@ -1936,10 +2474,10 @@ const Livestock = () => {
                             <select value={animalForm.gender} onChange={e => setAnimalForm({ ...animalForm, gender: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
                                 <option value="Female">Female</option>
                                 <option value="Male">Male</option>
-                                {selectedBatch?.type === 'Chicken' && <option value="Both">Both / Mixed</option>}
+                                {selectedBatch?.type === 'Chicken' || selectedBatch?.type === 'Poultry' && <option value="Both">Both / Mixed</option>}
                             </select>
                         </div>
-                        {selectedBatch?.type !== 'Chicken' && (
+                        {(selectedBatch?.type !== 'Chicken' && selectedBatch?.type !== 'Poultry') && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                                 <select value={animalForm.category} onChange={e => setAnimalForm({ ...animalForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
@@ -1968,6 +2506,10 @@ const Livestock = () => {
                             <input required type="number" step="0.001" value={animalForm.weight} onChange={e => setAnimalForm({ ...animalForm, weight: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="e.g. 0.500" />
                             <p className="text-[10px] text-gray-400 mt-1">Enter kg (e.g. 0.1 = 100g)</p>
                         </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Date Acquired / Born</label>
+                        <input type="date" value={animalForm.date} onChange={e => setAnimalForm({ ...animalForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Cost per Animal</label>
@@ -2052,8 +2594,15 @@ const Livestock = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Select Animal</label>
                         <select required value={selectedAnimalForWeight || ''} onChange={e => setSelectedAnimalForWeight(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
-                            <option value="">Select an animal...</option>
-                            {activeAnimals.map(a => <option key={a.id} value={a.id}>{a.id} (Curr: {a.weight}kg)</option>)}
+                            <option value="">Select Target...</option>
+                            {selectedBatch && (selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry') ? (
+                                <>
+                                    <option value="Active">Active Flock ({activeAnimals.length} birds)</option>
+                                    <option value="Sick">Sick Bay ({sickAnimals.length} birds)</option>
+                                </>
+                            ) : (
+                                activeAnimals.map(a => <option key={a.id} value={a.id}>{a.id} (Curr: {a.weight}kg)</option>)
+                            )}
                         </select>
                     </div>
                     <div>
@@ -2139,6 +2688,7 @@ const Livestock = () => {
                             <option value="Goat">Goat</option>
                             <option value="Sheep">Sheep</option>
                             <option value="Poultry">Poultry</option>
+                            <option value="Chicken">Chicken</option>
                             <option value="Cow">Cow</option>
                         </select>
                     </div>
@@ -2192,46 +2742,76 @@ const Livestock = () => {
                 <form onSubmit={handleMedicalSubmit} className="space-y-4">
                     <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 mb-4">
                         <label className="block text-sm font-medium text-gray-700 mb-2">Target Animals</label>
-                        <div className="flex gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="targetMode"
-                                    checked={medicalTargetMode === 'All'}
-                                    onChange={() => setMedicalTargetMode('All')}
-                                    className="text-orange-600 focus:ring-orange-500"
-                                />
-                                <span className="text-sm font-medium text-gray-700">All Active Animals</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="targetMode"
-                                    checked={medicalTargetMode === 'Select'}
-                                    onChange={() => setMedicalTargetMode('Select')}
-                                    className="text-orange-600 focus:ring-orange-500"
-                                />
-                                <span className="text-sm font-medium text-gray-700">Select Specific</span>
-                            </label>
-                        </div>
-
-                        {medicalTargetMode === 'Select' && (
-                            <div className="mt-3 bg-white border border-gray-200 rounded-lg max-h-40 overflow-y-auto p-2 space-y-1">
-                                {activeAnimals.map(animal => (
-                                    <label key={animal.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedMedicalAnimals.includes(animal.id)}
-                                            onChange={() => toggleMedicalAnimalSelection(animal.id)}
-                                            className="rounded text-orange-600 focus:ring-orange-500"
-                                        />
-                                        <span className="text-sm text-gray-600">{animal.id} ({animal.gender})</span>
-                                    </label>
-                                ))}
+                        {selectedBatch && (selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry') ? (
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="targetMode"
+                                        checked={medicalTargetMode === 'ActiveFlock'}
+                                        onChange={() => setMedicalTargetMode('ActiveFlock')}
+                                        className="text-orange-600 focus:ring-orange-500"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700">Active Flock (Healthy)</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="targetMode"
+                                        checked={medicalTargetMode === 'SickBay'}
+                                        onChange={() => setMedicalTargetMode('SickBay')}
+                                        className="text-orange-600 focus:ring-orange-500"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700">Sick Bay</span>
+                                </label>
                             </div>
+                        ) : (
+                            <>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="targetMode"
+                                            checked={medicalTargetMode === 'All'}
+                                            onChange={() => setMedicalTargetMode('All')}
+                                            className="text-orange-600 focus:ring-orange-500"
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">All Active Animals</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="targetMode"
+                                            checked={medicalTargetMode === 'Select'}
+                                            onChange={() => setMedicalTargetMode('Select')}
+                                            className="text-orange-600 focus:ring-orange-500"
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">Select Specific</span>
+                                    </label>
+                                </div>
+
+                                {medicalTargetMode === 'Select' && (
+                                    <div className="mt-3 bg-white border border-gray-200 rounded-lg max-h-40 overflow-y-auto p-2 space-y-1">
+                                        {activeAnimals.map(animal => (
+                                            <label key={animal.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedMedicalAnimals.includes(animal.id)}
+                                                    onChange={() => toggleMedicalAnimalSelection(animal.id)}
+                                                    className="rounded text-orange-600 focus:ring-orange-500"
+                                                />
+                                                <span className="text-sm text-gray-600">{animal.id} ({animal.gender})</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
                         )}
                         <p className="text-xs text-orange-600 mt-2 font-medium">
-                            {medicalTargetMode === 'All' ? `${activeAnimals.length} Animals Selected` : `${selectedMedicalAnimals.length} Animals Selected`}
+                            {medicalTargetMode === 'All' ? `${activeAnimals.length} Animals Selected` :
+                                medicalTargetMode === 'ActiveFlock' ? `${activeAnimals.length} Animals Selected` :
+                                    medicalTargetMode === 'SickBay' ? `${sickAnimals.length} Animals Selected` :
+                                        `${selectedMedicalAnimals.length} Animals Selected`}
                         </p>
                     </div>
 
@@ -2342,7 +2922,220 @@ const Livestock = () => {
                     </div>
                 </form>
             </Modal>
-        </div>
+            {/* --- MODALS FOR FLOCK MANAGEMENT --- */}
+
+            {/* Bulk Deceased Modal */}
+            <Modal isOpen={isBulkDeceasedOpen} onClose={() => setIsBulkDeceasedOpen(false)} title="Record Flock Mortality">
+                <form onSubmit={handleBulkDeceased} className="space-y-4">
+                    <div className="bg-red-50 p-3 rounded-lg border border-red-100 text-sm text-red-700">
+                        <strong>Note:</strong> This will mark the next N active animals as Deceased.
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Number of Deaths</label>
+                        <input
+                            required
+                            type="number"
+                            min="1"
+                            value={bulkDeceasedForm.count}
+                            onChange={e => setBulkDeceasedForm({ ...bulkDeceasedForm, count: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500/20"
+                            placeholder="e.g. 5"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+                        <select
+                            value={bulkDeceasedForm.reason}
+                            onChange={e => setBulkDeceasedForm({ ...bulkDeceasedForm, reason: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500/20"
+                        >
+                            <option value="Sickness">Sickness</option>
+                            <option value="Natural Causes">Natural Causes</option>
+                            <option value="Accident">Accident</option>
+                            <option value="Predator">Predator</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <textarea
+                            value={bulkDeceasedForm.notes}
+                            onChange={e => setBulkDeceasedForm({ ...bulkDeceasedForm, notes: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500/20"
+                            placeholder="Details..."
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button type="button" onClick={() => setIsBulkDeceasedOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm Deceased</button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Bulk Sale Modal */}
+            <Modal isOpen={isBulkSaleOpen} onClose={() => setIsBulkSaleOpen(false)} title="Record Flock Sale">
+                <form onSubmit={handleBulkSale} className="space-y-4">
+                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-700">
+                        <strong>Note:</strong> This will mark the next N active animals as Sold.
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Number Sold</label>
+                        <input
+                            required
+                            type="number"
+                            min="1"
+                            value={bulkSaleForm.count}
+                            onChange={e => setBulkSaleForm({ ...bulkSaleForm, count: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            placeholder="e.g. 20"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Price Per Animal (₹)</label>
+                            <input
+                                required
+                                type="number"
+                                min="0"
+                                value={bulkSaleForm.pricePerAnimal}
+                                onChange={e => setBulkSaleForm({ ...bulkSaleForm, pricePerAnimal: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Sold Date</label>
+                            <input
+                                required
+                                type="date"
+                                value={bulkSaleForm.soldDate}
+                                onChange={e => setBulkSaleForm({ ...bulkSaleForm, soldDate: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button type="button" onClick={() => setIsBulkSaleOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm Sale</button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Flock Edit Attributes Modal */}
+            <Modal isOpen={isFlockEditOpen} onClose={() => setIsFlockEditOpen(false)} title="Update Flock Status & Weight">
+                <form onSubmit={handleFlockEdit} className="space-y-4">
+                    <div className="bg-green-50 p-3 rounded-lg border border-green-100 text-sm text-green-700">
+                        <strong>Bulk Update:</strong> Changes will apply to ALL {activeAnimals.length} active animals in this flock.
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Status (Whole Flock)</label>
+                        <select
+                            value={flockEditForm.status}
+                            onChange={e => setFlockEditForm({ ...flockEditForm, status: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                        >
+                            <option value="Healthy">Healthy</option>
+                            <option value="Sick">Sick</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Avg Weight (kg)</label>
+                            <input
+                                type="number"
+                                step="0.001"
+                                min="0"
+                                value={flockEditForm.avgWeight}
+                                onChange={e => setFlockEditForm({ ...flockEditForm, avgWeight: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Avg Cost (₹)</label>
+                            <input
+                                type="number"
+                                min="0"
+                                value={flockEditForm.avgCost}
+                                onChange={e => setFlockEditForm({ ...flockEditForm, avgCost: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Bought Date</label>
+                            <input
+                                type="date"
+                                value={flockEditForm.boughtDate}
+                                onChange={e => setFlockEditForm({ ...flockEditForm, boughtDate: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <textarea
+                            rows="2"
+                            value={flockEditForm.notes}
+                            onChange={e => setFlockEditForm({ ...flockEditForm, notes: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                        />
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button type="button" onClick={() => setIsFlockEditOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Update Flock</button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Sick Transition Modal */}
+            <Modal isOpen={isSickTransitionOpen} onClose={() => setIsSickTransitionOpen(false)} title={`Move Animals: ${sickTransitionForm.fromStatus} → ${sickTransitionForm.toStatus}`}>
+                <form onSubmit={handleSickTransition} className="space-y-4">
+                    <div className={`p-4 rounded-lg border flex items-center gap-3 ${sickTransitionForm.toStatus === 'Sick' ? 'bg-red-50 border-red-100 text-red-700' : 'bg-green-50 border-green-100 text-green-700'}`}>
+                        {sickTransitionForm.toStatus === 'Sick' ? <Stethoscope className="w-5 h-5" /> : <Check className="w-5 h-5" />}
+                        <div className="text-sm">
+                            <strong>Action:</strong> Moving animals from {sickTransitionForm.fromStatus} to {sickTransitionForm.toStatus}.
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Number of Animals</label>
+                        <input
+                            required
+                            type="number"
+                            min="1"
+                            value={sickTransitionForm.count}
+                            onChange={e => setSickTransitionForm({ ...sickTransitionForm, count: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20"
+                            placeholder="e.g. 5"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Next available {sickTransitionForm.fromStatus} animals will be selected automatically.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes / Reason</label>
+                        <textarea
+                            value={sickTransitionForm.notes}
+                            onChange={e => setSickTransitionForm({ ...sickTransitionForm, notes: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20"
+                            placeholder="Reason for sickness, treatment plan, or recovery details..."
+                        />
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button type="button" onClick={() => setIsSickTransitionOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                        <button type="submit" className={`px-4 py-2 text-white rounded-lg ${sickTransitionForm.toStatus === 'Sick' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
+                            Confirm Move
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+        </div >
     );
 };
 
