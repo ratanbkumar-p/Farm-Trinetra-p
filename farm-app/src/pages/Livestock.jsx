@@ -70,7 +70,6 @@ const Livestock = () => {
         status: 'Healthy',
         ageYears: '',
         ageMonths: '',
-        ageMonths: '',
         ageDays: '',
         category: 'Kid',
         date: new Date().toISOString().split('T')[0]
