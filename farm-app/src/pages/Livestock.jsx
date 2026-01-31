@@ -10,6 +10,25 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 import { useLocation } from 'react-router-dom';
 
+// Helper for Age Formatting
+const formatAge = (y, m, d) => {
+    const parts = [];
+    if (y > 0) parts.push(`${y} ${y === 1 ? 'Year' : 'Years'}`);
+    if (m > 0) parts.push(`${m} ${m === 1 ? 'Month' : 'Months'}`);
+    if (d > 0) parts.push(`${d} ${d === 1 ? 'Day' : 'Days'}`);
+    return parts.length > 0 ? parts.join(' ') : '0 Days';
+};
+
+// Helper for Weight Formatting (Chicken specific)
+const formatWeight = (kg) => {
+    if (!kg) return '0g';
+    const grams = Math.round(kg * 1000);
+    if (grams < 1000) return `${grams}g`;
+    const k = Math.floor(grams / 1000);
+    const g = grams % 1000;
+    return g > 0 ? `${k}kg ${g}g` : `${k}kg`;
+};
+
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
@@ -243,9 +262,11 @@ const Livestock = () => {
         e.preventDefault();
         try {
             // Construct Age String
+            // Construct Age String
             const y = Number(animalForm.ageYears || 0);
             const m = Number(animalForm.ageMonths || 0);
-            const formattedAge = `${y} ${y === 1 ? 'Year' : 'Years'} ${m} ${m === 1 ? 'Month' : 'Months'}`;
+            const d = Number(animalForm.ageDays || 0); // New Days field
+            const formattedAge = formatAge(y, m, d);
 
             if (selectedBatch) {
                 if (editingAnimalId) {
@@ -312,12 +333,26 @@ const Livestock = () => {
                     const date = new Date();
                     const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
                     const year = date.getFullYear().toString().slice(-2);
-                    const gender = animalForm.gender === 'Male' ? 'M' : 'F';
 
-                    // Prefix Base (e.g. GTJANM26) - No dash
-                    const prefixBase = `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${gender}${year}`;
+                    // Gender Logic: If Chicken & 'Both', use 'X' or omit from prefix? User said "generic ID without fm".
+                    // Let's use 'X' for internal representation if needed, but for ID generation:
+                    // If Chicken, we might skip the Gender char in ID entirely?
+                    // Existing types uses: TYPE + MONTH + GENDER + YEAR. e.g. GTJANM26
+                    // For Chicken (Generic): CH + JAN + 26 + - + NUM? -> CHJAN26-1
+                    let genderChar = animalForm.gender === 'Male' ? 'M' : 'F';
+                    if (type === 'Chicken') {
+                        // If specific gender is known, we could keep it, but user said "without fm".
+                        // So let's OMIT gender char for Chickens entirely in the prefix.
+                        genderChar = '';
+                    }
 
-                    // Fixed: Handle undefined category by defaulting to Kid
+                    // Prefix Base
+                    // Goat/Sheep: GTJANM26
+                    // Chicken: CHJAN26
+                    const prefixBase = `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${genderChar}${year}`;
+
+                    // Category Logic: Chicken has no category distinction in ID
+                    const useSuffix = type !== 'Chicken';
                     const category = animalForm.category || 'Kid';
 
                     // Find max sequence
@@ -330,13 +365,21 @@ const Livestock = () => {
                         if (a.id && a.id.startsWith(prefixBase)) {
                             const parts = a.id.split('-');
                             // parts[0] is Prefix
+                            // Adjust parsing logic for Chicken (No suffix) vs Others (Suffix)
                             let num = 0;
-                            if (parts.length === 3) {
-                                // New Format: PREFIX-SUFFIX-NUM (e.g. GT...-K-1)
-                                num = parseInt(parts[2]);
-                            } else if (parts.length === 2) {
-                                // Legacy: PREFIX-NUM (e.g. GT...-1)
-                                num = parseInt(parts[1]);
+                            if (type === 'Chicken') {
+                                // Format: PREFIX-NUM (e.g. CHJAN26-1)
+                                if (parts.length === 2 && parts[0] === prefixBase) {
+                                    num = parseInt(parts[1]);
+                                }
+                            } else {
+                                // Format: PREFIX-SUFFIX-NUM
+                                if (parts.length === 3) {
+                                    num = parseInt(parts[2]);
+                                } else if (parts.length === 2) {
+                                    // Legacy support
+                                    num = parseInt(parts[1]);
+                                }
                             }
 
                             if (!isNaN(num) && num > maxNum) maxNum = num;
@@ -347,8 +390,13 @@ const Livestock = () => {
 
                     const newAnimals = Array.from({ length: Number(animalForm.count) }).map((_, i) => {
                         maxNum++;
-                        // New Format: PREFIX-SUFFIX-NUM
-                        const sequentialId = `${prefixBase}-${suffix}-${maxNum}`;
+                        // ID Gen
+                        let sequentialId;
+                        if (type === 'Chicken') {
+                            sequentialId = `${prefixBase}-${maxNum}`;
+                        } else {
+                            sequentialId = `${prefixBase}-${suffix}-${maxNum}`;
+                        }
 
                         return {
                             id: sequentialId,
@@ -1259,30 +1307,159 @@ const Livestock = () => {
                             </div>
                         </div>
 
-                        {/* Adults Section */}
-                        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                            <div
-                                onClick={() => setIsAdultsOpen(!isAdultsOpen)}
-                                className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors"
-                            >
-                                <h4 className="font-bold text-gray-700 flex items-center gap-2">
-                                    {isAdultsOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                                    <span className="w-2 h-8 bg-blue-500 rounded-full"></span>
-                                    Adults
-                                </h4>
-                                <span className="text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md border border-gray-100">
-                                    {activeAnimals.filter(a => a.category === 'Adult').length} animals
-                                </span>
+                        {/* Adults Section - Only for Non-Chicken */}
+                        {selectedBatch?.type !== 'Chicken' && (
+                            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                                <div
+                                    onClick={() => setIsAdultsOpen(!isAdultsOpen)}
+                                    className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors"
+                                >
+                                    <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                                        {isAdultsOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                        <span className="w-2 h-8 bg-blue-500 rounded-full"></span>
+                                        Adults
+                                    </h4>
+                                    <span className="text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md border border-gray-100">
+                                        {activeAnimals.filter(a => a.category === 'Adult').length} animals
+                                    </span>
+                                </div>
+                                {isAdultsOpen && (
+                                    <div className="divide-y divide-gray-50">
+                                        {activeAnimals.filter(a => a.category === 'Adult').length > 0 ? (
+                                            activeAnimals.filter(a => a.category === 'Adult').map(animal => (
+                                                <div key={animal.id} className="border-b border-gray-50 last:border-0">
+                                                    <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                                {animal.gender === 'Male' ? 'M' : 'F'}
+                                                            </div>
+                                                            <div>
+                                                                <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                                    {animal.id}
+                                                                    <span className="text-gray-300 text-xs font-normal">|</span>
+                                                                    <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 flex gap-2 items-center">
+                                                                    <span>{animal.weight} kg</span>
+                                                                    <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="text-gray-400 group-hover:text-blue-600">
+                                                                {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                                <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
+                                                                    <TrendingUp className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                                                                    <Edit2 className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {expandedAnimalId === animal.id && (
+                                                        <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Adult'}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
+                                                            </div>
+
+                                                            <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
+                                                                {/* Individual Weight History (Last 10) */}
+                                                                <div className="flex-1">
+                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
+                                                                    {(animal.weightHistory || []).length > 0 ? (
+                                                                        <div className="space-y-1">
+                                                                            {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
+                                                                                <div key={i} className="flex gap-4 text-xs text-gray-600">
+                                                                                    <span className="text-gray-400 w-20">{w.date}</span>
+                                                                                    <span className="font-medium">{w.weight} kg</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-xs text-gray-400 italic">No weight history.</p>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Individual Medical History (Last 10) */}
+                                                                <div className="flex-1 border-l border-gray-100 md:pl-6">
+                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
+                                                                    {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                                        <div className="space-y-1">
+                                                                            {(selectedBatch.medical || [])
+                                                                                .filter(m => (m.animalIds || []).includes(animal.id))
+                                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                                .slice(0, 10)
+                                                                                .map((m, i) => (
+                                                                                    <div key={i} className="flex gap-2 text-xs text-gray-600">
+                                                                                        <span className="text-gray-400 w-20">{m.date}</span>
+                                                                                        <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
+                                                                                        <span className="font-medium">{m.name}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-xs text-gray-400 italic">No medical records.</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Individual Medical History (Legacy Disabled) */}
+                                                            {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
+                                                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
+                                                                    <div className="space-y-1">
+                                                                        {(selectedBatch.medical || [])
+                                                                            .filter(m => (m.animalIds || []).includes(animal.id))
+                                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                            .map((m, i) => (
+                                                                                <div key={i} className="flex gap-2 text-xs text-gray-600">
+                                                                                    <span className="text-gray-400 w-20">{m.date}</span>
+                                                                                    <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
+                                                                                    <span className="font-medium">{m.name}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="p-8 text-center text-gray-400 text-sm">No adult animals in this batch.</div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            {isAdultsOpen && (
+                        )}
+
+                        {/* Chicken 'Flock' Section - Simplified View for Large Numbers */}
+                        {selectedBatch?.type === 'Chicken' && (
+                            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                                <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                                    <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                                        <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
+                                        Flock Overview ({activeAnimals.length})
+                                    </h4>
+                                </div>
                                 <div className="divide-y divide-gray-50">
-                                    {activeAnimals.filter(a => a.category === 'Adult').length > 0 ? (
-                                        activeAnimals.filter(a => a.category === 'Adult').map(animal => (
+                                    {activeAnimals.length > 0 ? (
+                                        activeAnimals.map(animal => (
                                             <div key={animal.id} className="border-b border-gray-50 last:border-0">
                                                 <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
                                                     <div className="flex items-center gap-4">
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
-                                                            {animal.gender === 'Male' ? 'M' : 'F'}
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold bg-orange-100 text-orange-600`}>
+                                                            {animal.gender ? animal.gender[0] : 'C'}
                                                         </div>
                                                         <div>
                                                             <div className="font-bold text-gray-800 flex items-center gap-2">
@@ -1291,7 +1468,7 @@ const Livestock = () => {
                                                                 <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
                                                             </div>
                                                             <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                                <span>{animal.weight} kg</span>
+                                                                <span>{formatWeight(animal.weight)}</span>
                                                                 <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
                                                             </div>
                                                         </div>
@@ -1313,177 +1490,147 @@ const Livestock = () => {
                                                         </div>
                                                     </div>
                                                 </div>
+                                                {/* Expanded Details - Reuse existing logic or simplified? Reusing existing logic but need to handle duplicate code if trying to be dry. 
+                                                    For safety, I'll copy the expansion logic but simplified for brevity in this replace block, 
+                                                    or better yet, since the expansion logic is quite long (lines 1450-1500), 
+                                                    I will rely on the fact that existing expansion logic works if I could reuse the component. 
+                                                    But this is a "Flock" specific render. 
+                                                    I'll verify if I can just let the user expand it. The logic above COPIED the expansion logic from Adults SECTION? 
+                                                    No, I need to include the expansion content here. */}
                                                 {expandedAnimalId === animal.id && (
                                                     <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
                                                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
                                                             <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
                                                             <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
                                                             <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Adult'}</span></div>
+                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Weight</span> <span className="font-semibold text-gray-700">{formatWeight(animal.weight)}</span></div>
                                                             <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
                                                         </div>
-
-                                                        <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
-                                                            {/* Individual Weight History (Last 10) */}
-                                                            <div className="flex-1">
-                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
-                                                                {(animal.weightHistory || []).length > 0 ? (
-                                                                    <div className="space-y-1">
-                                                                        {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
-                                                                            <div key={i} className="flex gap-4 text-xs text-gray-600">
-                                                                                <span className="text-gray-400 w-20">{w.date}</span>
-                                                                                <span className="font-medium">{w.weight} kg</span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <p className="text-xs text-gray-400 italic">No weight history.</p>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Individual Medical History (Last 10) */}
-                                                            <div className="flex-1 border-l border-gray-100 md:pl-6">
-                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
-                                                                {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
-                                                                    <div className="space-y-1">
-                                                                        {(selectedBatch.medical || [])
-                                                                            .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                            .slice(0, 10)
-                                                                            .map((m, i) => (
-                                                                                <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                                    <span className="text-gray-400 w-20">{m.date}</span>
-                                                                                    <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                                    <span className="font-medium">{m.name}</span>
-                                                                                </div>
-                                                                            ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <p className="text-xs text-gray-400 italic">No medical records.</p>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Individual Medical History (Legacy Disabled) */}
-                                                        {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
-                                                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
-                                                                <div className="space-y-1">
-                                                                    {(selectedBatch.medical || [])
-                                                                        .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                        .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                        .map((m, i) => (
-                                                                            <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                                <span className="text-gray-400 w-20">{m.date}</span>
-                                                                                <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                                <span className="font-medium">{m.name}</span>
-                                                                            </div>
-                                                                        ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 )}
                                             </div>
                                         ))
                                     ) : (
-                                        <div className="p-8 text-center text-gray-400 text-sm">No adult animals in this batch.</div>
+                                        <div className="p-8 text-center text-gray-400 text-sm">No animals in flock.</div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Kids Section */}
-                        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                            <div
-                                onClick={() => setIsKidsOpen(!isKidsOpen)}
-                                className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors"
-                            >
-                                <h4 className="font-bold text-gray-700 flex items-center gap-2">
-                                    {isKidsOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                                    <span className="w-2 h-8 bg-green-500 rounded-full"></span>
-                                    Kids
-                                </h4>
-                                <span className="text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md border border-gray-100">
-                                    {activeAnimals.filter(a => a.category !== 'Adult').length} animals
-                                </span>
                             </div>
-                            {isKidsOpen && (
-                                <div className="divide-y divide-gray-50">
-                                    {activeAnimals.filter(a => a.category !== 'Adult').length > 0 ? (
-                                        activeAnimals.filter(a => a.category !== 'Adult').map(animal => (
-                                            <div key={animal.id} className="border-b border-gray-50 last:border-0">
-                                                <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
-                                                            {animal.gender === 'Male' ? 'M' : 'F'}
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                                {animal.id}
-                                                                <span className="text-gray-300 text-xs font-normal">|</span>
-                                                                <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                        )}
+
+                        {/* Kids Section - Only for Non-Chicken */}
+                        {selectedBatch?.type !== 'Chicken' && (
+                            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                                <div
+                                    onClick={() => setIsKidsOpen(!isKidsOpen)}
+                                    className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-100 transition-colors"
+                                >
+                                    <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                                        {isKidsOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                        <span className="w-2 h-8 bg-green-500 rounded-full"></span>
+                                        Kids
+                                    </h4>
+                                    <span className="text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md border border-gray-100">
+                                        {activeAnimals.filter(a => a.category !== 'Adult').length} animals
+                                    </span>
+                                </div>
+                                {isKidsOpen && (
+                                    <div className="divide-y divide-gray-50">
+                                        {activeAnimals.filter(a => a.category !== 'Adult').length > 0 ? (
+                                            activeAnimals.filter(a => a.category !== 'Adult').map(animal => (
+                                                <div key={animal.id} className="border-b border-gray-50 last:border-0">
+                                                    <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                                {animal.gender === 'Male' ? 'M' : 'F'}
                                                             </div>
-                                                            <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                                <span>{animal.weight} kg</span>
-                                                                <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                            <div>
+                                                                <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                                    {animal.id}
+                                                                    <span className="text-gray-300 text-xs font-normal">|</span>
+                                                                    <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 flex gap-2 items-center">
+                                                                    <span>{animal.weight} kg</span>
+                                                                    <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="text-gray-400 group-hover:text-blue-600">
+                                                                {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                                <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
+                                                                    <TrendingUp className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                                                                    <Edit2 className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="text-gray-400 group-hover:text-blue-600">
-                                                            {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                                        </div>
-                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                                            <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
-                                                                <TrendingUp className="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                                                                <Edit2 className="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                {expandedAnimalId === animal.id && (
-                                                    <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Kid'}</span></div>
-                                                            <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
-                                                        </div>
-
-                                                        <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
-                                                            {/* Individual Weight History (Last 10) */}
-                                                            <div className="flex-1">
-                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
-                                                                {(animal.weightHistory || []).length > 0 ? (
-                                                                    <div className="space-y-1">
-                                                                        {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
-                                                                            <div key={i} className="flex gap-4 text-xs text-gray-600">
-                                                                                <span className="text-gray-400 w-20">{w.date}</span>
-                                                                                <span className="font-medium">{w.weight} kg</span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <p className="text-xs text-gray-400 italic">No weight history.</p>
-                                                                )}
+                                                    {expandedAnimalId === animal.id && (
+                                                        <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Gender</span> <span className="font-semibold text-gray-700">{animal.gender}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Cost</span> <span className="font-semibold text-gray-700">₹{animal.purchaseCost || 0}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Born/Bought</span> <span className="font-semibold text-gray-700">{animal.boughtDate || selectedBatch.startDate || selectedBatch.date || 'N/A'}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Category</span> <span className="font-semibold text-gray-700">{animal.category || 'Kid'}</span></div>
+                                                                <div><span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Status</span> <span className="font-semibold text-gray-700">{animal.status}</span></div>
                                                             </div>
 
-                                                            {/* Individual Medical History (Last 10) */}
-                                                            <div className="flex-1 border-l border-gray-100 md:pl-6">
-                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
-                                                                {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                            <div className="flex flex-col md:flex-row gap-6 mt-4 pt-4 border-t border-gray-100">
+                                                                {/* Individual Weight History (Last 10) */}
+                                                                <div className="flex-1">
+                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Weight</h5>
+                                                                    {(animal.weightHistory || []).length > 0 ? (
+                                                                        <div className="space-y-1">
+                                                                            {[...(animal.weightHistory || [])].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10).map((w, i) => (
+                                                                                <div key={i} className="flex gap-4 text-xs text-gray-600">
+                                                                                    <span className="text-gray-400 w-20">{w.date}</span>
+                                                                                    <span className="font-medium">{w.weight} kg</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-xs text-gray-400 italic">No weight history.</p>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Individual Medical History (Last 10) */}
+                                                                <div className="flex-1 border-l border-gray-100 md:pl-6">
+                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
+                                                                    {(selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) ? (
+                                                                        <div className="space-y-1">
+                                                                            {(selectedBatch.medical || [])
+                                                                                .filter(m => (m.animalIds || []).includes(animal.id))
+                                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                                                                                .slice(0, 10)
+                                                                                .map((m, i) => (
+                                                                                    <div key={i} className="flex gap-2 text-xs text-gray-600">
+                                                                                        <span className="text-gray-400 w-20">{m.date}</span>
+                                                                                        <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
+                                                                                        <span className="font-medium">{m.name}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-xs text-gray-400 italic">No medical records.</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Individual Medical History (Legacy Disabled) */}
+                                                            {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
+                                                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
                                                                     <div className="space-y-1">
                                                                         {(selectedBatch.medical || [])
                                                                             .filter(m => (m.animalIds || []).includes(animal.id))
                                                                             .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                            .slice(0, 10)
                                                                             .map((m, i) => (
                                                                                 <div key={i} className="flex gap-2 text-xs text-gray-600">
                                                                                     <span className="text-gray-400 w-20">{m.date}</span>
@@ -1492,40 +1639,19 @@ const Livestock = () => {
                                                                                 </div>
                                                                             ))}
                                                                     </div>
-                                                                ) : (
-                                                                    <p className="text-xs text-gray-400 italic">No medical records.</p>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Individual Medical History (Legacy Disabled) */}
-                                                        {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
-                                                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                                                <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
-                                                                <div className="space-y-1">
-                                                                    {(selectedBatch.medical || [])
-                                                                        .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                        .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                        .map((m, i) => (
-                                                                            <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                                <span className="text-gray-400 w-20">{m.date}</span>
-                                                                                <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                                <span className="font-medium">{m.name}</span>
-                                                                            </div>
-                                                                        ))}
                                                                 </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="p-8 text-center text-gray-400 text-sm">No kid animals in this batch.</div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="p-8 text-center text-gray-400 text-sm">No kid animals in this batch.</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                     </div>
                     {/* Right Column: Expenses */}
@@ -1793,7 +1919,15 @@ const Livestock = () => {
                     {!editingAnimalId && (
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Number of Animals</label>
-                            <input required type="number" min="1" max="50" value={animalForm.count} onChange={e => setAnimalForm({ ...animalForm, count: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                            <input
+                                required
+                                type="number"
+                                min="1"
+                                max={selectedBatch?.type === 'Chicken' ? "10000" : "50"}
+                                value={animalForm.count}
+                                onChange={e => setAnimalForm({ ...animalForm, count: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
                         </div>
                     )}
                     <div className="grid grid-cols-2 gap-4">
@@ -1802,32 +1936,37 @@ const Livestock = () => {
                             <select value={animalForm.gender} onChange={e => setAnimalForm({ ...animalForm, gender: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
                                 <option value="Female">Female</option>
                                 <option value="Male">Male</option>
+                                {selectedBatch?.type === 'Chicken' && <option value="Both">Both / Mixed</option>}
                             </select>
                         </div>
+                        {selectedBatch?.type !== 'Chicken' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                <select value={animalForm.category} onChange={e => setAnimalForm({ ...animalForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                                    <option value="Kid">Kid</option>
+                                    <option value="Adult">Adult</option>
+                                    <option value="Parent">Parent</option>
+                                </select>
+                            </div>
+                        )}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                            <select value={animalForm.category} onChange={e => setAnimalForm({ ...animalForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
-                                <option value="Kid">Kid</option>
-                                <option value="Adult">Adult</option>
-                                <option value="Parent">Parent</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Age (Years & Months)</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
                             <div className="flex gap-2">
                                 <div className="flex-1">
-                                    <input required type="number" min="0" max="20" value={animalForm.ageYears} onChange={e => setAnimalForm({ ...animalForm, ageYears: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Years" />
-                                    <span className="text-xs text-gray-500">Years</span>
+                                    <input type="number" min="0" value={animalForm.ageYears} onChange={e => setAnimalForm({ ...animalForm, ageYears: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Yrs" />
                                 </div>
                                 <div className="flex-1">
-                                    <input required type="number" min="0" max="11" value={animalForm.ageMonths} onChange={e => setAnimalForm({ ...animalForm, ageMonths: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Months" />
-                                    <span className="text-xs text-gray-500">Months</span>
+                                    <input type="number" min="0" max="11" value={animalForm.ageMonths} onChange={e => setAnimalForm({ ...animalForm, ageMonths: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Mos" />
+                                </div>
+                                <div className="flex-1">
+                                    <input type="number" min="0" max="31" value={animalForm.ageDays} onChange={e => setAnimalForm({ ...animalForm, ageDays: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Days" />
                                 </div>
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
-                            <input required type="number" step="0.1" value={animalForm.weight} onChange={e => setAnimalForm({ ...animalForm, weight: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                            <input required type="number" step="0.001" value={animalForm.weight} onChange={e => setAnimalForm({ ...animalForm, weight: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="e.g. 0.500" />
+                            <p className="text-[10px] text-gray-400 mt-1">Enter kg (e.g. 0.1 = 100g)</p>
                         </div>
                     </div>
                     <div>
