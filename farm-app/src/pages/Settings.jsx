@@ -8,11 +8,13 @@ import Modal from '../components/ui/Modal';
 const Settings = () => {
     const { user, isSuperAdmin, isAdmin, allUsers, allowedUsers, updateUserRole, userRole, inviteUser, removeInvite } = useAuth();
     const { settings, updateSetting } = useSettings();
+    const { cleanupOrphanedExpenses } = useData(); // Added hook
 
     // Modal State
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'viewer' });
     const [newMedicalOption, setNewMedicalOption] = useState('');
+    const [cleanupCount, setCleanupCount] = useState(null);
 
     const handleAddMedicalOption = (e) => {
         e.preventDefault();
@@ -378,6 +380,33 @@ const Settings = () => {
                                 <Plus className="w-5 h-5" />
                             </button>
                         </div>
+                    </div>
+
+                    {/* Data Maintenance */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                                <Trash2 className="w-5 h-5 text-red-600" />
+                            </div>
+                            <h3 className="font-bold text-gray-800">Data Maintenance</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">Fix issues with deleted items showing in stats.</p>
+                        <button
+                            onClick={async () => {
+                                if (window.confirm("This will scan for and remove expenses linked to deleted crops/fruits/livestock. Continue?")) {
+                                    try {
+                                        const count = await cleanupOrphanedExpenses();
+                                        setCleanupCount(count);
+                                        alert(`Cleanup complete! Removed ${count} orphaned records.`);
+                                    } catch (e) {
+                                        alert("Error during cleanup: " + e.message);
+                                    }
+                                }
+                            }}
+                            className="w-full py-3 bg-red-50 text-red-600 font-bold rounded-xl border border-red-100 hover:bg-red-100 transition-all text-sm"
+                        >
+                            Clean Up Orphaned Data {cleanupCount !== null && `(Last run cleaned: ${cleanupCount})`}
+                        </button>
                     </div>
 
                     {/* Scheduled Medications Section */}

@@ -10,7 +10,8 @@ import {
     X,
     LogOut,
     Apple,
-    FileText
+    FileText,
+    Package
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +28,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { name: 'Expenses', icon: Wallet, path: '/expenses' },
         { name: 'Invoices', icon: FileText, path: '/invoices' },
         { name: 'Employees', icon: Users, path: '/employees' },
+        { name: 'Inventory', icon: Package, path: '/inventory' },
         { name: 'Settings', icon: Settings, path: '/settings' },
     ];
 

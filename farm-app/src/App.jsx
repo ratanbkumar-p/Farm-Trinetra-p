@@ -8,6 +8,7 @@ import Vegetables from './pages/Agriculture';
 import Fruits from './pages/Fruits';
 import Expenses from './pages/Expenses';
 import Employees from './pages/Employees';
+import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
 import Invoices from './pages/Invoices';
 import Login from './pages/Login';
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="agriculture" element={<Vegetables />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="employees" element={<Employees />} />
+        <Route path="inventory" element={<Inventory />} />
         <Route path="invoices" element={<Invoices />} />
         <Route path="settings" element={<Settings />} />
       </Route>

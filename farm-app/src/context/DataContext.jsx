@@ -70,6 +70,7 @@ export const DataProvider = ({ children }) => {
         crops: [],
         fruits: [],
         invoices: [],
+        inventory: [],
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -89,7 +90,7 @@ export const DataProvider = ({ children }) => {
         }
         const unsubscribes = [];
 
-        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices'];
+        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices', 'inventory'];
 
         baseCollections.forEach(baseName => {
             const firestoreCollName = getCollectionName(baseName);
@@ -353,11 +354,30 @@ export const DataProvider = ({ children }) => {
     };
 
     const deleteCrop = async (id) => {
+        // 1. Delete the Crop Document
         await deleteDoc(doc(db, getCollectionName('crops'), id));
+
+        // 2. Cascade Delete: Remove associated global expenses
+        // Find expenses linked to this crop
+        const linkedExpenses = data.expenses.filter(e => e.cropId === id);
+
+        // Delete them one by one (or could use batch if many, but loop is safer for now without query index)
+        const deletePromises = linkedExpenses.map(e =>
+            deleteDoc(doc(db, getCollectionName('expenses'), e.id))
+        );
+        await Promise.all(deletePromises);
     };
 
     const deleteFruit = async (id) => {
+        // 1. Delete the Fruit Document
         await deleteDoc(doc(db, getCollectionName('fruits'), id));
+
+        // 2. Cascade Delete: Remove associated global expenses
+        const linkedExpenses = data.expenses.filter(e => e.fruitId === id);
+        const deletePromises = linkedExpenses.map(e =>
+            deleteDoc(doc(db, getCollectionName('expenses'), e.id))
+        );
+        await Promise.all(deletePromises);
     };
 
     const updateFruit = async (fruitId, updates) => {
@@ -393,7 +413,15 @@ export const DataProvider = ({ children }) => {
 
     // Delete batch
     const deleteBatch = async (batchId) => {
+        // 1. Delete Batch Document
         await deleteDoc(doc(db, getCollectionName('batches'), batchId));
+
+        // 2. Cascade Delete: Remove associated global expenses
+        const linkedExpenses = data.expenses.filter(e => e.batchId === batchId);
+        const deletePromises = linkedExpenses.map(e =>
+            deleteDoc(doc(db, getCollectionName('expenses'), e.id))
+        );
+        await Promise.all(deletePromises);
     };
 
     // Add weight record for an animal
@@ -570,6 +598,46 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    // Maintenance / Cleanup
+    const cleanupOrphanedExpenses = async () => {
+        const orphans = [];
+        data.expenses.forEach(exp => {
+            if (exp.cropId && !data.crops.some(c => c.id === exp.cropId)) {
+                orphans.push(exp.id);
+            } else if (exp.fruitId && !data.fruits.some(f => f.id === exp.fruitId)) {
+                orphans.push(exp.id);
+            } else if (exp.batchId && !data.batches.some(b => b.id === exp.batchId)) {
+                orphans.push(exp.id);
+            }
+        });
+
+        if (orphans.length > 0) {
+            console.log(`Cleaning up ${orphans.length} orphaned expenses...`);
+            const deletePromises = orphans.map(id => deleteDoc(doc(db, getCollectionName('expenses'), id)));
+            await Promise.all(deletePromises);
+            return orphans.length;
+        }
+        return 0;
+    };
+
+    // Inventory Functions
+    const addInventoryItem = async (item) => {
+        const id = generateId('INV');
+        const newItem = {
+            ...item,
+            createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, getCollectionName('inventory'), id), newItem);
+    };
+
+    const updateInventoryItem = async (id, updates) => {
+        await updateDoc(doc(db, getCollectionName('inventory'), id), updates);
+    };
+
+    const deleteInventoryItem = async (id) => {
+        await deleteDoc(doc(db, getCollectionName('inventory'), id));
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -611,7 +679,11 @@ export const DataProvider = ({ children }) => {
             updateEmployee,
             deleteEmployee,
             addEmployeePayment,
-            deleteEmployeePayment
+            deleteEmployeePayment,
+            addInventoryItem,
+            updateInventoryItem,
+            deleteInventoryItem,
+            cleanupOrphanedExpenses
         }}>
             {children}
         </DataContext.Provider>
