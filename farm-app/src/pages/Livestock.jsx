@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
@@ -2174,7 +2174,8 @@ const Livestock = () => {
                                     </div>
 
                                     {/* Sold Card */}
-                                    <div className={`bg-white rounded-2xl p-6 border transition-all ${expandedCard === 'sold' ? 'ring-2 ring-blue-500 border-blue-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}>
+                                    <div className={`bg-white rounded-2xl p-6 border transition-all cursor-pointer ${expandedCard === 'sold' ? 'ring-2 ring-blue-500 border-blue-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}
+                                        onClick={() => setExpandedCard(expandedCard === 'sold' ? null : 'sold')}>
                                         <div className="flex justify-between items-start mb-4">
                                             <div>
                                                 <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Sold</div>
@@ -2189,14 +2190,47 @@ const Livestock = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setIsBulkSaleOpen(true);
+                                                    openSellModal();
                                                 }}
                                                 className="w-full py-2 px-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
                                             >
                                                 <Plus className="w-4 h-4" /> Record Sale
                                             </button>
                                         </div>
-                                        {/* No expansion for Sold */}
+                                        <div className="flex justify-center">
+                                            {expandedCard === 'sold' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                        </div>
+
+                                        {expandedCard === 'sold' && (
+                                            <div className="mt-4 pt-4 border-t border-blue-50 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
+                                                <h5 className="font-bold text-blue-800 text-xs uppercase mb-3 text-center">Recent Sales</h5>
+                                                {soldAnimals.length > 0 ? (
+                                                    <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                                                        {soldAnimals.map((animal, i) => (
+                                                            <div key={animal.id} className="text-xs text-blue-700 bg-blue-50 p-2 rounded-lg flex justify-between items-center group">
+                                                                <div>
+                                                                    <div className="font-bold">{animal.id}</div>
+                                                                    <div className="text-blue-500 font-medium">₹{(animal.soldPrice || 0).toLocaleString()} • {animal.soldDate || 'Unknown Date'}</div>
+                                                                </div>
+                                                                {isSuperAdmin && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (window.confirm(`Undo sale for ${animal.id}? This will move the animal back to Inventory.`)) {
+                                                                                revertSoldAnimal(selectedBatch.id, animal.id);
+                                                                            }
+                                                                        }}
+                                                                        className="p-1.5 text-blue-400 hover:text-red-500 hover:bg-white rounded-md transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                                                                        title="Undo Sale"
+                                                                    >
+                                                                        <RotateCcw className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : <p className="text-xs text-blue-400 italic text-center">No animals sold yet.</p>}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
