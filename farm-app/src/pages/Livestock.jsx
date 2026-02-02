@@ -516,6 +516,7 @@ const Livestock = () => {
                                 status: animalForm.status,
                                 age: formattedAge,
                                 category: animalForm.category,
+                                boughtDate: animalForm.date,
                                 id: newId // Update ID
                             };
                         }
@@ -583,6 +584,9 @@ const Livestock = () => {
                         .flatMap(b => b.animals || []);
 
                     let maxNum = 0;
+                    // Suffix for the NEW animals being added
+                    const newSuffix = category === 'Kid' ? 'K' : 'A';
+
                     allAnimalsOfType.forEach(a => {
                         if (a.id && a.id.startsWith(fullPrefix)) {
                             // Universal approach: Get the part AFTER the fullPrefix
@@ -592,15 +596,48 @@ const Livestock = () => {
                             // rest: "-K-1" or "-1"
                             const parts = rest.split('-');
                             // parts: ["", "K", "1"] or ["", "1"]
-                            const lastPart = parts[parts.length - 1];
-                            const num = parseInt(lastPart);
-                            if (!isNaN(num) && num > maxNum) maxNum = num;
+
+                            // Check if this animal has the SAME suffix as the one we are adding
+                            // If isChickenType, there is no suffix, so we just count.
+                            // If NOT chicken, we look for the suffix in parts.
+
+                            if (isChickenType) {
+                                const lastPart = parts[parts.length - 1];
+                                const num = parseInt(lastPart);
+                                if (!isNaN(num) && num > maxNum) maxNum = num;
+                            } else {
+                                // Expected format for others: ["", "SUFFIX", "NUM"]
+                                // parts[1] is suffix, parts[2] is num OR parts[parts.length - 2] = suffix
+                                const currentSuffix = parts.length >= 3 ? parts[parts.length - 2] : null;
+                                const lastPart = parts[parts.length - 1];
+                                const num = parseInt(lastPart);
+
+                                // Only increment counter if the Suffix matches (e.g. only count K for K, A for A)
+                                if (currentSuffix === newSuffix) {
+                                    if (!isNaN(num) && num > maxNum) maxNum = num;
+                                }
+                            }
+
                         } else if (a.id && useShortIdStrategy && a.id.startsWith(selectedBatch.shortId + '-')) {
                             // Backup check: If fullPrefix logic missed (e.g. prefixBase different), check ShortID match
-                            const parts = a.id.split('-');
-                            // P1-CH...-1
-                            const num = parseInt(parts[parts.length - 1]);
-                            if (!isNaN(num) && num > maxNum) maxNum = num;
+                            // CAUTION: This backup logic might mix suffixes if we aren't careful.
+                            // However, strictly speaking, we should rely on prefix matching suffix.
+                            // If we fall back here, we might just take the max number found regardless of suffix? 
+                            // Or try to parse it too.
+
+                            if (isChickenType) {
+                                const parts = a.id.split('-');
+                                const num = parseInt(parts[parts.length - 1]);
+                                if (!isNaN(num) && num > maxNum) maxNum = num;
+                            } else {
+                                const parts = a.id.split('-');
+                                // format P1-GT...-K-1
+                                const currentSuffix = parts.length >= 3 ? parts[parts.length - 2] : null;
+                                if (currentSuffix === newSuffix) {
+                                    const num = parseInt(parts[parts.length - 1]);
+                                    if (!isNaN(num) && num > maxNum) maxNum = num;
+                                }
+                            }
                         }
                     });
 
@@ -622,17 +659,20 @@ const Livestock = () => {
                             sequentialId = `${fullPrefix}-${suffix}-${maxNum}`;
                         }
 
+                        // FIX: Use the selected/calculated date for both boughtDate and Initial Weight Date
+                        const entryDate = animalForm.date || selectedBatch.date || selectedBatch.startDate || new Date().toISOString().split('T')[0];
+
                         return {
                             id: sequentialId,
                             gender: animalForm.gender,
                             weight: animalForm.weight,
                             status: animalForm.status,
                             purchaseCost: Number(animalForm.cost),
-                            boughtDate: animalForm.date || selectedBatch.date || selectedBatch.startDate || new Date().toISOString().split('T')[0],
+                            boughtDate: entryDate,
                             age: formattedAge,
                             category: category,
                             weightHistory: [{
-                                date: new Date().toISOString().split('T')[0],
+                                date: entryDate,
                                 weight: Number(animalForm.weight)
                             }]
                         };
@@ -1055,7 +1095,8 @@ const Livestock = () => {
                 status: animal.status,
                 ageYears: y,
                 ageMonths: m,
-                category: animal.category
+                category: animal.category,
+                date: animal.boughtDate || ''
             });
         } else {
             setEditingAnimalId(null);
