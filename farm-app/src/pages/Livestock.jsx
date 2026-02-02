@@ -696,7 +696,7 @@ const Livestock = () => {
         );
     };
 
-    const handleMedicalSubmit = (e) => {
+    const handleMedicalSubmit = async (e) => {
         e.preventDefault();
         if (!selectedBatch) return;
 
@@ -729,85 +729,103 @@ const Livestock = () => {
             return;
         }
 
-        if (editingMedicalRecordId) {
-            // UPDATE Existing Record
-            const updatedMedical = (selectedBatch.medical || []).map(rec => {
-                if (rec.id === editingMedicalRecordId) {
-                    return {
-                        ...rec,
+        try {
+            if (editingMedicalRecordId) {
+                // UPDATE Existing Record
+                const originalRecord = (selectedBatch.medical || []).find(r => r.id === editingMedicalRecordId);
+                let expenseId = originalRecord?.expenseId;
+
+                // Expense Logic for Edit
+                if (medicalForm.addToExpenses) {
+                    const expenseData = {
+                        category: 'Medical',
+                        description: `${medicalForm.type}: ${recordName}`,
+                        amount: Number(medicalForm.cost),
                         date: medicalForm.date,
-                        type: medicalForm.type,
-                        name: recordName,
-                        cost: Number(medicalForm.cost) || 0,
-                        notes: medicalForm.notes,
-                        animalIds: targetIds
+                        batchId: selectedBatch.id,
+                        paidTo: 'Pharmacy/Vet'
                     };
+
+                    if (expenseId) {
+                        // Update existing expense
+                        await updateExpense(expenseId, expenseData);
+                    } else {
+                        // Create new expense if not existed
+                        expenseId = await addExpense(expenseData);
+                    }
                 }
-                return rec;
-            });
-            updateBatch(selectedBatch.id, { ...selectedBatch, medical: updatedMedical });
-        } else {
-            // ADD New Record
-            const newRecord = {
-                id: Date.now().toString(),
-                date: medicalForm.date,
-                type: medicalForm.type,
-                name: recordName,
-                cost: Number(medicalForm.cost) || 0,
-                notes: medicalForm.notes,
-                animalIds: targetIds
-            };
 
-            const updatedMedical = [...(selectedBatch.medical || []), newRecord];
-            let updatedExpenses = selectedBatch.expenses || [];
-
-            if (medicalForm.addToExpenses && newRecord.cost > 0) {
-                // Also add to global expenses
-                addExpense({
-                    date: newRecord.date,
-                    category: 'Medical',
-                    description: `${newRecord.type}: ${newRecord.name}`,
-                    amount: newRecord.cost,
-                    batchId: selectedBatch.id,
-                    paidTo: 'Pharmacy/Vet'
+                const updatedMedical = (selectedBatch.medical || []).map(rec => {
+                    if (rec.id === editingMedicalRecordId) {
+                        return {
+                            ...rec,
+                            date: medicalForm.date,
+                            type: medicalForm.type,
+                            name: recordName,
+                            cost: Number(medicalForm.cost) || 0,
+                            notes: medicalForm.notes,
+                            animalIds: targetIds,
+                            expenseId: expenseId // Save/Preserve linked ID
+                        };
+                    }
+                    return rec;
                 });
+                // FIX: Do NOT spread ...selectedBatch. Only update 'medical'.
+                // Using spread overwrites 'expenses' with stale data, undoing addExpense/updateExpense effects on Batch doc.
+                await updateBatch(selectedBatch.id, { medical: updatedMedical });
+            } else {
+                // ADD New Record
+                let expenseId = null;
 
-                // We don't need to manually update batch.expenses here because addExpense
-                // handles adding to the 'expenses' collection AND updating the batch's expenses array
-                // if a batchId is provided.
-                // However, preserving existing logic just in case, but usually addExpense is the source of truth.
-                // Let's rely on addExpense to handle the batch update part if possible, 
-                // BUT current updateBatch call below overwrites it. 
+                if (medicalForm.addToExpenses && Number(medicalForm.cost) > 0) {
+                    // Create Expense First
+                    expenseId = await addExpense({
+                        date: medicalForm.date,
+                        category: 'Medical',
+                        description: `${medicalForm.type}: ${recordName}`,
+                        amount: Number(medicalForm.cost),
+                        batchId: selectedBatch.id,
+                        paidTo: 'Pharmacy/Vet'
+                    });
+                }
 
-                // OPTIMIZATION: We should Call updateBatch ONLY for medical records.
-                // And call addExpense for the expense part.
+                const newRecord = {
+                    id: Date.now().toString(),
+                    date: medicalForm.date,
+                    type: medicalForm.type,
+                    name: recordName,
+                    cost: Number(medicalForm.cost) || 0,
+                    notes: medicalForm.notes,
+                    animalIds: targetIds,
+                    expenseId: expenseId // Link ID
+                };
 
-                // Let's keep the local array update for now to be safe with existing logic, 
-                // but strictly speaking duplicate.
-                updatedExpenses = [...updatedExpenses, {
-                    id: Date.now() + '_exp',
-                    date: newRecord.date,
-                    type: 'Medical',
-                    description: `${newRecord.type}: ${newRecord.name}`,
-                    amount: newRecord.cost
-                }];
+                const updatedMedical = [...(selectedBatch.medical || []), newRecord];
+
+                // FIX: Do NOT spread ...selectedBatch. Only update 'medical'.
+                // addExpense (if called) has already updated the 'expenses' field in the DB.
+                // Sending old 'expenses' here would race and overwrite it.
+                await updateBatch(selectedBatch.id, { medical: updatedMedical });
             }
-            updateBatch(selectedBatch.id, { ...selectedBatch, medical: updatedMedical });
-        }
 
-        setIsMedicalModalOpen(false);
-        setEditingMedicalRecordId(null);
-        setMedicalForm({
-            date: new Date().toISOString().split('T')[0],
-            type: 'Vaccination',
-            name: '',
-            otherName: '',
-            cost: '',
-            notes: '',
-            addToExpenses: false
-        });
-        setMedicalTargetMode('All');
-        setSelectedMedicalAnimals([]);
+            setIsMedicalModalOpen(false);
+            setEditingMedicalRecordId(null);
+            setMedicalForm({
+                date: new Date().toISOString().split('T')[0],
+                type: 'Vaccination',
+                name: '',
+                otherName: '',
+                cost: '',
+                notes: '',
+                addToExpenses: false
+            });
+            setMedicalTargetMode('All');
+            setSelectedMedicalAnimals([]);
+
+        } catch (err) {
+            console.error("Error saving medical record:", err);
+            alert("Failed to save: " + err.message);
+        }
     };
 
     const handleDeleteMedicalRecord = (recordId) => {
