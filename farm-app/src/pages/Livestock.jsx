@@ -79,7 +79,8 @@ const Livestock = () => {
     const [expenseForm, setExpenseForm] = useState({
         type: 'Feed',
         description: '',
-        amount: ''
+        amount: '',
+        date: new Date().toISOString().split('T')[0]
     });
 
     const [editingBatchExpense, setEditingBatchExpense] = useState(null);
@@ -309,9 +310,11 @@ const Livestock = () => {
 
     // Calculate monthly general expenses (non-batch-linked expenses + yearly split)
     const monthlyGeneralExpenses = useMemo(() => {
-        // Regular expenses not linked to any batch/crop/fruit
+        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+        // Regular expenses not linked to any batch/crop/fruit AND matching current month
         const regularUnlinked = (data.expenses || [])
-            .filter(e => !e.batchId && !e.cropId && !e.fruitId)
+            .filter(e => !e.batchId && !e.cropId && !e.fruitId && e.date && e.date.startsWith(currentMonth))
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
         // Yearly expenses split by 12
@@ -530,7 +533,7 @@ const Livestock = () => {
                     // Add new animals
                     const type = selectedBatch.type;
                     const isChickenType = type === 'Chicken' || type === 'Poultry';
-                    const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Cow': 'CW', 'Poultry': 'PL', 'Chicken': 'CH' };
+                    const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Poultry': 'PL', 'Chicken': 'CH', 'Cow': 'CW' };
 
                     if (!typeMap[type]) {
                         alert(`Debug Error: Invalid Type '${type}'`);
@@ -861,12 +864,17 @@ const Livestock = () => {
                     amount: Number(expenseForm.amount), // Ensure number
                     category: expenseForm.type, // Map type to category
                     batchId: selectedBatch.id,
-                    date: new Date().toISOString().split('T')[0]
+                    date: expenseForm.date || new Date().toISOString().split('T')[0]
                 });
             }
         }
         setIsExpenseModalOpen(false);
-        setExpenseForm({ type: 'Feed', description: '', amount: '' });
+        setExpenseForm({
+            type: 'Feed',
+            description: '',
+            amount: '',
+            date: new Date().toISOString().split('T')[0]
+        });
     };
 
     const handleDeleteBatch = async () => {
@@ -898,12 +906,13 @@ const Livestock = () => {
         }
     };
 
-    const openEditBatchExpenseModal = (expense) => {
-        setEditingBatchExpense(expense);
+    const openEditBatchExpenseModal = (exp) => {
+        setEditingBatchExpense(exp);
         setExpenseForm({
-            type: expense.type || expense.category || 'Feed',
-            description: expense.description || '',
-            amount: expense.amount || ''
+            type: exp.type || 'Feed',
+            description: exp.description || '',
+            amount: exp.amount?.toString() || '',
+            date: exp.date || new Date().toISOString().split('T')[0]
         });
         setIsExpenseModalOpen(true);
     };
@@ -926,7 +935,10 @@ const Livestock = () => {
             otherName: (settings?.vaccineNames || []).includes(record.name) || (settings?.medicineNames || []).includes(record.name) ? '' : record.name,
             cost: record.cost,
             notes: record.notes,
-            addToExpenses: false
+            // FIX: If record has an expenseId, check the box.
+            // Also assume if cost > 0 and it's being edited, user might want to check it, 
+            // but rely on expenseId for source of truth if available.
+            addToExpenses: !!record.expenseId
         });
         setIsMedicalModalOpen(true);
     };
@@ -2791,6 +2803,10 @@ const Livestock = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
                         <input required type="number" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                        <input required type="date" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>

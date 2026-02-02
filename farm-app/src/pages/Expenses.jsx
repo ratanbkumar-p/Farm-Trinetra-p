@@ -131,7 +131,8 @@ const Expenses = () => {
                     batchId: batch.id, // Ensure it's linked
                     amount: Number(localExp.amount) || Number(localExp.cost) || 0, // Handle 'cost' vs 'amount'
                     category: localExp.type || localExp.category || 'Other',
-                    paidTo: localExp.paidTo || 'Unknown' // local expenses might miss this
+                    paidTo: localExp.paidTo || 'Unknown', // local expenses might miss this
+                    date: localExp.date || batch.date || batch.startDate || new Date().toISOString().split('T')[0]
                 });
             }
         });
@@ -173,11 +174,18 @@ const Expenses = () => {
     // 2. Batch/Crop/Fruit Filter
     if (filterBatchId !== 'all') {
         filteredExpenses = filteredExpenses.filter(e => {
+            if (filterBatchId === "") {
+                // General (No link)
+                return !e.batchId && !e.cropId && !e.fruitId;
+            }
             if (filterBatchId.startsWith('crop_')) return e.cropId === filterBatchId.replace('crop_', '');
             if (filterBatchId.startsWith('fruit_')) return e.fruitId === filterBatchId.replace('fruit_', '');
             return e.batchId === filterBatchId;
         });
     }
+
+    // 3. Sort by Date (Descending)
+    filteredExpenses.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     // Calculate Total of Filtered View
     const filteredTotal = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
