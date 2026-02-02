@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, X } from 'lucide-react';
+import { Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, X, Edit2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 
 const Contacts = () => {
-    const { data, addContact, deleteContact } = useData();
+    const { data, addContact, deleteContact, updateContact } = useData();
     const { contacts } = data;
-    const { user, userRole, isAdmin, isSuperAdmin } = useAuth();
+    const { user, userRole, isAdmin, isSuperAdmin, canEdit: authCanEdit } = useAuth();
     const [isAdding, setIsAdding] = useState(false);
+    const [editingContactId, setEditingContactId] = useState(null);
     const [contactForm, setContactForm] = useState({
         name: '',
         phone: '',
@@ -16,18 +17,34 @@ const Contacts = () => {
         type: 'Doctor'
     });
 
-    const canEdit = isAdmin;
+    const canEdit = authCanEdit;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await addContact(contactForm);
+            if (editingContactId) {
+                await updateContact(editingContactId, contactForm);
+            } else {
+                await addContact(contactForm);
+            }
             setIsAdding(false);
+            setEditingContactId(null);
             setContactForm({ name: '', phone: '', location: '', type: 'Doctor' });
         } catch (error) {
-            console.error("Error adding contact:", error);
-            alert("Failed to add contact");
+            console.error("Error submitting contact:", error);
+            alert("Failed to save contact");
         }
+    };
+
+    const handleEdit = (contact) => {
+        setEditingContactId(contact.id);
+        setContactForm({
+            name: contact.name,
+            phone: contact.phone,
+            location: contact.location || '',
+            type: contact.type || 'Doctor'
+        });
+        setIsAdding(true);
     };
 
     const handleDelete = async (id) => {
@@ -75,8 +92,8 @@ const Contacts = () => {
                         >
                             <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm sticky top-24">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-bold text-gray-900">New Contact</h2>
-                                    <button onClick={() => setIsAdding(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                                    <h2 className="text-xl font-bold text-gray-900">{editingContactId ? 'Edit Contact' : 'New Contact'}</h2>
+                                    <button onClick={() => { setIsAdding(false); setEditingContactId(null); }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
                                         <X className="w-5 h-5" />
                                     </button>
                                 </div>
@@ -138,8 +155,8 @@ const Contacts = () => {
                                         type="submit"
                                         className="w-full h-14 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center justify-center gap-2 mt-4"
                                     >
-                                        <Plus className="w-5 h-5" />
-                                        Save Contact
+                                        {editingContactId ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                                        {editingContactId ? 'Update Contact' : 'Save Contact'}
                                     </button>
                                 </form>
                             </div>
@@ -174,15 +191,25 @@ const Contacts = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: idx * 0.05 }}
                                     key={contact.id}
-                                    className="bg-white px-4 pb-4 pt-8 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-green-500/5 transition-all group relative flex flex-col items-center text-center"
+                                    className="bg-white px-4 pb-4 pt-12 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-green-500/5 transition-all group relative flex flex-col items-center text-center"
                                 >
                                     {(isSuperAdmin || canEdit) && (
-                                        <button
-                                            onClick={() => handleDelete(contact.id)}
-                                            className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-all z-10"
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
+                                        <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                                            <button
+                                                onClick={() => handleEdit(contact)}
+                                                className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
+                                                title="Edit Contact"
+                                            >
+                                                <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(contact.id)}
+                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                                title="Delete Contact"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
                                     )}
 
                                     {/* Avatar Circle */}
@@ -208,9 +235,9 @@ const Contacts = () => {
                                     <div className="w-full mt-auto space-y-2">
                                         <a
                                             href={`tel:${contact.phone}`}
-                                            className="flex items-center justify-center gap-2 w-full py-3 bg-green-500 text-white rounded-2xl text-sm font-black hover:bg-green-600 transition-all shadow-md active:scale-95"
+                                            className="flex items-center justify-center gap-2 w-max mx-auto px-4 py-1.5 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition-all shadow-md active:scale-95"
                                         >
-                                            <Phone className="w-4 h-4 fill-current" />
+                                            <Phone className="w-3.5 h-3.5 fill-current" />
                                             Call Now
                                         </a>
                                         <p className="text-[11px] text-gray-300 font-bold tracking-tighter">

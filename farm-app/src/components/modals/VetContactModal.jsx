@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, User } from 'lucide-react';
+import { X, Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, User, Edit2 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 
 const VetContactModal = ({ isOpen, onClose }) => {
-    const { contacts, addContact, deleteContact } = useData();
-    const { user } = useAuth(); // Check permissions if needed, assuming all authenticated users can view
+    const { contacts, addContact, deleteContact, updateContact } = useData();
+    const { isAdmin, isSuperAdmin, canEdit: authCanEdit } = useAuth();
     const [isAdding, setIsAdding] = useState(false);
+    const [editingContactId, setEditingContactId] = useState(null);
     const [contactForm, setContactForm] = useState({
         name: '',
         phone: '',
@@ -15,19 +16,34 @@ const VetContactModal = ({ isOpen, onClose }) => {
         type: 'Doctor'
     });
 
-    const isSuperAdmin = user?.email === 'ratanbkumar@gmail.com' || user?.role === 'super_admin';
-    const canEdit = isSuperAdmin || user?.role === 'admin';
+    const canEdit = authCanEdit;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await addContact(contactForm);
+            if (editingContactId) {
+                await updateContact(editingContactId, contactForm);
+            } else {
+                await addContact(contactForm);
+            }
             setIsAdding(false);
+            setEditingContactId(null);
             setContactForm({ name: '', phone: '', location: '', type: 'Doctor' });
         } catch (error) {
-            console.error("Error adding contact:", error);
-            alert("Failed to add contact");
+            console.error("Error submitting contact:", error);
+            alert("Failed to save contact");
         }
+    };
+
+    const handleEdit = (contact) => {
+        setEditingContactId(contact.id);
+        setContactForm({
+            name: contact.name,
+            phone: contact.phone,
+            location: contact.location || '',
+            type: contact.type || 'Doctor'
+        });
+        setIsAdding(true);
     };
 
     const handleDelete = async (id) => {
@@ -99,8 +115,8 @@ const VetContactModal = ({ isOpen, onClose }) => {
                             >
                                 <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm">
                                     <div className="flex justify-between items-center mb-4">
-                                        <h3 className="font-bold text-gray-800">New Contact Details</h3>
-                                        <button onClick={() => setIsAdding(false)} className="text-gray-400 hover:text-gray-600">
+                                        <h3 className="font-bold text-gray-800">{editingContactId ? 'Edit Contact Details' : 'New Contact Details'}</h3>
+                                        <button onClick={() => { setIsAdding(false); setEditingContactId(null); }} className="text-gray-400 hover:text-gray-600">
                                             <X className="w-5 h-5" />
                                         </button>
                                     </div>
@@ -159,7 +175,7 @@ const VetContactModal = ({ isOpen, onClose }) => {
                                                 type="submit"
                                                 className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
                                             >
-                                                Save Contact
+                                                {editingContactId ? 'Update Contact' : 'Save Contact'}
                                             </button>
                                         </div>
                                     </form>
@@ -182,13 +198,22 @@ const VetContactModal = ({ isOpen, onClose }) => {
                             {contacts.map(contact => (
                                 <div key={contact.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all group relative">
                                     {(isSuperAdmin || canEdit) && (
-                                        <button
-                                            onClick={() => handleDelete(contact.id)}
-                                            className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                            title="Delete Contact"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                            <button
+                                                onClick={() => handleEdit(contact)}
+                                                className="p-1 text-gray-300 hover:text-blue-500 transition-all"
+                                                title="Edit Contact"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(contact.id)}
+                                                className="p-1 text-gray-300 hover:text-red-500 transition-all"
+                                                title="Delete Contact"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     )}
 
                                     <div className="flex items-start gap-4 mb-4">
@@ -213,9 +238,9 @@ const VetContactModal = ({ isOpen, onClose }) => {
 
                                     <a
                                         href={`tel:${contact.phone}`}
-                                        className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-50 text-green-700 rounded-xl font-bold hover:bg-green-500 hover:text-white transition-all duration-300"
+                                        className="flex items-center justify-center gap-2 w-max mx-auto px-4 py-1.5 bg-green-50 text-green-700 rounded-xl text-xs font-bold hover:bg-green-500 hover:text-white transition-all duration-300"
                                     >
-                                        <Phone className="w-4 h-4" />
+                                        <Phone className="w-3.5 h-3.5" />
                                         Call {contact.phone}
                                     </a>
                                 </div>

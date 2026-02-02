@@ -777,6 +777,10 @@ export const DataProvider = ({ children }) => {
         await deleteDoc(doc(db, getCollectionName('contacts'), id));
     };
 
+    const updateContact = async (id, updates) => {
+        await updateDoc(doc(db, getCollectionName('contacts'), id), updates);
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -824,6 +828,7 @@ export const DataProvider = ({ children }) => {
             deleteInventoryItem,
             addContact,
             deleteContact,
+            updateContact,
             cleanupOrphanedExpenses
         }}>
             {children}
