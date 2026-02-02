@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
+import { useData } from '../context/DataContext';
 // Removed useTheme import
 import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail, Stethoscope, Plus, Syringe, Clock, Bell, Bug } from 'lucide-react';
 import Modal from '../components/ui/Modal';
