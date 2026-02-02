@@ -52,6 +52,7 @@ const Livestock = () => {
 
     // Animal Edit State
     const [editingAnimalId, setEditingAnimalId] = useState(null);
+    const [editingAnimalBatchId, setEditingAnimalBatchId] = useState(null);
 
     // Selective Sell State
     const [selectedAnimalsToSell, setSelectedAnimalsToSell] = useState([]);
@@ -476,10 +477,12 @@ const Livestock = () => {
             const d = Number(animalForm.ageDays || 0); // New Days field
             const formattedAge = formatAge(y, m, d);
 
-            if (selectedBatch) {
+            const targetBatch = selectedBatch || data.batches.find(b => b.id === editingAnimalBatchId);
+
+            if (targetBatch) {
                 if (editingAnimalId) {
                     // Edit existing animal logic
-                    const updatedAnimals = (selectedBatch.animals || []).map(a => {
+                    const updatedAnimals = (targetBatch.animals || []).map(a => {
                         if (a.id === editingAnimalId) {
                             // Edit: Update ID if Category changes
                             let newId = a.id;
@@ -528,10 +531,10 @@ const Livestock = () => {
 
                     // If ID changed, we need to handle reference updates? 
                     // For now, assume just updating the Batch document is enough as references are less critical or handle by user.
-                    await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+                    await updateBatch(targetBatch.id, { animals: updatedAnimals });
                 } else {
                     // Add new animals
-                    const type = selectedBatch.type;
+                    const type = targetBatch.type;
                     const isChickenType = type === 'Chicken' || type === 'Poultry';
                     const typeMap = { 'Goat': 'GT', 'Sheep': 'SH', 'Poultry': 'PL', 'Chicken': 'CH', 'Cow': 'CW' };
 
@@ -560,7 +563,7 @@ const Livestock = () => {
 
                     let batchCode = '';
                     if (isChickenType) {
-                        const cleanName = selectedBatch.name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                        const cleanName = targetBatch.name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
                         batchCode = cleanName.substring(0, 3) || '000';
                         if (batchCode.length < 3) batchCode = batchCode.padEnd(3, 'X');
                     }
@@ -570,8 +573,8 @@ const Livestock = () => {
                         : `${typeMap[type] || type.substring(0, 2).toUpperCase()}${month}${genderChar}${year}`;
 
                     // If ShortID exists (G1), prepend it -> G1-GTJANM26
-                    const fullPrefix = selectedBatch.shortId
-                        ? `${selectedBatch.shortId}-${basePrefix}`
+                    const fullPrefix = targetBatch.shortId
+                        ? `${targetBatch.shortId}-${basePrefix}`
                         : basePrefix;
 
                     // Category Logic: Chicken has no category distinction in ID
@@ -579,7 +582,7 @@ const Livestock = () => {
                     const category = animalForm.category || 'Kid';
 
                     // Define strategy based on shortId presence
-                    const useShortIdStrategy = !!selectedBatch.shortId;
+                    const useShortIdStrategy = !!targetBatch.shortId;
 
                     // Find max sequence
                     const allAnimalsOfType = data.batches
@@ -621,7 +624,7 @@ const Livestock = () => {
                                 }
                             }
 
-                        } else if (a.id && useShortIdStrategy && a.id.startsWith(selectedBatch.shortId + '-')) {
+                        } else if (a.id && useShortIdStrategy && a.id.startsWith(targetBatch.shortId + '-')) {
                             // Backup check: If fullPrefix logic missed (e.g. prefixBase different), check ShortID match
                             // CAUTION: This backup logic might mix suffixes if we aren't careful.
                             // However, strictly speaking, we should rely on prefix matching suffix.
@@ -663,7 +666,7 @@ const Livestock = () => {
                         }
 
                         // FIX: Use the selected/calculated date for both boughtDate and Initial Weight Date
-                        const entryDate = animalForm.date || selectedBatch.date || selectedBatch.startDate || new Date().toISOString().split('T')[0];
+                        const entryDate = animalForm.date || targetBatch.date || targetBatch.startDate || new Date().toISOString().split('T')[0];
 
                         return {
                             id: sequentialId,
@@ -681,8 +684,8 @@ const Livestock = () => {
                         };
                     });
 
-                    const updatedAnimals = [...(selectedBatch.animals || []), ...newAnimals];
-                    await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+                    const updatedAnimals = [...(targetBatch.animals || []), ...newAnimals];
+                    await updateBatch(targetBatch.id, { animals: updatedAnimals });
                 }
             }
 
@@ -1104,6 +1107,7 @@ const Livestock = () => {
     const openAnimalModal = (animal = null) => {
         if (animal) {
             setEditingAnimalId(animal.id);
+            setEditingAnimalBatchId(animal.batchId || selectedBatch?.id);
             // Parse formatted Age string back to numbers
             // Expects "X Year(s) Y Month(s)"
             let y = 0, m = 0;
@@ -1285,14 +1289,28 @@ const Livestock = () => {
                                         ₹ {((item.soldPrice || 0) - (item.purchaseCost || 0)).toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4 text-gray-500">{item.soldDate || 'N/A'}</td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-6 py-4 flex items-center gap-2">
                                         <button
                                             onClick={() => openAnimalModal(item)}
                                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="Edit / Undo Sell"
+                                            title="Edit"
                                         >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
+                                        {isSuperAdmin && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm(`Undo sale for ${item.id}?`)) {
+                                                        revertSoldAnimal(item.batchId, item.id);
+                                                    }
+                                                }}
+                                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                                                title="Undo Sale"
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </td>
                                 </>
                             )}
@@ -1352,14 +1370,29 @@ const Livestock = () => {
                                     <td className="px-6 py-4">{item.gender}</td>
                                     <td className="px-6 py-4">{item.weight} kg</td>
                                     <td className="px-6 py-4 text-red-600 font-bold">- ₹ {(item.purchaseCost || 0).toLocaleString()}</td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-6 py-4 flex items-center gap-2">
                                         {isSuperAdmin && (
-                                            <button
-                                                onClick={() => { setSelectedBatchId(item.batchId); openAnimalModal(item); }}
-                                                className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                                            >
-                                                Edit
-                                            </button>
+                                            <>
+                                                <button
+                                                    onClick={() => openAnimalModal(item)}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Edit"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (window.confirm(`Undo death record for ${item.id}? This will move the animal back to Inventory.`)) {
+                                                            revertSoldAnimal(item.batchId, item.id); // Same logic for death revert
+                                                        }
+                                                    }}
+                                                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                                                    title="Undo Mortality"
+                                                >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                </button>
+                                            </>
                                         )}
                                     </td>
                                 </>
@@ -2778,6 +2811,7 @@ const Livestock = () => {
                             <option value="Healthy">Healthy</option>
                             <option value="Sick">Sick</option>
                             <option value="Deceased">Deceased</option>
+                            {animalForm.status === 'Sold' && <option value="Sold">Sold</option>}
                         </select>
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
