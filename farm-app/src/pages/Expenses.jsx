@@ -138,29 +138,6 @@ const Expenses = () => {
         });
     });
 
-    // Calculate total expenses for SELECTED month (from filter)
-    const selectedYear = parseInt(filterMonth.split('-')[0]);
-    const selectedMonthIndex = parseInt(filterMonth.split('-')[1]) - 1;
-
-    // 1. Regular Expenses (For the Selected Month) from AGGREGATED list
-    const currentMonthRegular = allExpenses
-        .filter(e => {
-            const d = new Date(e.date);
-            return d.getMonth() === selectedMonthIndex && d.getFullYear() === selectedYear;
-        })
-        .reduce((sum, e) => sum + (e.amount || 0), 0);
-
-    // 2. Yearly Expenses (Monthly Portion)
-    const yearlyMonthly = (data.yearlyExpenses || [])
-        .reduce((sum, e) => sum + (e.monthlyAmount || Math.round(e.amount / 12) || 0), 0);
-
-    // 3. Employee Salaries (Monthly)
-    const monthlySalaries = (data.employees || [])
-        .filter(e => e.status === 'Active')
-        .reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
-
-    const totalMonthlyExpenses = currentMonthRegular + yearlyMonthly + monthlySalaries;
-
     // --- FILTER LOGIC ---
     let filteredExpenses = allExpenses;
 
@@ -186,6 +163,20 @@ const Expenses = () => {
 
     // 3. Sort by Date (Descending)
     filteredExpenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // --- DATA AGGREGATION & TOTALS ---
+    // 1. Regular Expenses (Filtered Total)
+    const currentViewRegularTotal = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    // 2. Yearly Expenses (Monthly Portion - showing current global monthly split)
+    const yearlyMonthly = (data.yearlyExpenses || [])
+        .reduce((sum, e) => sum + (Number(e.monthlyAmount) || Math.round(Number(e.amount) / 12) || 0), 0);
+
+    // 3. Employee Salaries (Monthly)
+    const monthlySalaries = (data.employees || [])
+        .filter(e => e.status === 'Active')
+        .reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
+
 
     // Calculate Total of Filtered View
     const filteredTotal = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
@@ -271,14 +262,24 @@ const Expenses = () => {
                     {/* Filters Bar */}
                     <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-wrap items-end gap-4">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Month</label>
-                            <input
-                                type="month"
-                                value={filterMonth}
-                                max={new Date().toISOString().slice(0, 7)}
-                                onChange={e => { setFilterMonth(e.target.value); setFilterDate(''); }}
-                                className="px-3 py-2 bg-gray-50 rounded-lg text-sm border-none focus:ring-2 focus:ring-red-100 outline-none"
-                            />
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Month Range</label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="month"
+                                    value={filterMonth}
+                                    max={new Date().toISOString().slice(0, 7)}
+                                    onChange={e => { setFilterMonth(e.target.value); setFilterDate(''); }}
+                                    className="px-3 py-2 bg-gray-50 rounded-lg text-sm border-none focus:ring-2 focus:ring-red-100 outline-none"
+                                />
+                                {filterMonth && (
+                                    <button
+                                        onClick={() => setFilterMonth('')}
+                                        className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 bg-blue-50 rounded-lg"
+                                    >
+                                        Show All Time
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Specific Date</label>
@@ -352,8 +353,8 @@ const Expenses = () => {
                                 <TrendingDown className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-sm text-gray-500">Month Total (Selected)</p>
-                                <h3 className="text-xl font-bold text-gray-800">₹ {totalMonthlyExpenses.toLocaleString()}</h3>
+                                <p className="text-sm text-gray-500">{filterMonth ? 'Month Total' : 'Grand Total'}</p>
+                                <h3 className="text-xl font-bold text-gray-800">₹ {currentViewRegularTotal.toLocaleString()}</h3>
                             </div>
                         </div>
 
