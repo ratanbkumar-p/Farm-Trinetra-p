@@ -299,6 +299,39 @@ const Livestock = () => {
     // --- DERIVED DATA ---
     const selectedBatch = data.batches.find(b => b.id === selectedBatchId);
 
+    const allSoldAnimals = useMemo(() => {
+        return data.batches.flatMap(b => (b.animals || [])
+            .filter(a => a.status === 'Sold')
+            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type }))
+        ).sort((a, b) => new Date(b.soldDate || 0) - new Date(a.soldDate || 0));
+    }, [data.batches]);
+
+    const soldStats = useMemo(() => {
+        return allSoldAnimals.reduce((acc, a) => {
+            const rev = Number(a.soldPrice) || 0;
+            const cost = Number(a.purchaseCost) || 0;
+            acc.totalRevenue += rev;
+            acc.totalCost += cost;
+            acc.totalProfit += (rev - cost);
+            return acc;
+        }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
+    }, [allSoldAnimals]);
+
+    const allDeceasedAnimals = useMemo(() => {
+        return data.batches.flatMap(b => (b.animals || [])
+            .filter(a => a.status === 'Deceased')
+            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type }))
+        ).sort((a, b) => new Date(b.deceasedDate || 0) - new Date(a.deceasedDate || 0));
+    }, [data.batches]);
+
+    const deceasedStats = useMemo(() => {
+        const totalLoss = allDeceasedAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+        return {
+            totalLoss,
+            avgLoss: allDeceasedAnimals.length > 0 ? Math.round(totalLoss / allDeceasedAnimals.length) : 0
+        };
+    }, [allDeceasedAnimals]);
+
     // Calculate total active value (purchase cost) across all batches for expense allocation
     const totalActiveValue = useMemo(() => {
         return data.batches.reduce((sum, batch) => {
@@ -345,28 +378,6 @@ const Livestock = () => {
     const expenseAllocationRatio = !fallbackToHeadcount
         ? (totalActiveValue > 0 ? monthlyGeneralExpenses / totalActiveValue : 0)
         : (totalActiveAnimals > 0 ? monthlyGeneralExpenses / totalActiveAnimals : 0);
-
-    // Get all sold animals across all batches
-    const allSoldAnimals = useMemo(() => {
-        const sold = [];
-        data.batches.forEach(batch => {
-            (batch.animals || []).filter(a => a.status === 'Sold').forEach(animal => {
-                sold.push({ ...animal, batchName: batch.name, batchType: batch.type, batchId: batch.id });
-            });
-        });
-        return sold;
-    }, [data.batches]);
-
-    // Get all deceased animals across all batches
-    const allDeceasedAnimals = useMemo(() => {
-        const deceased = [];
-        data.batches.forEach(batch => {
-            (batch.animals || []).filter(a => a.status === 'Deceased').forEach(animal => {
-                deceased.push({ ...animal, batchName: batch.name, batchType: batch.type, batchId: batch.id });
-            });
-        });
-        return deceased;
-    }, [data.batches]);
 
     // --- HANDLERS ---
     const handleBatchSubmit = (e) => {
@@ -1259,16 +1270,16 @@ const Livestock = () => {
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <p className="text-xs text-gray-500 uppercase">Total Revenue</p>
-                            <p className="text-2xl font-bold text-green-600">₹ {allSoldAnimals.reduce((sum, a) => sum + (a.soldPrice || 0), 0).toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-green-600">₹ {soldStats.totalRevenue.toLocaleString()}</p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Total Cost</p>
-                            <p className="text-2xl font-bold">₹ {allSoldAnimals.reduce((sum, a) => sum + (a.purchaseCost || 0), 0).toLocaleString()}</p>
+                            <p className="text-xs text-gray-500 uppercase">Animal Cost</p>
+                            <p className="text-2xl font-bold text-gray-800">₹ {soldStats.totalCost.toLocaleString()}</p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Net Profit</p>
-                            <p className={`text-2xl font-bold ${allSoldAnimals.reduce((sum, a) => sum + ((a.soldPrice || 0) - (a.purchaseCost || 0)), 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                ₹ {allSoldAnimals.reduce((sum, a) => sum + ((a.soldPrice || 0) - (a.purchaseCost || 0)), 0).toLocaleString()}
+                            <p className="text-xs text-gray-500 uppercase">Gross Profit/Loss</p>
+                            <p className={`text-2xl font-bold ${soldStats.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ₹ {soldStats.totalProfit.toLocaleString()}
                             </p>
                         </div>
                     </div>
@@ -1291,7 +1302,7 @@ const Livestock = () => {
                                     <td className="px-6 py-4 text-gray-500">{item.soldDate || 'N/A'}</td>
                                     <td className="px-6 py-4 flex items-center gap-2">
                                         <button
-                                            onClick={() => openAnimalModal(item)}
+                                            onClick={() => { setSelectedBatchId(item.batchId); openAnimalModal(item); }}
                                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                             title="Edit"
                                         >
@@ -1347,12 +1358,12 @@ const Livestock = () => {
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <p className="text-xs text-gray-500 uppercase">Total Loss</p>
-                            <p className="text-2xl font-bold text-red-600">₹ {allDeceasedAnimals.reduce((sum, a) => sum + (a.purchaseCost || 0), 0).toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-red-600">₹ {deceasedStats.totalLoss.toLocaleString()}</p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <p className="text-xs text-gray-500 uppercase">Avg Loss / Animal</p>
                             <p className="text-2xl font-bold text-red-600">
-                                ₹ {allDeceasedAnimals.length > 0 ? Math.round(allDeceasedAnimals.reduce((sum, a) => sum + (a.purchaseCost || 0), 0) / allDeceasedAnimals.length).toLocaleString() : 0}
+                                ₹ {deceasedStats.avgLoss.toLocaleString()}
                             </p>
                         </div>
                     </div>
