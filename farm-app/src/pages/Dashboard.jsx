@@ -440,52 +440,12 @@ const Dashboard = () => {
     const alerts = getAlerts();
 
     return (
-        <div className="space-y-8 pb-10">
-            {/* Alerts Section */}
-            {alerts.length > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-6 space-y-3"
-                >
-                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <Bell className="w-5 h-5 text-red-500" />
-                        Important Alerts
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {alerts.map(alert => (
-                            <div
-                                key={alert.id}
-                                className={`p-4 rounded-xl border flex flex-col justify-between ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-yellow-50 border-yellow-100'
-                                    }`}
-                            >
-                                <div className="mb-2">
-                                    <h4 className={`font-bold text-sm ${alert.severity === 'critical' ? 'text-red-800' : 'text-yellow-800'}`}>
-                                        {alert.type} Due
-                                    </h4>
-                                    <p className="text-sm font-medium text-gray-700 mt-1">{alert.batchName} ({alert.batchType})</p>
-                                    <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
-                                        <span>Due: {alert.dueDate}</span>
-                                        <span>Every {alert.interval}d</span>
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 mt-1 italic">
-                                        From {alert.basis}
-                                    </p>
-                                </div>
-                                <div className={`self-start px-2 py-1 rounded text-xs font-bold ${alert.severity === 'critical' ? 'bg-red-200 text-red-800' : 'bg-yellow-200 text-yellow-800'
-                                    }`}>
-                                    {alert.daysRemaining < 0 ? `${Math.abs(alert.daysRemaining)} Days Overdue` : `In ${alert.daysRemaining} Days`}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </motion.div>
-            )}
+        <div className="pb-10">
             {/* Header */}
             <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8"
             >
                 <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
 
@@ -498,128 +458,180 @@ const Dashboard = () => {
                 </div>
             </motion.div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard
-                    index={0}
-                    title="Revenue"
-                    value={`₹ ${Math.round(totals.revenue).toLocaleString()}`}
-                    icon={Wallet}
-                    color="bg-green-100 text-green-600"
-                />
-                <StatCard
-                    index={1}
-                    title="Operational Expenses"
-                    value={`₹ ${Math.round(totals.expenses).toLocaleString()}`}
-                    icon={Activity}
-                    color="bg-red-100 text-red-600"
-                >
-                    <p className="text-xs text-gray-400 mt-1">Includes Labor & Feeds</p>
-                </StatCard>
-                <StatCard
-                    index={2}
-                    title="Bought (Investment)"
-                    value={`₹ ${Math.round(totals.bought).toLocaleString()}`}
-                    icon={Wallet}
-                    color="bg-orange-100 text-orange-600"
-                >
-                    <p className="text-xs text-gray-400 mt-1">Animals, Seeds, etc.</p>
-                </StatCard>
-                <StatCard
-                    index={3}
-                    title="Net Profit"
-                    value={`₹ ${Math.round(totals.profit).toLocaleString()}`}
-                    trend={totals.profit >= 0 ? 'up' : 'down'}
-                    trendValue={totals.profit >= 0 ? 'Profit' : 'Loss'}
-                    icon={TrendingUp}
-                    color="bg-purple-100 text-purple-600"
-                >
-                    <p className="text-xs text-gray-400 mt-1">Rev - (OpEx + Bought)</p>
-                </StatCard>
-            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
 
-            {/* Breakdown Section */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-            >
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-gray-800">Operational Breakdown</h3>
-                </div>
+                {/* LEFT COLUMN: Main Stats & Charts (75%) */}
+                <div className="lg:col-span-3 space-y-8">
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    <TypeRow name="🐐 Goat" stats={statsByType.Goat} color="text-amber-700" isLivestock={true} />
-                    <TypeRow name="🐑 Sheep" stats={statsByType.Sheep} color="text-gray-700" isLivestock={true} />
-                    <TypeRow name="🐔 Chicken" stats={statsByType.Chicken} color="text-orange-700" isLivestock={true} />
-                    {/* Cow removed as requested */}
-                    <TypeRow name="🌱 Vegetables" stats={statsByType.Vegetables} color="text-green-700" isLivestock={false} />
-                    <TypeRow name="🍎 Fruits" stats={statsByType.Fruits} color="text-red-600" isLivestock={false} />
-                </div>
-            </motion.div>
-
-            {/* Financial Performance Chart - Toggleable */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"
-            >
-                <div className="flex justify-between items-center mb-6">
-                    <button
-                        onClick={() => setShowFinancials(!showFinancials)}
-                        className="flex items-center gap-2 text-lg font-bold text-gray-800 hover:text-green-700 transition-colors"
-                    >
-                        {showFinancials ? 'Hide' : 'Show'} Financial Performance (Trend)
-                        {showFinancials ? <TrendingUp className="w-5 h-5 rotate-180" /> : <TrendingUp className="w-5 h-5" />}
-                    </button>
-
-                    {showFinancials && (
-                        <div className="flex bg-gray-100 p-1 rounded-lg">
-                            <button
-                                onClick={() => setTimeRange('6M')}
-                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeRange === '6M' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                            >
-                                6 Months
-                            </button>
-                            <button
-                                onClick={() => setTimeRange('1Y')}
-                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeRange === '1Y' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                            >
-                                1 Year
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                {showFinancials && (
-                    <div className="h-[350px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#2E7D32" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="#2E7D32" stopOpacity={0} />
-                                    </linearGradient>
-                                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v}`} tick={{ fill: '#6b7280', fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                    formatter={(value) => [`₹ ${value.toLocaleString()}`, '']}
-                                />
-                                <Area type="monotone" dataKey="income" stroke="#2E7D32" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" name="Income" />
-                                <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" name="Operational Exp" />
-                            </AreaChart>
-                        </ResponsiveContainer>
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                        <StatCard
+                            index={0}
+                            title="Revenue"
+                            value={`₹ ${Math.round(totals.revenue).toLocaleString()}`}
+                            icon={Wallet}
+                            color="bg-green-100 text-green-600"
+                        />
+                        <StatCard
+                            index={1}
+                            title="Operational Expenses"
+                            value={`₹ ${Math.round(totals.expenses).toLocaleString()}`}
+                            icon={Activity}
+                            color="bg-red-100 text-red-600"
+                        >
+                            <p className="text-xs text-gray-400 mt-1">Includes Labor & Feeds</p>
+                        </StatCard>
+                        <StatCard
+                            index={2}
+                            title="Bought (Investment)"
+                            value={`₹ ${Math.round(totals.bought).toLocaleString()}`}
+                            icon={Wallet}
+                            color="bg-orange-100 text-orange-600"
+                        >
+                            <p className="text-xs text-gray-400 mt-1">Animals, Seeds, etc.</p>
+                        </StatCard>
+                        <StatCard
+                            index={3}
+                            title="Net Profit"
+                            value={`₹ ${Math.round(totals.profit).toLocaleString()}`}
+                            trend={totals.profit >= 0 ? 'up' : 'down'}
+                            trendValue={totals.profit >= 0 ? 'Profit' : 'Loss'}
+                            icon={TrendingUp}
+                            color="bg-purple-100 text-purple-600"
+                        >
+                            <p className="text-xs text-gray-400 mt-1">Rev - (OpEx + Bought)</p>
+                        </StatCard>
                     </div>
-                )}
-            </motion.div>
+
+                    {/* Breakdown Section */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold text-gray-800">Operational Breakdown</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <TypeRow name="🐐 Goat" stats={statsByType.Goat} color="text-amber-700" isLivestock={true} />
+                            <TypeRow name="🐑 Sheep" stats={statsByType.Sheep} color="text-gray-700" isLivestock={true} />
+                            <TypeRow name="🐔 Chicken" stats={statsByType.Chicken} color="text-orange-700" isLivestock={true} />
+                            {/* Cow removed as requested */}
+                            <TypeRow name="🌱 Vegetables" stats={statsByType.Vegetables} color="text-green-700" isLivestock={false} />
+                            <TypeRow name="🍎 Fruits" stats={statsByType.Fruits} color="text-red-600" isLivestock={false} />
+                        </div>
+                    </motion.div>
+
+                    {/* Financial Performance Chart - Toggleable */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"
+                    >
+                        <div className="flex justify-between items-center mb-6">
+                            <button
+                                onClick={() => setShowFinancials(!showFinancials)}
+                                className="flex items-center gap-2 text-lg font-bold text-gray-800 hover:text-green-700 transition-colors"
+                            >
+                                {showFinancials ? 'Hide' : 'Show'} Financial Performance (Trend)
+                                {showFinancials ? <TrendingUp className="w-5 h-5 rotate-180" /> : <TrendingUp className="w-5 h-5" />}
+                            </button>
+
+                            {showFinancials && (
+                                <div className="flex bg-gray-100 p-1 rounded-lg">
+                                    <button
+                                        onClick={() => setTimeRange('6M')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeRange === '6M' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                    >
+                                        6 Months
+                                    </button>
+                                    <button
+                                        onClick={() => setTimeRange('1Y')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeRange === '1Y' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                    >
+                                        1 Year
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {showFinancials && (
+                            <div className="h-[350px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#2E7D32" stopOpacity={0.8} />
+                                                <stop offset="95%" stopColor="#2E7D32" stopOpacity={0} />
+                                            </linearGradient>
+                                            <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v}`} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                                        <Tooltip
+                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                            formatter={(value) => [`₹ ${value.toLocaleString()}`, '']}
+                                        />
+                                        <Area type="monotone" dataKey="income" stroke="#2E7D32" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" name="Income" />
+                                        <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" name="Operational Exp" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+                    </motion.div>
+                </div>
+
+                {/* RIGHT COLUMN: Alerts Panel (25%) */}
+                <div className="lg:col-span-1">
+                    <div className="sticky top-24 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <Bell className="w-5 h-5 text-red-500" />
+                                Alerts
+                            </h2>
+                            <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">{alerts.length}</span>
+                        </div>
+
+                        {alerts.length > 0 ? (
+                            <div className="space-y-3 max-h-[calc(100vh-120px)] overflow-y-auto pr-1 custom-scrollbar">
+                                {alerts.map(alert => (
+                                    <motion.div
+                                        key={alert.id}
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className={`p-3 rounded-xl border-l-4 shadow-sm bg-white ${alert.severity === 'critical' ? 'border-l-red-500' : 'border-l-yellow-400'
+                                            }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <h4 className="font-bold text-sm text-gray-800 line-clamp-1" title={alert.type}>{alert.type}</h4>
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${alert.severity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                                }`}>
+                                                {alert.daysRemaining < 0 ? `${Math.abs(alert.daysRemaining)}d Late` : `${alert.daysRemaining}d Left`}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs font-medium text-gray-600 mb-2">{alert.batchName}</p>
+
+                                        <div className="flex justify-between items-end border-t border-gray-50 pt-2 mt-1">
+                                            <span className="text-[10px] text-gray-400">Due: {alert.dueDate}</span>
+                                            <span className="text-[10px] text-gray-400 italic">Every {alert.interval}d</span>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                <p className="text-sm text-gray-400">No active alerts</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

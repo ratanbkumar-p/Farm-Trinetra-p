@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
@@ -32,7 +32,7 @@ const formatWeight = (kg) => {
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact } = useData();
     const { canEdit, isSuperAdmin } = useAuth();
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
@@ -48,6 +48,7 @@ const Livestock = () => {
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [isSellModalOpen, setIsSellModalOpen] = useState(false);
     const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false); // New Contact Modal
 
     // Animal Edit State
     const [editingAnimalId, setEditingAnimalId] = useState(null);
@@ -145,6 +146,9 @@ const Livestock = () => {
     // Sick Transition State
     const [isSickTransitionOpen, setIsSickTransitionOpen] = useState(false);
     const [sickTransitionForm, setSickTransitionForm] = useState({ count: '', fromStatus: '', toStatus: '', notes: '' });
+
+    // Contact Form State
+    const [contactForm, setContactForm] = useState({ name: '', phone: '', location: '', type: 'Doctor' }); // Default Doctor
 
     // Dashboard Expansion State
     const [expandedCard, setExpandedCard] = useState(null); // 'active', 'sick', 'mortality', 'sold'
@@ -792,6 +796,27 @@ const Livestock = () => {
         }
     };
 
+    const handleContactSubmit = async (e) => {
+        e.preventDefault();
+        console.log("Submitting contact:", contactForm);
+        try {
+            await addContact(contactForm);
+            alert("Contact Added Successfully!");
+            setIsContactModalOpen(false);
+            setContactForm({ name: '', phone: '', location: '', type: 'Doctor' }); // Reset
+        } catch (error) {
+            console.error("Error adding contact:", error);
+            alert("Failed to add contact: " + error.message);
+        }
+    };
+
+    const handleDeleteContact = (id) => {
+        if (!isSuperAdmin && !canEdit) return; // SuperAdmin or Admin
+        if (window.confirm("Delete this contact?")) {
+            deleteContact(id);
+        }
+    };
+
     const openEditBatchExpenseModal = (expense) => {
         setEditingBatchExpense(expense);
         setExpenseForm({
@@ -836,6 +861,8 @@ const Livestock = () => {
             await deleteExpense(expenseId);
         }
     };
+
+    console.log("LIVESTOCK RENDER: isContactModalOpen =", isContactModalOpen);
 
     // Helper to identify if animal is a Kid (< 1 Year)
     const isKid = (animal) => {
@@ -1242,6 +1269,100 @@ const Livestock = () => {
         // Active Batches View
         return (
             <div className="space-y-6 mb-20">
+                {/* Contact Modal - Raw Implementation */}
+                {isContactModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        {/* Backdrop */}
+                        <div
+                            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+                            onClick={() => setIsContactModalOpen(false)}
+                        />
+
+                        {/* Modal Content */}
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden relative z-10">
+                            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-900">Add Veterinary Contact</h3>
+                                <button
+                                    onClick={() => setIsContactModalOpen(false)}
+                                    className="p-1 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 max-h-[80vh] overflow-y-auto">
+                                <form onSubmit={handleContactSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={contactForm.name}
+                                            onChange={(e) => setContactForm(prev => ({ ...prev, name: e.target.value }))}
+                                            className="w-full rounded-xl border-gray-300 focus:border-green-500 focus:ring-green-500"
+                                            placeholder="e.g. Dr. Ramesh"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                                        <input
+                                            type="tel"
+                                            required
+                                            value={contactForm.phone}
+                                            onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
+                                            className="w-full rounded-xl border-gray-300 focus:border-green-500 focus:ring-green-500"
+                                            placeholder="e.g. 9876543210"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Location (Village/City)</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={contactForm.location}
+                                            onChange={(e) => setContactForm(prev => ({ ...prev, location: e.target.value }))}
+                                            className="w-full rounded-xl border-gray-300 focus:border-green-500 focus:ring-green-500"
+                                            placeholder="e.g. Indiranagar"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {['Doctor', 'Assistant'].map(type => (
+                                                <button
+                                                    key={type}
+                                                    type="button"
+                                                    onClick={() => setContactForm(prev => ({ ...prev, type }))}
+                                                    className={`py-3 px-4 rounded-xl border text-sm font-medium transition-all ${contactForm.type === type
+                                                        ? 'bg-green-50 border-green-200 text-green-700 ring-1 ring-green-500'
+                                                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                        }`}
+                                                >
+                                                    {type}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsContactModalOpen(false)}
+                                            className="flex-1 py-3 text-gray-700 font-medium hover:bg-gray-50 rounded-xl transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
+                                        >
+                                            Save Contact
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Livestock Batches</h1>
@@ -1267,6 +1388,7 @@ const Livestock = () => {
                     <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed ({data.batches.filter(b => b.status === 'Completed').length})</button>
                 </div>
 
+                {/* Grid View */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {data.batches
                         .filter(batch => {
@@ -1315,7 +1437,7 @@ const Livestock = () => {
                                             <span className="text-gray-500">Sold</span>
                                             <span className="font-medium text-blue-600">{f.soldAnimals} (₹{f.soldRevenue?.toLocaleString() || 0})</span>
                                         </div>
-                                        {/* FIX: Always show Min Sell Price as requested, or keep tied to ownerMode if user prefers. 
+                                        {/* FIX: Always show Min Sell Price as requested, or keep tied to ownerMode if user prefers.
                                         User said "Total bough cost and minimum selling price as per expenses should be there in the batches".
                                         I will remove ownerMode check for this to ensure it's visible. */}
                                         <div className="flex justify-between pt-2 border-t border-gray-100">
@@ -1330,6 +1452,7 @@ const Livestock = () => {
                             );
                         })}
                 </div>
+
 
                 {/* Modals for List View */}
                 <Modal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} title="Create New Batch">
@@ -2697,7 +2820,7 @@ const Livestock = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                        <select value={batchForm.status} onChange={e => setBatchForm({ ...batchForm, status: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none">
+                        <select value={batchForm.status} onChange={e => setBatchForm({ ...batchForm, status: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
                             <option value="Raising">Raising</option>
                             <option value="Completed">Completed</option>
                             <option value="Archived">Archived</option>
@@ -3134,7 +3257,8 @@ const Livestock = () => {
                 </form>
             </Modal>
 
-        </div >
+
+        </div>
     );
 };
 

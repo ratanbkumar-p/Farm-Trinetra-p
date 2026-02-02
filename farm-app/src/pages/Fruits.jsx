@@ -107,11 +107,11 @@ const Fruits = () => {
         const fruitExpenses = data.expenses.filter(e => e.fruitId === fruit.id);
 
         const pesticideCost = fruitExpenses
-            .filter(e => e.category === 'Pesticide Application' || e.paidTo === 'Pesticide')
+            .filter(e => e.category === 'Pesticide Application' || e.paidTo === 'Pesticide' || e.category === 'Pesticide Purchase')
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
         const laborCost = fruitExpenses
-            .filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide')
+            .filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide' && e.category !== 'Pesticide Purchase')
             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
         const totalCost = seedCost + laborCost + pesticideCost;
@@ -217,7 +217,7 @@ const Fruits = () => {
         });
     };
 
-    const handlePesticideSubmit = (e) => {
+    const handlePesticideSubmit = async (e) => {
         e.preventDefault();
         const pestName = pesticideForm.pesticideName === 'Other' ? pesticideForm.otherName : pesticideForm.pesticideName;
         if (!pestName) {
@@ -226,6 +226,18 @@ const Fruits = () => {
         }
 
         // Add to fruit's pesticides array
+        let expenseId = null;
+        if (pesticideForm.cost) {
+            expenseId = await addExpense({
+                date: pesticideForm.date,
+                category: 'Pesticide Purchase', // Changed to distinguish from Application Labor
+                description: `${selectedFruit?.name || 'Fruit'}: ${pestName} (Material)`,
+                amount: Number(pesticideForm.cost),
+                paidTo: 'Pesticide',
+                fruitId: selectedFruit.id
+            });
+        }
+
         const pestRecord = {
             id: Date.now().toString(),
             date: pesticideForm.date,
@@ -233,23 +245,12 @@ const Fruits = () => {
             quantity: pesticideForm.quantity,
             unit: pesticideForm.unit,
             cost: Number(pesticideForm.cost) || 0,
-            notes: pesticideForm.notes
+            notes: pesticideForm.notes,
+            expenseId: expenseId // Link to global expense
         };
 
         const updatedPesticides = [...(selectedFruit.pesticides || []), pestRecord];
         updateFruit(selectedFruit.id, { ...selectedFruit, pesticides: updatedPesticides });
-
-        // Also add as expense
-        if (pesticideForm.cost) {
-            addExpense({
-                date: pesticideForm.date,
-                category: 'Pesticide Application',
-                description: `${selectedFruit?.name || 'Fruit'}: ${pestName}`,
-                amount: Number(pesticideForm.cost),
-                paidTo: 'Pesticide',
-                fruitId: selectedFruit.id
-            });
-        }
 
         setIsPesticideModalOpen(false);
         setPesticideForm({
@@ -610,8 +611,8 @@ const Fruits = () => {
                         </button>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        {fruitExpenses.length > 0 ? (
-                            fruitExpenses.map((exp, i) => (
+                        {fruitExpenses.filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide' && e.category !== 'Pesticide Purchase').length > 0 ? (
+                            fruitExpenses.filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide' && e.category !== 'Pesticide Purchase').map((exp, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
                                     <div>
                                         <p className="font-medium text-gray-800">{exp.category}</p>
@@ -678,6 +679,20 @@ const Fruits = () => {
                                             <button
                                                 onClick={() => {
                                                     if (window.confirm('Delete this pesticide record?')) {
+                                                        if (pest.expenseId) {
+                                                            deleteExpense(pest.expenseId);
+                                                        } else {
+                                                            // Legacy Fallback: Try to find and delete matching expense
+                                                            const match = data.expenses.find(e =>
+                                                                e.fruitId === selectedFruit.id &&
+                                                                e.date === pest.date &&
+                                                                Number(e.amount) === Number(pest.cost) &&
+                                                                (e.category === 'Pesticide Application' || e.paidTo === 'Pesticide' || e.category === 'Pesticide Purchase')
+                                                            );
+                                                            if (match) {
+                                                                deleteExpense(match.id);
+                                                            }
+                                                        }
                                                         const updatedPesticides = (selectedFruit.pesticides || []).filter(p => p.id !== pest.id);
                                                         updateFruit(selectedFruit.id, { ...selectedFruit, pesticides: updatedPesticides });
                                                     }

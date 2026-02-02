@@ -120,7 +120,10 @@ const Employees = () => {
         const monthlyAdvances = payments
             .filter(p => p.type === 'Advance' && p.month === targetMonth)
             .reduce((sum, p) => sum + p.amount, 0);
-        return salary - monthlyAdvances;
+        const monthlySalariesPaid = payments
+            .filter(p => p.type === 'Salary' && p.month === targetMonth)
+            .reduce((sum, p) => sum + p.amount, 0);
+        return Math.max(0, salary - monthlyAdvances - monthlySalariesPaid);
     };
 
     const activeStaff = data.employees.filter(e => e.status === 'Active').length;
@@ -290,7 +293,7 @@ const Employees = () => {
                                                             ₹ {calculateNetSalary(employee, new Date().toISOString().slice(0, 7)).toLocaleString()}
                                                         </h3>
                                                         <p className="text-[10px] text-gray-500 mt-1">
-                                                            Monthly Salary (₹{employee.salary?.toLocaleString()}) - Month Advances (₹{(employee.payments || []).filter(p => p.type === 'Advance' && p.month === new Date().toISOString().slice(0, 7)).reduce((sum, p) => sum + p.amount, 0).toLocaleString()})
+                                                            Salary (₹{employee.salary?.toLocaleString()}) - Advances - Paid
                                                         </p>
                                                     </div>
                                                     <div className="flex gap-2 w-full md:w-auto">

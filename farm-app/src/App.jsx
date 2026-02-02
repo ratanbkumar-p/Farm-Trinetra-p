@@ -11,6 +11,7 @@ import Employees from './pages/Employees';
 import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
 import Invoices from './pages/Invoices';
+import Contacts from './pages/Contacts';
 import Login from './pages/Login';
 
 // Protected Route wrapper
@@ -48,26 +49,22 @@ function AppRoutes() {
         <Route path="livestock" element={<Livestock />} />
         <Route path="vegetables" element={<Vegetables />} />
         <Route path="fruits" element={<Fruits />} />
-        <Route path="agriculture" element={<Vegetables />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="employees" element={<Employees />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="invoices" element={<Invoices />} />
+        <Route path="contacts" element={<Contacts />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   );
 }
 
-import { ThemeProvider } from './context/ThemeContext';
-
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   );
 }
 

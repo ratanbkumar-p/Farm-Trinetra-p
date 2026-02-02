@@ -44,9 +44,18 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         <>
             <div className="flex h-20 items-center px-6 border-b border-gray-100 justify-between">
                 <div className="flex flex-col justify-center">
-                    <h1 className="text-xl font-bold text-farm-green font-sans tracking-wide" style={{ color: '#2E7D32' }}>
-                        TRINETRA <span className="text-farm-brown" style={{ color: '#795548' }}>FARMS</span>
-                    </h1>
+                    {/* Logo */}
+                    <div className="flex items-center gap-2">
+                        <img src="/logo.jpg" alt="Trinetra Farm" className="h-10 w-auto object-contain rounded-md" />
+                        <div>
+                            <h1 className="text-lg font-bold text-farm-green font-sans tracking-wide leading-none" style={{ color: '#2E7D32' }}>
+                                TRINETRA
+                            </h1>
+                            <span className="text-xs font-bold text-farm-brown tracking-widest block" style={{ color: '#795548' }}>
+                                FARM
+                            </span>
+                        </div>
+                    </div>
                     {/* Visual indicator for Dev/Test mode */}
                     {(import.meta.env.DEV || (typeof window !== 'undefined' && window.location.search.includes('qa_test=true'))) && (
                         <span className="text-[10px] bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full font-bold w-fit mt-0.5 border border-orange-200">

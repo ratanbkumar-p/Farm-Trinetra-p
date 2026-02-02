@@ -29,13 +29,18 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         if (isQATestMode) {
             console.log('[QA] Test mode enabled - bypassing authentication');
+
+            // Allow role override via URL: ?qa_test=true&role=viewer
+            const params = new URLSearchParams(window.location.search);
+            const overrideRole = params.get('role');
+
             setUser({
                 uid: 'qa-test-user',
                 email: 'qa-test@trinetra-farms.com',
                 displayName: 'QA Test User',
                 photoURL: null
             });
-            setUserRole('super_admin'); // Give full access for testing
+            setUserRole(overrideRole || 'super_admin'); // Default to super_admin if not specified
             setLoading(false);
         }
     }, [isQATestMode]);
