@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { useData } from '../context/DataContext';
 // Removed useTheme import
-import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail, Stethoscope, Plus, Syringe, Clock, Bell, Bug } from 'lucide-react';
+import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail, Stethoscope, Plus, Syringe, Clock, Bell, Bug, Package } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 
 const Settings = () => {
@@ -37,6 +37,8 @@ const Settings = () => {
                 return <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full flex items-center gap-1"><ShieldCheck className="w-3 h-3" />Super Admin</span>;
             case 'admin':
                 return <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1"><Shield className="w-3 h-3" />Admin</span>;
+            case 'inventory_admin':
+                return <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-semibold rounded-full flex items-center gap-1"><Package className="w-3 h-3" />Inventory Admin</span>;
             default:
                 return <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full flex items-center gap-1"><Eye className="w-3 h-3" />Viewer</span>;
         }
@@ -147,6 +149,7 @@ const Settings = () => {
                                                 className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500/20 outline-none"
                                             >
                                                 <option value="admin">Admin</option>
+                                                <option value="inventory_admin">Inventory Admin</option>
                                                 <option value="viewer">Viewer</option>
                                             </select>
                                         )}
@@ -553,6 +556,7 @@ const Settings = () => {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 outline-none"
                         >
                             <option value="viewer">Viewer (Read Only)</option>
+                            <option value="inventory_admin">Inventory Admin</option>
                             <option value="admin">Admin (Read & Write)</option>
                         </select>
                     </div>

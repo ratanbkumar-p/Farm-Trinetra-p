@@ -297,11 +297,13 @@ const Livestock = () => {
     // --- DERIVED DATA ---
     const selectedBatch = data.batches.find(b => b.id === selectedBatchId);
 
-    // Calculate total active animals across all batches for expense allocation
-    const totalActiveAnimals = useMemo(() => {
+    // Calculate total active value (purchase cost) across all batches for expense allocation
+    const totalActiveValue = useMemo(() => {
         return data.batches.reduce((sum, batch) => {
-            const active = (batch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').length;
-            return sum + active;
+            const batchValue = (batch.animals || [])
+                .filter(a => a.status !== 'Sold' && a.status !== 'Deceased')
+                .reduce((bSum, a) => bSum + (Number(a.purchaseCost) || 0), 0);
+            return sum + batchValue;
         }, 0);
     }, [data.batches]);
 
@@ -319,8 +321,26 @@ const Livestock = () => {
         return regularUnlinked + yearlyMonthly;
     }, [data.expenses, data.yearlyExpenses]);
 
-    // Expense per animal (allocated)
-    const expensePerAnimal = totalActiveAnimals > 0 ? Math.round(monthlyGeneralExpenses / totalActiveAnimals) : 0;
+    // Expense per Rupee of Asset Value (Allocation Ratio)
+    // If total active value is 0, we fallback to HEADCOUNT allocation to avoid showing 0 expenses.
+    // This handles cases where user hasn't entered purchase costs yet.
+
+    const fallbackToHeadcount = totalActiveValue === 0;
+
+    // Calculate total active animals for fallback
+    const totalActiveAnimals = useMemo(() => {
+        return data.batches.reduce((sum, batch) => {
+            const active = (batch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').length;
+            return sum + active;
+        }, 0);
+    }, [data.batches]);
+
+
+    // If using value: Ratio = Expense / Value
+    // If using headcount: Rate = Expense / Count
+    const expenseAllocationRatio = !fallbackToHeadcount
+        ? (totalActiveValue > 0 ? monthlyGeneralExpenses / totalActiveValue : 0)
+        : (totalActiveAnimals > 0 ? monthlyGeneralExpenses / totalActiveAnimals : 0);
 
     // Get all sold animals across all batches
     const allSoldAnimals = useMemo(() => {
@@ -553,6 +573,9 @@ const Livestock = () => {
                     // Category Logic: Chicken has no category distinction in ID
                     const useSuffix = !isChickenType;
                     const category = animalForm.category || 'Kid';
+
+                    // Define strategy based on shortId presence
+                    const useShortIdStrategy = !!selectedBatch.shortId;
 
                     // Find max sequence
                     const allAnimalsOfType = data.batches
@@ -1062,14 +1085,25 @@ const Livestock = () => {
         // Only explicit expenses are counted
         const totalFeedCost = 0;
 
-        // Allocated Expense (Global Expenses + Salaries / Total Animals * Batch Animals)
-        // We use monthlyGeneralExpenses calculated in the component (via useMemo)
-        // Wait, calculateBatchFinancials is a function, not a hook. 
-        // It needs access to `expensePerAnimal`.
-        // Since `expensePerAnimal` is calculated in the component body, we should pass it or use it implicitly if inside component.
-        // It is inside component `Livestock`. Yes.
+        // Allocated Expense (Global Expenses + Salaries / Total Value * Batch Active Value)
 
-        const allocatedExpense = animals.length * expensePerAnimal; // Simple allocation based on total headcount history
+        // Calculate Batch Active Value for allocation
+        const batchActiveValue = activeAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+
+        // Allocated based on value
+        // If fallbackToHeadcount is true, expenseAllocationRatio is actually a Rate per Animal.
+        // If false, it's Rate per Rupee.
+
+        const allocatedExpense = !fallbackToHeadcount
+            ? batchActiveValue * expenseAllocationRatio
+            : activeAnimals.length * expenseAllocationRatio;
+
+        // Allocation Share Percentage
+        // If fallback, it's (Batch Count / Total Count) * 100
+        // If value, it's (Batch Value / Total Value) * 100
+        const allocationPercentage = !fallbackToHeadcount
+            ? (totalActiveValue > 0 ? (batchActiveValue / totalActiveValue) * 100 : 0)
+            : (totalActiveAnimals > 0 ? (activeAnimals.length / totalActiveAnimals) * 100 : 0);
 
         // Total Investment
         const totalInvested = totalAnimalCost + totalSpecificExpenses + totalFeedCost + allocatedExpense;
@@ -1089,7 +1123,7 @@ const Livestock = () => {
         // Detailed breakdowns for UI
         const specificExpensePerAnimal = animals.length > 0 ? totalSpecificExpenses / animals.length : 0;
         const purchaseCostPerAnimal = animals.length > 0 ? totalAnimalCost / animals.length : 0;
-        const allocatedPerAnimal = expensePerAnimal;
+        const allocatedPerAnimal = animals.length > 0 ? allocatedExpense / animals.length : 0;
 
         return {
             totalInvested,
@@ -1389,7 +1423,7 @@ const Livestock = () => {
                 </div>
 
                 {/* Grid View */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                     {data.batches
                         .filter(batch => {
                             if (mainTab === 'completed') return batch.status === 'Completed';
@@ -1400,52 +1434,48 @@ const Livestock = () => {
                             const f = calculateBatchFinancials(batch);
                             return (
                                 <motion.div
-                                    whileHover={{ y: -5 }}
+                                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
                                     key={batch.id}
                                     onClick={() => setSelectedBatchId(batch.id)}
-                                    className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all"
+                                    className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md h-fit"
                                 >
-                                    <div className="flex justify-between items-start mb-4">
+                                    <div className="flex justify-between items-center mb-2">
                                         <div>
-                                            <h3 className="text-xl font-bold" style={{ color: batch.color || '#1F2937' }}>
+                                            <h3 className="text-base font-bold flex items-center gap-1.5" style={{ color: batch.color || '#1F2937' }}>
                                                 {batch.name}
-                                                {batch.shortId && <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-md border border-gray-200">#{batch.shortId}</span>}
+                                                {batch.shortId && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs rounded border border-gray-200">#{batch.shortId}</span>}
                                             </h3>
-                                            <span className="text-sm text-gray-500">{batch.type} Batch</span>
+                                            <span className="text-xs text-gray-500 font-medium">{batch.type} Batch</span>
                                         </div>
-                                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-bold">{f.activeAnimals} Active</span>
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-md text-xs font-bold">{f.activeAnimals} Active</span>
                                     </div>
-                                    <div className="space-y-2 text-sm">
-                                        {/* FIX: Include Total Bought Cost */}
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Bought Cost</span>
-                                            <span className="font-medium">₹ {Math.round(f.totalAnimalCost).toLocaleString()}</span>
+
+                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs border-t border-gray-100 pt-2">
+                                        <div>
+                                            <p className="text-gray-400 text-xs">Bought Cost</p>
+                                            <p className="font-bold text-gray-700 text-sm">₹{Math.round(f.totalAnimalCost).toLocaleString()}</p>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Total Invested</span>
-                                            <span className="font-medium">₹ {Math.round(f.totalInvested).toLocaleString()}</span>
+                                        <div className="text-right">
+                                            <p className="text-gray-400 text-xs">Total Invested</p>
+                                            <p className="font-bold text-gray-700 text-sm">₹{Math.round(f.totalInvested).toLocaleString()}</p>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Allocated Exp</span>
-                                            <span className="font-medium text-amber-600">₹ {(f.allocatedExpense || 0).toLocaleString()}</span>
+
+                                        <div>
+                                            <p className="text-gray-400 text-xs">Allocated</p>
+                                            <p className="font-medium text-amber-600 text-sm">₹{(f.allocatedExpense || 0).toLocaleString()}</p>
                                         </div>
-                                        <div className="flex justify-between border-t border-gray-100 pt-1 mt-1 border-dashed">
-                                            <span className="text-gray-500 text-xs">Cost/Animal</span>
-                                            <span className="font-medium text-xs">₹ {Math.round(f.totalPerAnimalCost).toLocaleString()}</span>
+                                        <div className="text-right">
+                                            <p className="text-gray-400 text-xs">Cost/Animal</p>
+                                            <p className="font-bold text-gray-700 text-sm">₹{Math.round(f.totalPerAnimalCost).toLocaleString()}</p>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Sold</span>
-                                            <span className="font-medium text-blue-600">{f.soldAnimals} (₹{f.soldRevenue?.toLocaleString() || 0})</span>
+
+                                        <div>
+                                            <p className="text-gray-400 text-xs">Sold Rev</p>
+                                            <p className="font-medium text-blue-600 text-sm">₹{f.soldRevenue?.toLocaleString() || 0}</p>
                                         </div>
-                                        {/* FIX: Always show Min Sell Price as requested, or keep tied to ownerMode if user prefers.
-                                        User said "Total bough cost and minimum selling price as per expenses should be there in the batches".
-                                        I will remove ownerMode check for this to ensure it's visible. */}
-                                        <div className="flex justify-between pt-2 border-t border-gray-100">
-                                            <span className="text-gray-500">Min. Sell Price</span>
-                                            <div className="text-right">
-                                                <span className="font-bold text-green-600 block">₹ {Math.round(f.minSellPrice).toLocaleString()}</span>
-                                                <span className="text-[10px] text-gray-400 block">(inc. {Number(settings.marginPercentage) || 20}% margin)</span>
-                                            </div>
+                                        <div className="text-right">
+                                            <p className="text-gray-400 text-xs">Min. Sell Price</p>
+                                            <p className="font-bold text-green-600 text-sm">₹{Math.round(f.minSellPrice).toLocaleString()}</p>
                                         </div>
                                     </div>
                                 </motion.div>
@@ -1521,7 +1551,7 @@ const Livestock = () => {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Allocated (Staff/General):</span>
-                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).allocatedPerAnimal).toLocaleString()}</span>
+                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).allocatedExpense).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between pt-2 border-t border-blue-200 font-bold">
                                     <span className="text-blue-800">Total Cost Basis:</span>

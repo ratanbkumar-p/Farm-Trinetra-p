@@ -326,47 +326,49 @@ const Agriculture = () => {
                 </div>
 
                 {/* Crops Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                     {data.crops.length > 0 ? (
                         data.crops.map(crop => {
                             const cropStats = getCropStats(crop);
                             return (
                                 <motion.div
-                                    whileHover={{ y: -5 }}
+                                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
                                     key={crop.id}
                                     onClick={() => setSelectedCropId(crop.id)}
-                                    className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all"
+                                    className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md h-fit"
                                 >
-                                    <div className="flex justify-between items-start mb-4">
+                                    <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                            <Leaf className="w-5 h-5 text-green-500" />
+                                            <Leaf className="w-4 h-4 text-green-500" />
                                             <div>
-                                                <h3 className="text-xl font-bold text-gray-800">{crop.name}</h3>
-                                                <span className="text-sm text-gray-500">{crop.variety}</span>
+                                                <h3 className="text-base font-bold text-gray-800">{crop.name}</h3>
+                                                <span className="text-xs text-gray-500">{crop.variety}</span>
                                             </div>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${getStatusColor(crop.status)}`}>
+                                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${getStatusColor(crop.status)}`}>
                                             {crop.status}
                                         </span>
                                     </div>
-                                    <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Planted</span>
-                                            <span className="font-medium">{crop.plantedDate}</span>
+
+                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs border-t border-gray-100 pt-2">
+                                        <div>
+                                            <p className="text-gray-400 text-xs">Planted</p>
+                                            <p className="font-bold text-gray-700 text-sm">{crop.plantedDate}</p>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Seed Cost</span>
-                                            <span className="font-medium">₹ {cropStats.seedCost.toLocaleString()}</span>
+                                        <div className="text-right">
+                                            <p className="text-gray-400 text-xs">Seed Cost</p>
+                                            <p className="font-bold text-gray-700 text-sm">₹{cropStats.seedCost.toLocaleString()}</p>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Revenue</span>
-                                            <span className="font-medium text-green-600">₹ {cropStats.revenue.toLocaleString()}</span>
+
+                                        <div>
+                                            <p className="text-gray-400 text-xs">Revenue</p>
+                                            <p className="font-medium text-green-600 text-sm">₹{cropStats.revenue.toLocaleString()}</p>
                                         </div>
-                                        <div className="flex justify-between pt-2 border-t border-gray-100">
-                                            <span className="text-gray-500">Margin</span>
-                                            <span className={`font-bold ${cropStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        <div className="text-right">
+                                            <p className="text-gray-400 text-xs">Net Margin</p>
+                                            <p className={`font-bold ${cropStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                                 ₹ {cropStats.margin.toLocaleString()}
-                                            </span>
+                                            </p>
                                         </div>
                                     </div>
                                 </motion.div>

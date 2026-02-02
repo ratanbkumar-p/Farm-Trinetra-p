@@ -21,7 +21,10 @@ import {
 
 const Inventory = () => {
     const { data, addInventoryItem, updateInventoryItem, deleteInventoryItem } = useData();
-    const { canEdit } = useAuth();
+    const { canEdit, userRole } = useAuth();
+
+    // Inventory Admins can also edit
+    const canManageInventory = canEdit || userRole === 'inventory_admin';
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -178,7 +181,7 @@ const Inventory = () => {
     };
 
     const adjustQuantity = (item, amount) => {
-        if (!canEdit) return;
+        if (!canManageInventory) return;
         const newQty = Math.max(0, Number(item.quantity) + amount);
         updateInventoryItem(item.id, { quantity: newQty });
     };
@@ -214,7 +217,7 @@ const Inventory = () => {
                     <p className="text-gray-500 mt-1">Manage medicines, vaccines, and farm supplies.</p>
                 </div>
                 <div className="flex gap-2">
-                    {canEdit && data.inventory.length < 5 && (
+                    {canManageInventory && data.inventory.length < 5 && (
                         <button
                             onClick={loadStarterKit}
                             disabled={loadingSeed}
@@ -224,7 +227,7 @@ const Inventory = () => {
                             {loadingSeed ? 'Loading...' : 'Load Starter Kit'}
                         </button>
                     )}
-                    {canEdit && (
+                    {canManageInventory && (
                         <button
                             onClick={openAddModal}
                             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-bold"
@@ -358,7 +361,7 @@ const Inventory = () => {
                                         <span className="text-sm font-bold text-gray-400">{item.unit}</span>
                                     </div>
                                 </div>
-                                {canEdit && (
+                                {canManageInventory && (
                                     <div className="flex items-center gap-2">
                                         <div className="flex items-center bg-gray-100 rounded-lg p-1">
                                             <button onClick={() => adjustQuantity(item, -1)} className="p-1.5 hover:bg-white hover:text-red-500 rounded-md shadow-sm transition-all text-gray-600">
@@ -483,8 +486,8 @@ const Inventory = () => {
                                     type="button"
                                     onClick={() => toggleLivestockTarget(type)}
                                     className={`px-3 py-2 rounded-xl text-sm font-bold border transition-all ${formData.targetLivestock.includes(type)
-                                            ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105'
-                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                        ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
                                         }`}
                                 >
                                     {type}
