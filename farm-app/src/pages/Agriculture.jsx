@@ -31,6 +31,7 @@ const Agriculture = () => {
         name: '',
         variety: '',
         seedCost: '',
+        plants: '',
         plantedDate: new Date().toISOString().split('T')[0],
         status: 'Growing'
     });
@@ -473,9 +474,11 @@ const Agriculture = () => {
                         <h1 className="text-3xl font-bold text-gray-900">{selectedCrop.name}</h1>
                         <p className="text-gray-500">{selectedCrop.variety} • Planted: {selectedCrop.plantedDate}</p>
                     </div>
-                    <button onClick={() => openCropModal(selectedCrop)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
-                        <Edit2 className="w-4 h-4" />
-                    </button>
+                    {canEditRecords && (
+                        <button onClick={() => openCropModal(selectedCrop)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                            <Edit2 className="w-4 h-4" />
+                        </button>
+                    )}
                     {isSuperAdmin && (
                         <button onClick={handleDeleteCrop} className="p-2 text-gray-400 hover:bg-red-100 hover:text-red-600 rounded-full">
                             <Trash2 className="w-4 h-4" />
@@ -954,6 +957,37 @@ const Agriculture = () => {
                                 className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
                             />
                         </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Seed Cost (₹)</label>
+                            <input
+                                type="number"
+                                placeholder="0"
+                                value={cropForm.seedCost}
+                                onChange={e => setCropForm({ ...cropForm, seedCost: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Total Plants</label>
+                            <input
+                                type="number"
+                                placeholder="0"
+                                value={cropForm.plants}
+                                onChange={e => setCropForm({ ...cropForm, plants: e.target.value })}
+                                className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Planted Date</label>
+                        <input
+                            type="date"
+                            value={cropForm.plantedDate}
+                            onChange={e => setCropForm({ ...cropForm, plantedDate: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
