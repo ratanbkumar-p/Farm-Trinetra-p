@@ -16,7 +16,10 @@ import {
     MoreHorizontal,
     UserCircle,
     Stethoscope,
-    IndianRupee
+    IndianRupee,
+    Menu,
+    X,
+    Phone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -42,6 +45,9 @@ const Navbar = () => {
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
+    // Mobile Sidebar State
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
     const moreTimeoutRef = useRef(null);
     const profileTimeoutRef = useRef(null);
 
@@ -57,6 +63,8 @@ const Navbar = () => {
         if (matchingTab) {
             setActiveTab(matchingTab.path);
         }
+        // Close mobile menu on route change
+        setIsMobileMenuOpen(false);
     }, [location.pathname]);
 
     const handleLogout = async () => {
@@ -97,25 +105,36 @@ const Navbar = () => {
         <nav className="sticky top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm px-4 py-3">
             <div className="max-w-[1920px] mx-auto flex items-center justify-between gap-4">
 
-                {/* Logo */}
-                <Link to="/" className="flex items-center gap-3 flex-shrink-0 group">
-                    <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-100 shadow-lg group-hover:shadow-green-200 transition-all">
-                        <img src="/logo.jpg" alt="Trinetra Farms" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex flex-col md:flex-row md:items-baseline md:gap-1">
-                        <span className="text-lg font-bold text-green-700 tracking-tight group-hover:text-green-800 transition-colors hidden md:block">
-                            Trinetra
-                        </span>
-                        <span className="text-lg font-bold text-amber-700 tracking-tight group-hover:text-amber-800 transition-colors hidden md:block">
-                            Farms
-                        </span>
-                    </div>
-                    <span className="text-xl font-black bg-gradient-to-br from-green-600 to-amber-600 bg-clip-text text-transparent md:hidden">
-                        TF
-                    </span>
-                </Link>
+                {/* Left: Mobile Menu & Logo */}
+                <div className="flex items-center gap-4">
+                    {/* Mobile Hamburger Trigger */}
+                    <button
+                        onClick={() => setIsMobileMenuOpen(true)}
+                        className="md:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
 
-                {/* Primary Navigation - Desktop */}
+                    {/* Logo */}
+                    <Link to="/" className="flex items-center gap-3 flex-shrink-0 group">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-100 shadow-lg group-hover:shadow-green-200 transition-all">
+                            <img src="/logo.jpg" alt="Trinetra Farms" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex flex-col md:flex-row md:items-baseline md:gap-1">
+                            <span className="text-lg font-bold text-green-700 tracking-tight group-hover:text-green-800 transition-colors hidden md:block">
+                                Trinetra
+                            </span>
+                            <span className="text-lg font-bold text-amber-700 tracking-tight group-hover:text-amber-800 transition-colors hidden md:block">
+                                Farms
+                            </span>
+                        </div>
+                        <span className="text-xl font-black bg-gradient-to-br from-green-600 to-amber-600 bg-clip-text text-transparent md:hidden">
+                            TF
+                        </span>
+                    </Link>
+                </div>
+
+                {/* Center: Primary Navigation - Desktop */}
                 <div className="hidden md:flex flex-1 justify-center z-50">
                     <div className="flex items-center gap-1 p-1 bg-gray-100/50 rounded-full border border-gray-200/50 backdrop-blur-sm relative">
                         {primaryTabs.map((tab) => {
@@ -199,45 +218,8 @@ const Navbar = () => {
                     </div>
                 </div>
 
-                {/* Mobile Scrollable Nav */}
-                <div className="md:hidden flex-1 overflow-x-auto no-scrollbar mask-gradient-x">
-                    <div className="flex items-center gap-1 p-1">
-                        {primaryTabs.map((tab) => {
-                            const isActive = activeTab === tab.path;
-                            return (
-                                <NavLink
-                                    key={tab.id}
-                                    to={tab.path}
-                                    className={`relative px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium transition-all whitespace-nowrap ${isActive ? 'bg-green-100 text-green-700 font-bold' : 'text-gray-500'}`}
-                                >
-                                    <tab.icon className="w-4 h-4" />
-                                    <span>{tab.label}</span>
-                                </NavLink>
-                            );
-                        })}
-                        {moreTabs.map((tab) => {
-                            const isActive = activeTab === tab.path;
-                            return (
-                                <NavLink
-                                    key={tab.id}
-                                    to={tab.path}
-                                    className={`relative px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium transition-all whitespace-nowrap ${isActive ? 'bg-green-100 text-green-700 font-bold' : 'text-gray-500'}`}
-                                >
-                                    <tab.icon className="w-4 h-4" />
-                                    <span>{tab.label}</span>
-                                </NavLink>
-                            );
-                        })}
-                    </div>
-                </div>
-
                 {/* Right Actions */}
                 <div className="flex items-center gap-3 flex-shrink-0">
-
-
-
-                    <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
-
                     {/* Vet Contact Button -> Link to Page */}
                     <NavLink
                         to="/contacts"
@@ -319,6 +301,117 @@ const Navbar = () => {
                     </div>
                 </div>
             </div>
+
+            {/* MOBILE NAVIGATION DRAWER (Sidebar) */}
+            <AnimatePresence>
+                {isMobileMenuOpen && (
+                    <>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] md:hidden"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                        />
+
+                        {/* Sidebar */}
+                        <motion.div
+                            initial={{ x: '-100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '-100%' }}
+                            transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                            className="fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-[70] md:hidden bg-gradient-to-b from-white to-gray-50/50"
+                        >
+                            <div className="flex flex-col h-full">
+                                {/* Drawer Header */}
+                                <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full border-2 border-green-100 overflow-hidden">
+                                            <img src="/logo.jpg" alt="Trinetra" className="w-full h-full object-cover" />
+                                        </div>
+                                        <div>
+                                            <h2 className="font-bold text-gray-900">Trinetra Farms</h2>
+                                            <p className="text-xs text-gray-500">Mobile Menu</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                        className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Drawer Items (Scrollable) */}
+                                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                    <div className="space-y-6">
+                                        {/* Primary Section */}
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 mb-2">Main</p>
+                                            {primaryTabs.map(tab => (
+                                                <NavLink
+                                                    key={tab.id}
+                                                    to={tab.path}
+                                                    className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-green-50 text-green-700 font-bold shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+                                                >
+                                                    <tab.icon className="w-5 h-5" />
+                                                    {tab.label}
+                                                </NavLink>
+                                            ))}
+                                        </div>
+
+                                        {/* Manage Section */}
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 mb-2">Management</p>
+                                            {moreTabs.map(tab => (
+                                                <NavLink
+                                                    key={tab.id}
+                                                    to={tab.path}
+                                                    className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-green-50 text-green-700 font-bold shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+                                                >
+                                                    <tab.icon className="w-5 h-5" />
+                                                    {tab.label}
+                                                </NavLink>
+                                            ))}
+                                        </div>
+
+                                        {/* System Section */}
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 mb-2">System</p>
+                                            <NavLink
+                                                to="/contacts"
+                                                className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-blue-50 text-blue-700 font-bold shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+                                            >
+                                                <Phone className="w-5 h-5" />
+                                                Vet Contacts
+                                            </NavLink>
+                                            <NavLink
+                                                to="/settings"
+                                                className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-gray-100 text-gray-900 font-bold shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+                                            >
+                                                <Settings className="w-5 h-5" />
+                                                Settings
+                                            </NavLink>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Drawer Footer */}
+                                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                                    <button
+                                        onClick={handleLogout}
+                                        className="w-full flex items-center justify-center gap-2 py-3 text-red-600 bg-white border border-red-100 rounded-xl font-medium shadow-sm hover:bg-red-50 transition-colors"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                        Log Out
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </nav>
     );
 };
