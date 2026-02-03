@@ -52,6 +52,8 @@ const FRUIT_EMOJIS = {
     'guava': '🍈', 'amrud': '🍈',
     'pomegranate': '🫐', 'anar': '🫐',
     'fig': '🫐', 'anjeer': '🫐',
+    'moringa': '🌿', 'drumstick': '🌿', 'sahjan': '🌿',
+    'curry': '🌿', 'neem': '🌿', 'tulsi': '🌿', 'basil': '🌿',
     'default': '🍎'
 };
 
