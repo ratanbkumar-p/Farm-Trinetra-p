@@ -512,6 +512,51 @@ const Settings = () => {
                             </button>
                         </div>
                     </div>
+
+                    {/* Allocation Settings Section */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-amber-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-amber-100 rounded-lg">
+                                <Users className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <h3 className="font-bold text-gray-800">Employee Allocation Settings</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">
+                            Configure how employee costs are allocated to livestock batches (Goat, Sheep, Chicken only).
+                        </p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Allocation Mode</label>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => updateSetting('allocationMode', 'fullMonth')}
+                                        className={`flex-1 p-4 rounded-xl border-2 transition-all ${settings?.allocationMode === 'fullMonth'
+                                            ? 'border-amber-500 bg-amber-50'
+                                            : 'border-gray-200 hover:border-amber-300'
+                                            }`}
+                                    >
+                                        <div className="font-bold text-gray-800 mb-1">Full Month</div>
+                                        <div className="text-xs text-gray-500">Full month's salary allocated to all active batches</div>
+                                    </button>
+                                    <button
+                                        onClick={() => updateSetting('allocationMode', 'prorated')}
+                                        className={`flex-1 p-4 rounded-xl border-2 transition-all ${settings?.allocationMode === 'prorated'
+                                            ? 'border-amber-500 bg-amber-50'
+                                            : 'border-gray-200 hover:border-amber-300'
+                                            }`}
+                                    >
+                                        <div className="font-bold text-gray-800 mb-1">Prorated</div>
+                                        <div className="text-xs text-gray-500">Salary allocated based on days employee was active</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-500">
+                                <strong>Note:</strong> Allocations are calculated proportionally based on each batch's total investment (purchase cost of animals).
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 

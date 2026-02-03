@@ -14,6 +14,7 @@ import Invoices from './pages/Invoices';
 import Contacts from './pages/Contacts';
 import Login from './pages/Login';
 
+
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="invoices" element={<Invoices />} />
         <Route path="contacts" element={<Contacts />} />
         <Route path="settings" element={<Settings />} />
+
       </Route>
     </Routes>
   );

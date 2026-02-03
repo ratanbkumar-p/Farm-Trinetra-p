@@ -11,6 +11,13 @@ import {
     writeBatch,
     getDocs
 } from 'firebase/firestore';
+import {
+    calculateMonthlyAllocations,
+    getPreviousMonthKey,
+    getCurrentMonthKey,
+    getMonthsBetween,
+    ALLOCATION_ELIGIBLE_TYPES
+} from '../lib/allocationUtils';
 
 const DataContext = createContext();
 
@@ -782,6 +789,297 @@ export const DataProvider = ({ children }) => {
         await updateDoc(doc(db, getCollectionName('contacts'), id), updates);
     };
 
+    // === ALLOCATION FUNCTIONS ===
+
+    /**
+     * Process and save allocations for a specific month to all eligible batches
+     * @param {string} monthKey - Month in YYYY-MM format
+     * @param {string} allocationMode - 'fullMonth' or 'prorated'
+     * @param {Map} allocationsCache - Optional cache of batch allocations for multi-month processing
+     */
+    const processMonthlyAllocations = async (monthKey, allocationMode = 'fullMonth', allocationsCache = null) => {
+        const allocations = calculateMonthlyAllocations(data, monthKey, allocationMode);
+
+        if (allocations.length === 0) {
+            console.log(`[Allocation] No allocations to process for ${monthKey}`);
+            return [];
+        }
+
+        // Save allocations to each batch
+        for (const allocation of allocations) {
+            const batch = data.batches.find(b => b.id === allocation.batchId);
+            if (!batch) continue;
+
+            // Get existing allocations - from cache if available, otherwise from batch
+            let existingAllocations;
+            if (allocationsCache && allocationsCache.has(batch.id)) {
+                existingAllocations = allocationsCache.get(batch.id);
+            } else {
+                existingAllocations = batch.monthlyAllocations || [];
+            }
+
+            // Check if this month already has an allocation
+            const existingIndex = existingAllocations.findIndex(a => a.month === monthKey);
+
+            let updatedAllocations;
+            if (existingIndex >= 0) {
+                // Update existing allocation
+                updatedAllocations = [...existingAllocations];
+                updatedAllocations[existingIndex] = {
+                    ...updatedAllocations[existingIndex],
+                    ...allocation,
+                    id: updatedAllocations[existingIndex].id,
+                    updatedAt: new Date().toISOString()
+                };
+            } else {
+                // Add new allocation
+                updatedAllocations = [...existingAllocations, {
+                    ...allocation,
+                    id: `alloc-${monthKey}`,
+                    isLocked: monthKey !== getCurrentMonthKey()
+                }];
+            }
+
+            // Update cache for next iteration
+            if (allocationsCache) {
+                allocationsCache.set(batch.id, updatedAllocations);
+            }
+
+            // Save to Firestore
+            await updateBatch(allocation.batchId, { monthlyAllocations: updatedAllocations });
+        }
+
+        console.log(`[Allocation] Processed ${allocations.length} allocations for ${monthKey}`);
+        return allocations;
+    };
+
+    /**
+     * Recalculate allocations from a specific month to present
+     * Called when employee employedSince or batch startDate changes
+     */
+    const recalculateAllocationsFrom = async (fromMonth, allocationMode = 'fullMonth') => {
+        const months = getMonthsBetween(fromMonth + '-01');
+
+        for (const month of months) {
+            await processMonthlyAllocations(month, allocationMode);
+        }
+
+        console.log(`[Allocation] Recalculated allocations from ${fromMonth} (${months.length} months)`);
+        return months;
+    };
+
+    /**
+     * Remove allocations for a batch for specific months
+     */
+    const removeAllocationsForMonths = async (batchId, monthsToRemove) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (!batch || !batch.monthlyAllocations) return;
+
+        const updatedAllocations = batch.monthlyAllocations.filter(
+            a => !monthsToRemove.includes(a.month)
+        );
+
+        await updateBatch(batchId, { monthlyAllocations: updatedAllocations });
+    };
+
+    /**
+     * Update a specific allocation for SuperAdmin edits
+     */
+    const updateAllocation = async (batchId, monthKey, updates) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (!batch || !batch.monthlyAllocations) return;
+
+        const updatedAllocations = batch.monthlyAllocations.map(a =>
+            a.month === monthKey ? { ...a, ...updates, updatedAt: new Date().toISOString() } : a
+        );
+
+        await updateBatch(batchId, { monthlyAllocations: updatedAllocations });
+    };
+
+    /**
+     * Get calculated live allocation for current month (preview, not saved)
+     */
+    const getLiveAllocation = (batchId, allocationMode = 'fullMonth') => {
+        const monthKey = getCurrentMonthKey();
+        const allocations = calculateMonthlyAllocations(data, monthKey, allocationMode);
+        return allocations.find(a => a.batchId === batchId) || null;
+    };
+
+    /**
+     * Process a unified sale (POS System)
+     * Handles: Individual Animals, Bulk Livestock, Produce
+     * Updates: Batches, Inventory, Invoices
+     */
+    const processSale = async (saleData) => {
+        const { items, customer, totalAmount, discount = 0, finalAmount } = saleData;
+
+        try {
+            // 1. Create Invoice ID (Sequential)
+            // Parse existing IDs to find max
+            const existingIds = (data.invoices || []).map(inv => {
+                const num = parseInt(inv.id); // Assuming ID is '1', '2' etc.
+                return isNaN(num) ? 0 : num;
+            });
+            const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+            const invoiceId = String(nextId);
+
+            // Customer Validation
+            const customerData = (customer && customer.name && customer.name.trim() !== '')
+                ? customer
+                : { name: 'Walk-in Customer', phone: '' };
+
+            const invoice = {
+                id: invoiceId,
+                customer: customerData,
+                items,
+                totalAmount,
+                discount,
+                finalAmount,
+                date: new Date().toISOString().split('T')[0],
+                createdAt: new Date().toISOString(),
+                status: 'Paid',
+                type: 'POS'
+            };
+
+            await setDoc(doc(db, getCollectionName('invoices'), invoiceId), invoice);
+
+            // 2. Process Items
+            // 2. Process Items
+            for (const item of items) {
+                // Livestock - Individual (Goat, Sheep, Cow, and checking if Poultry has individual IDs too)
+                if ((['Goat', 'Sheep', 'Cow'].includes(item.category) || (item.category === 'Poultry' && item.type === 'individual')) && item.animalId) {
+                    const batch = data.batches.find(b => b.id === item.batchId);
+                    if (batch) {
+                        const updatedAnimals = batch.animals.filter(a => a.id !== item.animalId);
+                        const soldAnimal = batch.animals.find(a => a.id === item.animalId);
+
+                        // Add to individual sold list
+                        const soldRecord = {
+                            ...soldAnimal,
+                            soldPrice: Number(item.price),
+                            soldDate: invoice.date,
+                            invoiceId: invoiceId,
+                            soldTo: customer?.name
+                        };
+                        const updatedSold = [...(batch.soldAnimals || []), soldRecord];
+
+                        await updateBatch(item.batchId, {
+                            animals: updatedAnimals,
+                            soldAnimals: updatedSold
+                        });
+                    }
+                }
+                // Livestock - Bulk (Chicken/Poultry if sold by quantity from batch)
+                else if (['Chicken', 'Poultry'].includes(item.category) && item.type === 'bulk') {
+                    const batch = data.batches.find(b => b.id === item.batchId);
+                    if (batch) {
+                        const qtyToSell = Number(item.quantity) || 0;
+                        let updatedAnimals = batch.animals || [];
+                        let updatedSold = batch.soldAnimals || [];
+
+                        // Strategy: If batch has 'animals' array, remove N oldest/active animals
+                        // If batch relies on 'currentCount' (legacy or simplified), decrement that.
+
+                        if (updatedAnimals.length > 0) {
+                            // Find active animals
+                            const activeAnimals = updatedAnimals.filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+                            // Take top N
+                            const toSell = activeAnimals.slice(0, qtyToSell);
+                            // Remaining active
+                            const remaining = activeAnimals.slice(qtyToSell);
+                            // Sold records
+                            const newSoldRecords = toSell.map(a => ({
+                                ...a,
+                                status: 'Sold',
+                                soldPrice: Number(item.price) / qtyToSell, // amortized price
+                                soldDate: invoice.date,
+                                invoiceId: invoiceId,
+                                soldTo: customer?.name,
+                                isBulkValid: true
+                            }));
+                            // Re-merge: (Inactive/Others) + (Remaining Active) - (Sold Removed from Active)
+                            // Actually, simpler: Filter out the IDs we sold.
+                            const soldIds = toSell.map(a => a.id);
+                            updatedAnimals = updatedAnimals.filter(a => !soldIds.includes(a.id));
+                            updatedSold = [...updatedSold, ...newSoldRecords];
+                        } else {
+                            // Fallback: Just track sold count if no individual animals exist
+                            // const newCount = Math.max(0, (batch.currentCount || 0) - qtyToSell);
+                            // Not implementing legacy count decrement unless requested, prioritizing 'animals' array consistency
+                        }
+
+                        // Add a bulk transaction record mostly for reference if needed, 
+                        // but above logic handles individual animal movement which is preferred.
+                        if (updatedAnimals.length === (batch.animals || []).length && qtyToSell > 0) {
+                            // If we didn't remove any animals (array empty), we assume pure bulk mode
+                            const bulkSoldRecord = {
+                                id: generateId('S'),
+                                count: qtyToSell,
+                                weight: Number(item.weight) || 0,
+                                soldPrice: Number(item.price),
+                                soldDate: invoice.date,
+                                invoiceId: invoiceId,
+                                isBulk: true
+                            };
+                            updatedSold = [...updatedSold, bulkSoldRecord];
+                        }
+
+                        await updateBatch(item.batchId, {
+                            animals: updatedAnimals,
+                            soldAnimals: updatedSold
+                        });
+                    }
+                }
+                // Produce (Fruits/Vegetables/Crops)
+                else if (['Fruits', 'Vegetables', 'Crops'].includes(item.category)) {
+                    // Try to find in Crops (Vegetables)
+                    const crop = data.crops?.find(c => c.id === item.batchId);
+                    if (crop) {
+                        // Add Sale Record to Crop
+                        await addCropSale(crop.id, {
+                            date: invoice.date,
+                            quantity: Number(item.quantity),
+                            price: Number(item.price),
+                            buyer: customer.name,
+                            invoiceId: invoiceId
+                        });
+                        // Note: addCropSale should handle status update? 
+                        // If not, we might need to manually update status if empty.
+                        // For now, assuming tracking sales is enough.
+                    } else {
+                        // Try Fruits
+                        const fruit = data.fruits?.find(f => f.id === item.batchId);
+                        if (fruit) {
+                            await addFruitSale(fruit.id, {
+                                date: invoice.date,
+                                quantity: Number(item.quantity),
+                                price: Number(item.price),
+                                buyer: customer.name,
+                                invoiceId: invoiceId
+                            });
+                        } else {
+                            // Try Inventory fallback
+                            // item.batchId might match inventory ID if we passed it
+                            const invItem = data.inventory?.find(i => i.id === item.batchId);
+                            if (invItem) {
+                                const newQty = (Number(invItem.quantity) || 0) - (Number(item.quantity) || 0);
+                                await updateInventoryItem(item.batchId, {
+                                    quantity: Math.max(0, newQty)
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            return invoiceId;
+
+        } catch (err) {
+            console.error("Error processing sale:", err);
+            throw err;
+        }
+    };
+
     return (
         <DataContext.Provider value={{
             data,
@@ -811,6 +1109,7 @@ export const DataProvider = ({ children }) => {
             addWeightRecord,
             updateWeightRecord,
             sellSelectedAnimals,
+            processSale,
             revertSoldAnimal,
             deleteCropSale,
             updateCropSale,
@@ -830,7 +1129,13 @@ export const DataProvider = ({ children }) => {
             addContact,
             deleteContact,
             updateContact,
-            cleanupOrphanedExpenses
+            cleanupOrphanedExpenses,
+            // Allocation functions
+            processMonthlyAllocations,
+            recalculateAllocationsFrom,
+            removeAllocationsForMonths,
+            updateAllocation,
+            getLiveAllocation
         }}>
             {children}
         </DataContext.Provider>

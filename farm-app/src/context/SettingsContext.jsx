@@ -52,7 +52,9 @@ export const SettingsProvider = ({ children }) => {
                 },
                 notificationDays: 7
             }
-        ]
+        ],
+        // Allocation Settings for monthly employee cost distribution to livestock batches
+        allocationMode: 'fullMonth'  // 'fullMonth' | 'prorated'
     };
 
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);

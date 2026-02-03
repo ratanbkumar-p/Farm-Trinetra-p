@@ -26,7 +26,8 @@ const Employees = () => {
         salary: '',
         aadhar: '',
         photo: null,
-        status: 'Active'
+        status: 'Active',
+        employedSince: new Date().toISOString().split('T')[0]
     });
 
     const [paymentForm, setPaymentForm] = useState({
@@ -44,7 +45,8 @@ const Employees = () => {
         salary: '',
         aadhar: '',
         photo: null,
-        status: 'Active'
+        status: 'Active',
+        employedSince: ''
     });
 
     const handlePhotoUpload = async (e, mode = 'add') => {
@@ -71,7 +73,7 @@ const Employees = () => {
             payments: []
         });
         setIsAddModalOpen(false);
-        setNewEmployee({ id: '', name: '', role: 'Helper', phone: '', salary: '', aadhar: '', photo: null, status: 'Active' });
+        setNewEmployee({ id: '', name: '', role: 'Helper', phone: '', salary: '', aadhar: '', photo: null, status: 'Active', employedSince: new Date().toISOString().split('T')[0] });
     };
 
     const handleAddPayment = async (e) => {
@@ -109,7 +111,8 @@ const Employees = () => {
             salary: employee.salary || '',
             aadhar: employee.aadhar || '',
             photo: employee.photo || null,
-            status: employee.status || 'Active'
+            status: employee.status || 'Active',
+            employedSince: employee.employedSince || employee.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0]
         });
         setIsEditModalOpen(true);
     };
@@ -276,10 +279,10 @@ const Employees = () => {
                                                         </a>
                                                     </div>
                                                     <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm md:col-span-2">
-                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Employment Since</p>
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Employed Since</p>
                                                         <p className="text-gray-800 font-bold text-lg flex items-center gap-2">
                                                             <Calendar className="w-5 h-5 text-amber-500" />
-                                                            {employee.createdAt ? new Date(employee.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}
+                                                            {employee.employedSince ? new Date(employee.employedSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : (employee.createdAt ? new Date(employee.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A')}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -436,6 +439,11 @@ const Employees = () => {
                         </div>
                     </div>
 
+                    <div>
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Employed Since</label>
+                        <input required type="date" value={newEmployee.employedSince} onChange={e => setNewEmployee({ ...newEmployee, employedSince: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    </div>
+
                     <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0">
                         Register Employee
                     </button>
@@ -564,9 +572,15 @@ const Employees = () => {
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Aadhar Number</label>
-                        <input type="text" maxLength="12" placeholder="1234 5678 9012" value={editForm.aadhar} onChange={e => setEditForm({ ...editForm, aadhar: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Aadhar Number</label>
+                            <input type="text" maxLength="12" placeholder="1234 5678 9012" value={editForm.aadhar} onChange={e => setEditForm({ ...editForm, aadhar: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Employed Since</label>
+                            <input type="date" value={editForm.employedSince} onChange={e => setEditForm({ ...editForm, employedSince: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
                     </div>
 
                     <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0">

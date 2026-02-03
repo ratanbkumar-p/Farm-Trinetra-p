@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw, Users, ArrowRight } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
@@ -7,6 +7,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { getCurrentMonthKey, getMonthsBetween, ALLOCATION_ELIGIBLE_TYPES } from '../lib/allocationUtils';
 
 import { useLocation } from 'react-router-dom';
 
@@ -32,7 +33,7 @@ const formatWeight = (kg) => {
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact, processMonthlyAllocations, getLiveAllocation } = useData();
     const { canEdit, isSuperAdmin, isAdmin } = useAuth();
     const canEditRecords = isSuperAdmin || isAdmin;
     const [selectedBatchId, setSelectedBatchId] = useState(null);
@@ -48,6 +49,10 @@ const Livestock = () => {
     const [isAnimalModalOpen, setIsAnimalModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [isSellModalOpen, setIsSellModalOpen] = useState(false);
+
+    // Hierarchical View States
+    const [expandedDeceasedType, setExpandedDeceasedType] = useState(null);
+    const [expandedSoldType, setExpandedSoldType] = useState(null);
     const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
     const [isContactModalOpen, setIsContactModalOpen] = useState(false); // New Contact Modal
 
@@ -1174,16 +1179,19 @@ const Livestock = () => {
 
         // Allocated Expense (Global Expenses + Salaries / Total Value * Batch Active Value)
 
-        // Calculate Batch Active Value for allocation
+        // Calculate Batch Active Value for allocation (fallback calculation)
         const batchActiveValue = activeAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
 
-        // Allocated based on value
-        // If fallbackToHeadcount is true, expenseAllocationRatio is actually a Rate per Animal.
-        // If false, it's Rate per Rupee.
+        // Use stored monthlyAllocations as source of truth if available
+        const storedAllocationsTotal = (batch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
 
-        const allocatedExpense = !fallbackToHeadcount
+        // Fallback to old calculation if no stored allocations
+        const calculatedAllocatedExpense = !fallbackToHeadcount
             ? batchActiveValue * expenseAllocationRatio
             : activeAnimals.length * expenseAllocationRatio;
+
+        // Use stored allocations if available, otherwise use calculated
+        const allocatedExpense = storedAllocationsTotal > 0 ? storedAllocationsTotal : calculatedAllocatedExpense;
 
         // Allocation Share Percentage
         // If fallback, it's (Batch Count / Total Count) * 100
@@ -1285,49 +1293,113 @@ const Livestock = () => {
                         </div>
                     </div>
 
-                    {/* Sold Animals Table */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <Table
-                            headers={['ID', 'Batch', 'Type', 'Purchase Cost', 'Sold Price', 'Profit', 'Sold Date', 'Actions']}
-                            data={allSoldAnimals}
-                            renderRow={(item) => (
-                                <>
-                                    <td className="px-6 py-4 font-medium">{item.id}</td>
-                                    <td className="px-6 py-4">{item.batchName}</td>
-                                    <td className="px-6 py-4">{item.batchType}</td>
-                                    <td className="px-6 py-4">₹ {(item.purchaseCost || 0).toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-green-600 font-bold">₹ {(item.soldPrice || 0).toLocaleString()}</td>
-                                    <td className={`px-6 py-4 font-bold ${(item.soldPrice || 0) - (item.purchaseCost || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        ₹ {((item.soldPrice || 0) - (item.purchaseCost || 0)).toLocaleString()}
-                                    </td>
-                                    <td className="px-6 py-4 text-gray-500">{item.soldDate || 'N/A'}</td>
-                                    <td className="px-6 py-4 flex items-center gap-2">
-                                        <button
-                                            onClick={() => { setSelectedBatchId(item.batchId); openAnimalModal(item); }}
-                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="Edit"
+                    {/* Sold Animals Hierarchical View */}
+                    <div className="space-y-4">
+                        {allSoldAnimals.length > 0 ? (
+                            Object.entries(allSoldAnimals.reduce((acc, animal) => {
+                                const type = animal.batchType || 'Unknown';
+                                if (!acc[type]) acc[type] = [];
+                                acc[type].push(animal);
+                                return acc;
+                            }, {})).map(([type, animals]) => {
+                                const typeRevenue = animals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
+                                const typeCost = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+                                const typeProfit = typeRevenue - typeCost;
+                                const isExpanded = expandedSoldType === type;
+
+                                // Group by Batch
+                                const batches = animals.reduce((acc, animal) => {
+                                    const batchName = animal.batchName || 'Unknown Batch';
+                                    if (!acc[batchName]) acc[batchName] = [];
+                                    acc[batchName].push(animal);
+                                    return acc;
+                                }, {});
+
+                                return (
+                                    <div key={type} className={`bg-white rounded-xl shadow-sm border transition-all ${isExpanded ? 'border-blue-300 ring-4 ring-blue-50' : 'border-gray-100 hover:border-blue-200'}`}>
+                                        <div
+                                            onClick={() => setExpandedSoldType(isExpanded ? null : type)}
+                                            className="p-5 flex justify-between items-center cursor-pointer"
                                         >
-                                            <Edit2 className="w-4 h-4" />
-                                        </button>
-                                        {isSuperAdmin && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (window.confirm(`Undo sale for ${item.id}?`)) {
-                                                        revertSoldAnimal(item.batchId, item.id);
-                                                    }
-                                                }}
-                                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
-                                                title="Undo Sale"
-                                            >
-                                                <RotateCcw className="w-4 h-4" />
-                                            </button>
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl bg-blue-50 text-blue-600`}>
+                                                    {type === 'Goat' ? '🐐' : type === 'Sheep' ? '🐑' : type === 'Chicken' ? '🐔' : type === 'Poultry' ? '🐣' : '💰'}
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-gray-800 text-lg">{type}</h3>
+                                                    <p className="text-sm text-gray-500">{animals.length} animals sold</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right flex items-center gap-6">
+                                                <div>
+                                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Revenue</p>
+                                                    <p className="font-bold text-blue-600 text-lg">₹ {typeRevenue.toLocaleString()}</p>
+                                                </div>
+                                                <div className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                                    <ChevronDown className="w-6 h-6 text-gray-400" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Expanded: Batches */}
+                                        {isExpanded && (
+                                            <div className="bg-blue-50/50 p-6 border-t border-blue-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                {Object.entries(batches).map(([batchName, batchAnimals]) => {
+                                                    const batchRevenue = batchAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
+                                                    const batchCost = batchAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+                                                    const batchProfit = batchRevenue - batchCost;
+
+                                                    return (
+                                                        <div key={batchName} className="bg-white p-4 rounded-xl border border-blue-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                                            <div>
+                                                                <div className="flex justify-between items-start mb-2">
+                                                                    <h4 className="font-bold text-gray-700 truncate" title={batchName}>{batchName}</h4>
+                                                                    <span className="bg-green-50 text-green-700 text-xs px-2 py-1 rounded-full font-bold">{batchAnimals.length}</span>
+                                                                </div>
+
+                                                                <div className="space-y-1 mt-4">
+                                                                    <div className="flex justify-between text-sm">
+                                                                        <span className="text-gray-500">Revenue</span>
+                                                                        <span className="font-bold text-gray-800">₹ {batchRevenue.toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-sm">
+                                                                        <span className="text-gray-500">Profit</span>
+                                                                        <span className={`font-bold ${batchProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                            {batchProfit >= 0 ? '+' : ''} ₹ {batchProfit.toLocaleString()}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end">
+                                                                    {isSuperAdmin && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                const batchId = batchAnimals[0].batchId;
+                                                                                setSelectedBatchId(batchId);
+                                                                                setMainTab('active');
+                                                                            }}
+                                                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                                                                        >
+                                                                            View Batch <ArrowRight className="w-3 h-3" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         )}
-                                    </td>
-                                </>
-                            )}
-                            emptyMessage="No animals have been sold yet"
-                        />
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-100">
+                                <p className="text-gray-400 text-lg">No sold animals recorded yet</p>
+                                <p className="text-gray-300 text-sm mt-1">Start selling to see data here!</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -1369,48 +1441,101 @@ const Livestock = () => {
                         </div>
                     </div>
 
-                    {/* Deceased Animals Table */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <Table
-                            headers={['ID', 'Batch', 'Type', 'Gender', 'Weight', 'Loss Amount', 'Action']}
-                            data={allDeceasedAnimals}
-                            renderRow={(item) => (
-                                <>
-                                    <td className="px-6 py-4 font-medium">{item.id}</td>
-                                    <td className="px-6 py-4">{item.batchName}</td>
-                                    <td className="px-6 py-4">{item.batchType}</td>
-                                    <td className="px-6 py-4">{item.gender}</td>
-                                    <td className="px-6 py-4">{item.weight} kg</td>
-                                    <td className="px-6 py-4 text-red-600 font-bold">- ₹ {(item.purchaseCost || 0).toLocaleString()}</td>
-                                    <td className="px-6 py-4 flex items-center gap-2">
-                                        {canEditRecords && (
-                                            <button
-                                                onClick={() => openAnimalModal(item)}
-                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="Edit"
-                                            >
-                                                <Edit2 className="w-4 h-4" />
-                                            </button>
+                    {/* Deceased Animals Hierarchical View */}
+                    <div className="space-y-4">
+                        {allDeceasedAnimals.length > 0 ? (
+                            Object.entries(allDeceasedAnimals.reduce((acc, animal) => {
+                                const type = animal.batchType || 'Unknown';
+                                if (!acc[type]) acc[type] = [];
+                                acc[type].push(animal);
+                                return acc;
+                            }, {})).map(([type, animals]) => {
+                                const typeLoss = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+                                const isExpanded = expandedDeceasedType === type;
+
+                                // Group by Batch
+                                const batches = animals.reduce((acc, animal) => {
+                                    const batchName = animal.batchName || 'Unknown Batch';
+                                    if (!acc[batchName]) acc[batchName] = [];
+                                    acc[batchName].push(animal);
+                                    return acc;
+                                }, {});
+
+                                return (
+                                    <div key={type} className={`bg-white rounded-xl shadow-sm border transition-all ${isExpanded ? 'border-gray-300 ring-4 ring-gray-100' : 'border-gray-100 hover:border-gray-300'}`}>
+                                        <div
+                                            onClick={() => setExpandedDeceasedType(isExpanded ? null : type)}
+                                            className="p-5 flex justify-between items-center cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gray-100`}>
+                                                    {type === 'Goat' ? '🐐' : type === 'Sheep' ? '🐑' : type === 'Chicken' ? '🐔' : type === 'Poultry' ? '🐣' : '🐾'}
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-gray-800 text-lg">{type}</h3>
+                                                    <p className="text-sm text-gray-500">{animals.length} animals lost</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right flex items-center gap-6">
+                                                <div>
+                                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Loss</p>
+                                                    <p className="font-bold text-red-600 text-lg">₹ {typeLoss.toLocaleString()}</p>
+                                                </div>
+                                                <div className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                                    <ChevronDown className="w-6 h-6 text-gray-400" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Expanded: Batches */}
+                                        {isExpanded && (
+                                            <div className="bg-gray-50 p-6 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                {Object.entries(batches).map(([batchName, batchAnimals]) => {
+                                                    const batchLoss = batchAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+                                                    return (
+                                                        <div key={batchName} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                                                            <div>
+                                                                <div className="flex justify-between items-start mb-2">
+                                                                    <h4 className="font-bold text-gray-700 truncate" title={batchName}>{batchName}</h4>
+                                                                    <span className="bg-red-50 text-red-700 text-xs px-2 py-1 rounded-full font-bold">{batchAnimals.length}</span>
+                                                                </div>
+                                                                <div className="flex justify-between items-end mt-4">
+                                                                    <div>
+                                                                        <p className="text-xs text-gray-400 uppercase">Loss</p>
+                                                                        <p className="font-bold text-red-600">₹ {batchLoss.toLocaleString()}</p>
+                                                                    </div>
+                                                                    {isSuperAdmin && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                // Just alert for now as reverting batch requires individual ID. 
+                                                                                // Could show list on another click or just link to batch details.
+                                                                                // For now, let's just let them know they can see details in the batch.
+                                                                                const batchId = batchAnimals[0].batchId;
+                                                                                setSelectedBatchId(batchId);
+                                                                                setMainTab('active');
+                                                                            }}
+                                                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                                                                        >
+                                                                            View Batch <ArrowRight className="w-3 h-3" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         )}
-                                        {isSuperAdmin && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (window.confirm(`Undo death record for ${item.id}? This will move the animal back to Inventory.`)) {
-                                                        revertSoldAnimal(item.batchId, item.id); // Same logic for death revert
-                                                    }
-                                                }}
-                                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
-                                                title="Undo Mortality"
-                                            >
-                                                <RotateCcw className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </td>
-                                </>
-                            )}
-                            emptyMessage="No deceased animals recorded"
-                        />
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-100">
+                                <p className="text-gray-400 text-lg">No deceased animals recorded 🎉</p>
+                                <p className="text-gray-300 text-sm mt-1">Keep up the good work!</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -2422,9 +2547,33 @@ const Livestock = () => {
                     <div className="space-y-4">
                         <div className="flex justify-between items-center">
                             <h3 className="font-bold text-gray-800">Batch Expenses</h3>
-                            <button onClick={() => setIsExpenseModalOpen(true)} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 flex items-center gap-1 font-medium transition-colors">
-                                <Plus className="w-3 h-3" /> Add Expense
-                            </button>
+                            <div className="flex gap-2">
+                                {isSuperAdmin && ALLOCATION_ELIGIBLE_TYPES.includes(selectedBatch?.type) && (
+                                    <button
+                                        onClick={async () => {
+                                            // Calculate for all months from batch start to now
+                                            const batchStartDate = selectedBatch.startDate || selectedBatch.date || selectedBatch.createdAt;
+                                            if (!batchStartDate) {
+                                                alert('Batch has no start date!');
+                                                return;
+                                            }
+                                            const months = getMonthsBetween(batchStartDate);
+                                            // Use a cache to track allocations across iterations
+                                            const allocationsCache = new Map();
+                                            for (const monthKey of months) {
+                                                await processMonthlyAllocations(monthKey, settings?.allocationMode || 'fullMonth', allocationsCache);
+                                            }
+                                            alert(`Calculated allocations for ${months.length} month(s): ${months.join(', ')}`);
+                                        }}
+                                        className="text-xs bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-100 flex items-center gap-1 font-medium transition-colors"
+                                    >
+                                        <Users className="w-3 h-3" /> Calculate All Allocations
+                                    </button>
+                                )}
+                                <button onClick={() => setIsExpenseModalOpen(true)} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 flex items-center gap-1 font-medium transition-colors">
+                                    <Plus className="w-3 h-3" /> Add Expense
+                                </button>
+                            </div>
                         </div>
 
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -2449,13 +2598,46 @@ const Livestock = () => {
                             )) : (
                                 <div className="p-8 text-center text-gray-400"><p>No specific expenses recorded.</p></div>
                             )}
-                            <div className="p-4 bg-amber-50 flex justify-between items-center border-t border-amber-100">
-                                <div><p className="font-medium text-amber-800">Allocated (Staff/General)</p><p className="text-xs text-amber-600">Shared farm expenses</p></div>
-                                <span className="font-bold text-amber-700">- ₹ {Math.round(financials.allocatedExpense || 0).toLocaleString()}</span>
+                            <div className="p-4 bg-amber-50 border-t border-amber-100">
+                                {(() => {
+                                    // Calculate total from stored monthlyAllocations
+                                    const storedAllocationsTotal = (selectedBatch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
+                                    const displayAllocation = storedAllocationsTotal > 0 ? storedAllocationsTotal : (financials.allocatedExpense || 0);
+
+                                    return (
+                                        <>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <div><p className="font-medium text-amber-800">Allocated (Staff/General)</p><p className="text-xs text-amber-600">Monthly employee cost allocation</p></div>
+                                                <span className="font-bold text-amber-700">- ₹ {Math.round(displayAllocation).toLocaleString()}</span>
+                                            </div>
+                                            {/* Monthly Allocation History */}
+                                            {ALLOCATION_ELIGIBLE_TYPES.includes(selectedBatch?.type) && (selectedBatch.monthlyAllocations?.length > 0) && (
+                                                <div className="mt-3 pt-3 border-t border-amber-200">
+                                                    <p className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1"><Users className="w-3 h-3" /> Monthly Breakdown</p>
+                                                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                                                        {[...(selectedBatch.monthlyAllocations || [])].sort((a, b) => b.month.localeCompare(a.month)).map(alloc => (
+                                                            <div key={alloc.month} className={`flex justify-between items-center py-1 px-2 rounded text-xs ${alloc.month === getCurrentMonthKey() ? 'bg-amber-100 font-medium' : 'bg-white/50'}`}>
+                                                                <span className="text-amber-800">
+                                                                    {new Date(alloc.month + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                                                                    {alloc.month === getCurrentMonthKey() && <span className="ml-1 text-amber-600">(Current)</span>}
+                                                                </span>
+                                                                <span className="text-amber-700">₹ {alloc.amount?.toLocaleString() || 0}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
                             </div>
                             <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-100">
                                 <div><p className="font-medium text-gray-800">Total Expenses</p></div>
-                                <span className="font-bold text-red-600">- ₹ {Math.round((financials.operationalCost || 0) + (financials.allocatedExpense || 0)).toLocaleString()}</span>
+                                {(() => {
+                                    const storedAllocationsTotal = (selectedBatch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
+                                    const displayAllocation = storedAllocationsTotal > 0 ? storedAllocationsTotal : (financials.allocatedExpense || 0);
+                                    return <span className="font-bold text-red-600">- ₹ {Math.round((financials.operationalCost || 0) + displayAllocation).toLocaleString()}</span>;
+                                })()}
                             </div>
                         </div>
                     </div>

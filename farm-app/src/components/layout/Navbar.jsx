@@ -15,7 +15,8 @@ import {
     ChevronDown,
     MoreHorizontal,
     UserCircle,
-    Stethoscope
+    Stethoscope,
+    IndianRupee
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -232,6 +233,10 @@ const Navbar = () => {
 
                 {/* Right Actions */}
                 <div className="flex items-center gap-3 flex-shrink-0">
+
+
+
+                    <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
 
                     {/* Vet Contact Button -> Link to Page */}
                     <NavLink
