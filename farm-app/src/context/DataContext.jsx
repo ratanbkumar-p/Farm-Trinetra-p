@@ -387,6 +387,7 @@ export const DataProvider = ({ children }) => {
     };
 
     const addFruit = async (fruit) => {
+        const id = generateId('F');
         const newFruit = {
             ...fruit,
             sales: [],
