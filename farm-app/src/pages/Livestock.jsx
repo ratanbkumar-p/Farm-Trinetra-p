@@ -33,7 +33,8 @@ const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
     const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact } = useData();
-    const { canEdit, isSuperAdmin } = useAuth();
+    const { canEdit, isSuperAdmin, isAdmin } = useAuth();
+    const canEditRecords = isSuperAdmin || isAdmin;
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
     // Main Tab for Livestock view: 'active' | 'sold' | 'deceased'
@@ -1382,28 +1383,28 @@ const Livestock = () => {
                                     <td className="px-6 py-4">{item.weight} kg</td>
                                     <td className="px-6 py-4 text-red-600 font-bold">- ₹ {(item.purchaseCost || 0).toLocaleString()}</td>
                                     <td className="px-6 py-4 flex items-center gap-2">
+                                        {canEditRecords && (
+                                            <button
+                                                onClick={() => openAnimalModal(item)}
+                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                        )}
                                         {isSuperAdmin && (
-                                            <>
-                                                <button
-                                                    onClick={() => openAnimalModal(item)}
-                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                    title="Edit"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (window.confirm(`Undo death record for ${item.id}? This will move the animal back to Inventory.`)) {
-                                                            revertSoldAnimal(item.batchId, item.id); // Same logic for death revert
-                                                        }
-                                                    }}
-                                                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
-                                                    title="Undo Mortality"
-                                                >
-                                                    <RotateCcw className="w-4 h-4" />
-                                                </button>
-                                            </>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm(`Undo death record for ${item.id}? This will move the animal back to Inventory.`)) {
+                                                        revertSoldAnimal(item.batchId, item.id); // Same logic for death revert
+                                                    }
+                                                }}
+                                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                                                title="Undo Mortality"
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                            </button>
                                         )}
                                     </td>
                                 </>
@@ -2435,12 +2436,14 @@ const Livestock = () => {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="font-bold text-red-500">- ₹{exp.amount}</span>
-                                        {isSuperAdmin && (
-                                            <div className="flex gap-1">
+                                        <div className="flex gap-1">
+                                            {canEditRecords && (
                                                 <button onClick={() => openEditBatchExpenseModal(exp)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors"><Edit2 className="w-3 h-3" /></button>
+                                            )}
+                                            {isSuperAdmin && (
                                                 <button onClick={() => handleDeleteBatchExpenseItem(exp.id)} className="p-1 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )) : (
@@ -2559,7 +2562,7 @@ const Livestock = () => {
                                                                         )}
                                                                     </td>
                                                                     <td className="px-6 py-4 text-right">
-                                                                        {isSuperAdmin && (
+                                                                        {canEditRecords && (
                                                                             <button onClick={() => { setEditingWeightRecord(record); setWeightForm({ weight: record.weight, date: record.date }); setIsWeightModalOpen(true); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit Record">
                                                                                 <Edit2 className="w-4 h-4" />
                                                                             </button>
@@ -2681,16 +2684,18 @@ const Livestock = () => {
                                                     <td className="px-6 py-4 text-gray-600">₹{record.cost}</td>
                                                     <td className="px-6 py-4 text-gray-500 max-w-xs truncate" title={record.notes}>{record.notes}</td>
                                                     <td className="px-6 py-4 text-right">
-                                                        {isSuperAdmin && (
-                                                            <div className="flex items-center justify-end gap-1">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            {canEditRecords && (
                                                                 <button onClick={() => openEditMedicalRecordModal(record)} className="p-1.5 text-blue-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit Record">
                                                                     <Edit2 className="w-4 h-4" />
                                                                 </button>
+                                                            )}
+                                                            {isSuperAdmin && (
                                                                 <button onClick={() => handleDeleteMedicalRecord(record.id)} className="p-1.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Record">
                                                                     <Trash2 className="w-4 h-4" />
                                                                 </button>
-                                                            </div>
-                                                        )}
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}

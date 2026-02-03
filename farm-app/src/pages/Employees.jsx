@@ -8,7 +8,8 @@ import { compressImage } from '../lib/utils';
 
 const Employees = () => {
     const { data, addEmployee, updateEmployee, deleteEmployee, addEmployeePayment, deleteEmployeePayment } = useData();
-    const { isSuperAdmin } = useAuth();
+    const { isSuperAdmin, isAdmin } = useAuth();
+    const canEditRecords = isSuperAdmin || isAdmin;
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -201,7 +202,7 @@ const Employees = () => {
                                     <p className="text-xs text-gray-400 uppercase font-bold tracking-widest">Monthly Salary</p>
                                     <p className="text-lg font-black text-gray-800">₹ {employee.salary?.toLocaleString()}</p>
                                 </div>
-                                {isSuperAdmin && (
+                                {canEditRecords && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); openEditModal(employee); }}
                                         className="p-2 hover:bg-blue-50 rounded-xl transition-colors border border-gray-100 text-blue-600 z-10 relative"

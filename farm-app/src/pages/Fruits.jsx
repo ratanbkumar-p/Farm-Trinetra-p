@@ -10,7 +10,8 @@ const LABOR_TYPES = ['Planting', 'Weeding', 'Harvesting', 'Fertilizer Applicatio
 
 const Fruits = () => {
     const { data, addFruit, updateFruit, deleteFruit, addFruitSale, updateFruitSale, addExpense, deleteFruitSale, deleteExpense, updateExpense } = useData();
-    const { isSuperAdmin } = useAuth();
+    const { isSuperAdmin, isAdmin } = useAuth();
+    const canEditRecords = isSuperAdmin || isAdmin;
     const { settings } = useSettings();
 
     // State
@@ -568,14 +569,16 @@ const Fruits = () => {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <span className="font-bold text-green-600">+ ₹ {Number(sale.amount).toLocaleString()}</span>
-                                        {isSuperAdmin && (
-                                            <div className="flex gap-2">
+                                        <div className="flex gap-2">
+                                            {canEditRecords && (
                                                 <button
                                                     onClick={() => openEditSaleModal(sale)}
                                                     className="text-gray-400 hover:text-blue-500"
                                                 >
                                                     <Edit2 className="w-4 h-4" />
                                                 </button>
+                                            )}
+                                            {isSuperAdmin && (
                                                 <button
                                                     onClick={() => {
                                                         if (window.confirm('Delete this sale record?')) {
@@ -586,8 +589,8 @@ const Fruits = () => {
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))
@@ -622,14 +625,16 @@ const Fruits = () => {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <span className="font-bold text-red-500">- ₹ {Number(exp.amount).toLocaleString()}</span>
-                                        {isSuperAdmin && (
-                                            <div className="flex gap-2">
+                                        <div className="flex gap-2">
+                                            {canEditRecords && (
                                                 <button
                                                     onClick={() => openEditExpenseModal(exp)}
                                                     className="text-gray-400 hover:text-blue-500"
                                                 >
                                                     <Edit2 className="w-4 h-4" />
                                                 </button>
+                                            )}
+                                            {isSuperAdmin && (
                                                 <button
                                                     onClick={() => {
                                                         if (window.confirm('Delete this expense record?')) {
@@ -640,8 +645,8 @@ const Fruits = () => {
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))

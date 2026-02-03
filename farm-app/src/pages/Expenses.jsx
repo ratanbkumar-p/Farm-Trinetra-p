@@ -8,7 +8,8 @@ import { useAuth } from '../context/AuthContext';
 
 const Expenses = () => {
     const { data, addExpense, addYearlyExpense, deleteYearlyExpense, deleteExpense, updateExpense, updateYearlyExpense } = useData();
-    const { isSuperAdmin } = useAuth();
+    const { isSuperAdmin, isAdmin } = useAuth();
+    const canEditRecords = isSuperAdmin || isAdmin;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isYearlyModalOpen, setIsYearlyModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('regular'); // 'regular' or 'yearly'
@@ -380,7 +381,7 @@ const Expenses = () => {
                     </div>
 
                     <Table
-                        headers={['ID', 'Date', 'Batch', 'Category', 'Description', 'Paid To', 'Amount', ...(isSuperAdmin ? ['Action'] : [])]}
+                        headers={['ID', 'Date', 'Batch', 'Category', 'Description', 'Paid To', 'Amount', ...(canEditRecords ? ['Action'] : [])]}
                         data={filteredExpenses}
                         renderRow={(item) => (
                             <>
@@ -409,7 +410,7 @@ const Expenses = () => {
                                 <td className="px-6 py-4">{item.description}</td>
                                 <td className="px-6 py-4">{item.paidTo}</td>
                                 <td className="px-6 py-4 font-bold text-red-600">- ₹ {item.amount.toLocaleString()}</td>
-                                {isSuperAdmin && (
+                                {canEditRecords && (
                                     <td className="px-6 py-4 flex gap-2">
                                         <button
                                             onClick={() => openEditModal(item)}
@@ -417,16 +418,18 @@ const Expenses = () => {
                                         >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                if (window.confirm('Delete this expense?')) {
-                                                    deleteExpense(item.id);
-                                                }
-                                            }}
-                                            className="text-gray-400 hover:text-red-600 transition-colors"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        {isSuperAdmin && (
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm('Delete this expense?')) {
+                                                        deleteExpense(item.id);
+                                                    }
+                                                }}
+                                                className="text-gray-400 hover:text-red-600 transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </td>
                                 )}
                             </>
