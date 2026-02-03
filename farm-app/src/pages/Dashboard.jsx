@@ -252,8 +252,10 @@ const Dashboard = () => {
     }, [unifiedExpenses]);
 
     // --- Livestock Stats ---
-    const getAggregatedLivestock = (type) => {
-        const batches = data.batches.filter(b => b.type === type && b.status !== 'Completed' && b.status !== 'Archived');
+    const getAggregatedLivestock = (types) => {
+        // Accept single type or array of types (for Chicken/Poultry)
+        const typeArray = Array.isArray(types) ? types : [types];
+        const batches = data.batches.filter(b => typeArray.includes(b.type) && b.status !== 'Completed' && b.status !== 'Archived');
         let activeCount = 0, deceasedCount = 0, boughtCost = 0, directExpenses = 0, allocatedExpenses = 0, totalStartCount = 0;
 
         batches.forEach(batch => {
@@ -285,7 +287,7 @@ const Dashboard = () => {
 
     const goatStats = useMemo(() => getAggregatedLivestock('Goat'), [data, unifiedExpenses]);
     const sheepStats = useMemo(() => getAggregatedLivestock('Sheep'), [data, unifiedExpenses]);
-    const chickenStats = useMemo(() => getAggregatedLivestock('Chicken'), [data, unifiedExpenses]);
+    const chickenStats = useMemo(() => getAggregatedLivestock(['Chicken', 'Poultry']), [data, unifiedExpenses]);
 
     // --- Active Agriculture ---
     const activeAgriculture = useMemo(() => {
