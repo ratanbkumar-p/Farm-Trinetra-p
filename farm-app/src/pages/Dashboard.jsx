@@ -28,6 +28,9 @@ const VEGETABLE_EMOJIS = {
     'bitter gourd': '🥒', 'karela': '🥒',
     'ridge gourd': '🥒', 'turai': '🥒',
     'mushroom': '🍄',
+    'moringa': '🌿', 'drumstick': '🌿', 'sahjan': '🌿',
+    'curry leaves': '🌿', 'kadipatta': '🌿', 'neem': '🌿',
+    'tulsi': '🌿', 'basil': '🌿',
     'default': '🥬'
 };
 
