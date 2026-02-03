@@ -321,7 +321,7 @@ const Navbar = () => {
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
                             transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-                            className="fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-[70] md:hidden bg-gradient-to-b from-white to-gray-50/50"
+                            className="fixed inset-y-0 left-0 w-[85vw] max-w-[340px] bg-white shadow-2xl z-[70] md:hidden"
                         >
                             <div className="flex flex-col h-full">
                                 {/* Drawer Header */}
