@@ -276,7 +276,6 @@ export const AuthProvider = ({ children }) => {
         allowedUsers, // Expose this
         isSuperAdmin,
         isAdmin,
-        isAdmin,
         canEdit,
         signInWithGoogle,
         logout,
