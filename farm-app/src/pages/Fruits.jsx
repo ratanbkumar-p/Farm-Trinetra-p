@@ -391,7 +391,7 @@ const Fruits = () => {
                                             <span className="text-xl">{getFruitEmoji(fruit.name)}</span>
                                             <div>
                                                 <h3 className="text-base font-bold text-gray-800">{fruit.name}</h3>
-                                                <span className="text-xs text-gray-500">{fruit.variety}</span>
+                                                <span className="text-xs text-gray-500 block min-h-[1rem]">{fruit.variety || '\u00A0'}</span>
                                             </div>
                                         </div>
                                         <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${getStatusColor(fruit.status)}`}>

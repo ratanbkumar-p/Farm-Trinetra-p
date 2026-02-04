@@ -382,7 +382,7 @@ const Agriculture = () => {
                                             <span className="text-xl">{getCropEmoji(crop.name)}</span>
                                             <div>
                                                 <h3 className="text-base font-bold text-gray-800">{crop.name}</h3>
-                                                <span className="text-xs text-gray-500">{crop.variety}</span>
+                                                <span className="text-xs text-gray-500 block min-h-[1rem]">{crop.variety || '\u00A0'}</span>
                                             </div>
                                         </div>
                                         <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${getStatusColor(crop.status)}`}>
