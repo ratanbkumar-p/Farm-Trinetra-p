@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Leaf, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel, Bug } from 'lucide-react';
+import { Plus, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel, Bug } from 'lucide-react';
 import Table from '../components/ui/Table';
 import { motion } from 'framer-motion';
 import Modal from '../components/ui/Modal';
@@ -8,6 +8,44 @@ import { useData } from '../context/DataContext';
 import { useSettings } from '../context/SettingsContext';
 
 const LABOR_TYPES = ['Sowing', 'Weeding', 'Harvesting', 'Fertilizer Application', 'Pesticide Application', 'Irrigation', 'Other'];
+
+// Vegetable Emoji Mapping
+const VEGETABLE_EMOJIS = {
+    'spinach': '🥬', 'palak': '🥬', 'lettuce': '🥬', 'cabbage': '🥬', 'kale': '🥬',
+    'methi': '🌿', 'fenugreek': '🌿', 'coriander': '🌿', 'dhania': '🌿', 'mint': '🌿', 'pudina': '🌿',
+    'carrot': '🥕', 'gajar': '🥕',
+    'potato': '🥔', 'aloo': '🥔',
+    'radish': '🫚', 'mooli': '🫚',
+    'beetroot': '🫒', 'onion': '🧅', 'pyaz': '🧅', 'garlic': '🧄', 'lahsun': '🧄',
+    'ginger': '🫚', 'adrak': '🫚',
+    'tomato': '🍅', 'tamatar': '🍅',
+    'brinjal': '🍆', 'eggplant': '🍆', 'baingan': '🍆',
+    'cucumber': '🥒', 'kheera': '🥒', 'kakdi': '🥒',
+    'pepper': '🌶️', 'mirch': '🌶️', 'chilli': '🌶️', 'capsicum': '🫑', 'shimla': '🫑',
+    'corn': '🌽', 'makai': '🌽', 'makka': '🌽',
+    'pumpkin': '🎃', 'kaddu': '🎃',
+    'cauliflower': '🥦', 'gobi': '🥦', 'broccoli': '🥦',
+    'peas': '🫛', 'matar': '🫛',
+    'beans': '🫘', 'sem': '🫘',
+    'okra': '🥒', 'bhindi': '🥒', 'ladyfinger': '🥒',
+    'bottle gourd': '🥒', 'lauki': '🥒', 'gourd': '🥒',
+    'bitter gourd': '🥒', 'karela': '🥒',
+    'ridge gourd': '🥒', 'turai': '🥒',
+    'mushroom': '🍄',
+    'moringa': '🌿', 'drumstick': '🌿', 'sahjan': '🌿',
+    'curry': '🌿', 'neem': '🌿', 'tulsi': '🌿', 'basil': '🌿',
+    'default': '🥬'
+};
+
+const getCropEmoji = (name) => {
+    const lowerName = (name || '').toLowerCase().trim();
+    if (VEGETABLE_EMOJIS[lowerName]) return VEGETABLE_EMOJIS[lowerName];
+    for (const [key, emoji] of Object.entries(VEGETABLE_EMOJIS)) {
+        if (lowerName.includes(key) || key.includes(lowerName)) return emoji;
+    }
+    return VEGETABLE_EMOJIS['default'];
+};
+
 
 const Agriculture = () => {
     const { data, addCrop, updateCrop, deleteCrop, addCropSale, updateCropSale, addCropExpense, deleteCropSale, deleteExpense, updateExpense } = useData();
@@ -341,7 +379,7 @@ const Agriculture = () => {
                                 >
                                     <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                            <Leaf className="w-4 h-4 text-green-500" />
+                                            <span className="text-xl">{getCropEmoji(crop.name)}</span>
                                             <div>
                                                 <h3 className="text-base font-bold text-gray-800">{crop.name}</h3>
                                                 <span className="text-xs text-gray-500">{crop.variety}</span>
@@ -378,7 +416,7 @@ const Agriculture = () => {
                         })
                     ) : (
                         <div className="col-span-full text-center py-12 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                            <Leaf className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <span className="text-5xl block mx-auto mb-4 opacity-50">🥬</span>
                             <p>No crops found. Add one to get started!</p>
                         </div>
                     )}
@@ -469,7 +507,7 @@ const Agriculture = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="flex items-center gap-3">
-                    <Leaf className="w-8 h-8 text-green-500" />
+                    <span className="text-4xl">{getCropEmoji(selectedCrop.name)}</span>
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">{selectedCrop.name}</h1>
                         <p className="text-gray-500">{selectedCrop.variety} • Planted: {selectedCrop.plantedDate}</p>
