@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Apple, ArrowLeft, Edit2, Trash2, Wallet, Shovel, Bug } from 'lucide-react';
+import { Plus, ArrowLeft, Edit2, Trash2, Wallet, Shovel, Bug } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -7,6 +7,45 @@ import { useSettings } from '../context/SettingsContext';
 import { motion } from 'framer-motion';
 
 const LABOR_TYPES = ['Planting', 'Weeding', 'Harvesting', 'Fertilizer Application', 'Pesticide Application', 'Irrigation', 'Other'];
+
+// Fruit Emoji Mapping
+const FRUIT_EMOJIS = {
+    'apple': '🍎', 'seb': '🍎',
+    'banana': '🍌', 'kela': '🍌',
+    'orange': '🍊', 'santra': '🍊', 'narangi': '🍊',
+    'mango': '🥭', 'aam': '🥭',
+    'grape': '🍇', 'angoor': '🍇',
+    'watermelon': '🍉', 'tarbooz': '🍉',
+    'strawberry': '🍓',
+    'pineapple': '🍍', 'ananas': '🍍',
+    'coconut': '🥥', 'nariyal': '🥥',
+    'lemon': '🍋', 'nimbu': '🍋', 'lime': '🍋',
+    'peach': '🍑', 'aadu': '🍑',
+    'pear': '🍐', 'nashpati': '🍐',
+    'cherry': '🍒',
+    'papaya': '🍈', 'papita': '🍈',
+    'guava': '🍈', 'amrud': '🍈',
+    'pomegranate': '🫐', 'anar': '🫐',
+    'fig': '🫐', 'anjeer': '🫐',
+    'moringa': '🌿', 'drumstick': '🌿', 'sahjan': '🌿',
+    'curry': '🌿', 'neem': '🌿', 'tulsi': '🌿', 'basil': '🌿',
+    'jackfruit': '🍈', 'kathal': '🍈',
+    'chikoo': '🫐', 'sapota': '🫐', 'chickoo': '🫐',
+    'custard': '🍈', 'sitafal': '🍈', 'sharifa': '🍈',
+    'melon': '🍈', 'kharbooja': '🍈',
+    'plum': '🫐', 'aloo bukhara': '🫐',
+    'jamun': '🫐', 'berries': '🫐',
+    'default': '🍎'
+};
+
+const getFruitEmoji = (name) => {
+    const lowerName = (name || '').toLowerCase().trim();
+    if (FRUIT_EMOJIS[lowerName]) return FRUIT_EMOJIS[lowerName];
+    for (const [key, emoji] of Object.entries(FRUIT_EMOJIS)) {
+        if (lowerName.includes(key) || key.includes(lowerName)) return emoji;
+    }
+    return FRUIT_EMOJIS['default'];
+};
 
 const Fruits = () => {
     const { data, addFruit, updateFruit, deleteFruit, addFruitSale, updateFruitSale, addExpense, deleteFruitSale, deleteExpense, updateExpense } = useData();
@@ -349,7 +388,7 @@ const Fruits = () => {
                                 >
                                     <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                            <Apple className="w-4 h-4 text-red-500" />
+                                            <span className="text-xl">{getFruitEmoji(fruit.name)}</span>
                                             <div>
                                                 <h3 className="text-base font-bold text-gray-800">{fruit.name}</h3>
                                                 <span className="text-xs text-gray-500">{fruit.variety}</span>
@@ -386,7 +425,7 @@ const Fruits = () => {
                         })
                     ) : (
                         <div className="col-span-full text-center py-12 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                            <Apple className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <span className="text-5xl block mx-auto mb-4 opacity-50">🍎</span>
                             <p>No fruits found. Add one to get started!</p>
                         </div>
                     )}
@@ -475,7 +514,7 @@ const Fruits = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="flex items-center gap-3">
-                    <Apple className="w-8 h-8 text-red-500" />
+                    <span className="text-4xl">{getFruitEmoji(selectedFruit.name)}</span>
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">{selectedFruit.name}</h1>
                         <p className="text-gray-500">{selectedFruit.variety} • Planted: {selectedFruit.plantedDate}</p>
