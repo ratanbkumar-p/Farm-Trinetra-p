@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, X, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, X, Edit2, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,11 +16,13 @@ const Contacts = () => {
         location: '',
         type: 'Doctor'
     });
+    const [isSaving, setIsSaving] = useState(false);
 
     const canEdit = authCanEdit;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
             if (editingContactId) {
                 await updateContact(editingContactId, contactForm);
@@ -33,6 +35,8 @@ const Contacts = () => {
         } catch (error) {
             console.error("Error submitting contact:", error);
             alert("Failed to save contact");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -153,10 +157,20 @@ const Contacts = () => {
 
                                     <button
                                         type="submit"
-                                        className="w-full h-14 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center justify-center gap-2 mt-4"
+                                        disabled={isSaving}
+                                        className="w-full h-14 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        {editingContactId ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                                        {editingContactId ? 'Update Contact' : 'Save Contact'}
+                                        {isSaving ? (
+                                            <>
+                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            <>
+                                                {editingContactId ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                                                {editingContactId ? 'Update Contact' : 'Save Contact'}
+                                            </>
+                                        )}
                                     </button>
                                 </form>
                             </div>

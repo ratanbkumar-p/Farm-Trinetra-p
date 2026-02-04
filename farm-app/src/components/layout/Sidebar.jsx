@@ -32,6 +32,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { name: 'Settings', icon: Settings, path: '/settings' },
     ];
 
+    const filteredLinks = links;
+
     const handleLogout = async () => {
         try {
             await logout();
@@ -105,7 +107,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
 
             <nav className="flex-1 px-4 space-y-2 py-6 overflow-y-auto">
-                {links.map((link) => (
+                {filteredLinks.map((link) => (
                     <NavLink
                         key={link.path}
                         to={link.path}

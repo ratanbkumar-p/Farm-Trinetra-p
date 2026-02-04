@@ -54,7 +54,7 @@ const Navbar = () => {
     // Update active tab on route change
     useEffect(() => {
         const currentPath = location.pathname;
-        const allTabs = [...primaryTabs, ...moreTabs, { path: '/settings' }, { path: '/contacts' }];
+        const allTabs = [...primaryTabs, ...moreTabs, { path: '/settings' }, { path: '/contacts' }, { path: '/farm-contacts' }];
         const matchingTab = allTabs.find(tab => {
             if (tab.path === '/') return currentPath === '/';
             return currentPath.startsWith(tab.path);
@@ -219,24 +219,26 @@ const Navbar = () => {
                 </div>
 
                 {/* Right Actions */}
-                <div className="flex items-center gap-3 flex-shrink-0">
-                    {/* Vet Contact Button -> Link to Page */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Farm Contacts Button */}
+                    <NavLink
+                        to="/farm-contacts"
+                        className={({ isActive }) => `flex items-center justify-center gap-1.5 px-3 py-2 rounded-full transition-colors text-sm font-medium min-w-[90px] sm:min-w-[100px] ${isActive ? 'bg-blue-100 text-blue-700 shadow-inner' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'}`}
+                        title="Farm Contacts"
+                    >
+                        <Phone className="w-4 h-4" />
+                        <span className="hidden sm:inline">Contacts</span>
+                    </NavLink>
+
+                    {/* Vet Contact Button */}
                     <NavLink
                         to="/contacts"
-                        className={({ isActive }) => `hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-full ${isActive ? 'bg-blue-100 text-blue-700 shadow-inner' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'}`}
+                        className={({ isActive }) => `flex items-center justify-center gap-1.5 px-3 py-2 rounded-full transition-colors text-sm font-medium min-w-[90px] sm:min-w-[100px] ${isActive ? 'bg-blue-100 text-blue-700 shadow-inner' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'}`}
                         title="Veterinary Contacts"
                     >
                         <Stethoscope className="w-4 h-4" />
-                        <span>Vet Contact</span>
+                        <span className="hidden sm:inline">Vet</span>
                     </NavLink>
-                    {/* Mobile Vet Icon */}
-                    <Link
-                        to="/contacts"
-                        className={`md:hidden p-2.5 rounded-full transition-colors ${activeTab === '/contacts' ? 'bg-blue-100 text-blue-700 shadow-inner' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'}`}
-                        title="Veterinary Contacts"
-                    >
-                        <Stethoscope className="w-5 h-5" />
-                    </Link>
 
                     <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
 

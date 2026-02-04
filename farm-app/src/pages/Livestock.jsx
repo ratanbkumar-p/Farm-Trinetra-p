@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw, Users, ArrowRight } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw, Users, ArrowRight, Loader2 } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
@@ -40,6 +40,7 @@ const Livestock = () => {
 
     // Main Tab for Livestock view: 'active' | 'sold' | 'deceased'
     const [mainTab, setMainTab] = useState('active');
+    const [isSaving, setIsSaving] = useState(false);
 
     // Batch Detail Tab: 'animals' | 'expenses' | 'weight'
     const [batchTab, setBatchTab] = useState('animals');
@@ -167,32 +168,40 @@ const Livestock = () => {
         const count = parseInt(bulkDeceasedForm.count);
         if (isNaN(count) || count <= 0) return alert("Invalid count");
 
-        // Get sorted active active animals
-        const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+        setIsSaving(true);
+        try {
+            // Get sorted active active animals
+            const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
 
-        // Sort by ID to take "next sequence" (approximate by ID string or numeric parts)
-        // IDs: P1-1, P1-2... 
-        // We want to remove lowest numbers first? Or generally just "any N". 
-        // User said "it takes from 1 to 20". So we should sort by ID.
-        active.sort((a, b) => {
-            const numA = parseInt(a.id.split('-').pop());
-            const numB = parseInt(b.id.split('-').pop());
-            return numA - numB;
-        });
+            // Sort by ID to take "next sequence" (approximate by ID string or numeric parts)
+            // IDs: P1-1, P1-2... 
+            // We want to remove lowest numbers first? Or generally just "any N". 
+            // User said "it takes from 1 to 20". So we should sort by ID.
+            active.sort((a, b) => {
+                const numA = parseInt(a.id.split('-').pop());
+                const numB = parseInt(b.id.split('-').pop());
+                return numA - numB;
+            });
 
-        if (count > active.length) return alert(`Only ${active.length} active animals available.`);
-
-        const toUpdate = active.slice(0, count);
-        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
-            if (toUpdate.find(u => u.id === a.id)) {
-                return { ...a, status: 'Deceased', deathReason: bulkDeceasedForm.reason, notes: bulkDeceasedForm.notes };
+            if (count > active.length) {
+                setIsSaving(false);
+                return alert(`Only ${active.length} active animals available.`);
             }
-            return a;
-        });
 
-        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
-        setIsBulkDeceasedOpen(false);
-        setBulkDeceasedForm({ count: '', reason: 'Sickness', notes: '' });
+            const toUpdate = active.slice(0, count);
+            const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+                if (toUpdate.find(u => u.id === a.id)) {
+                    return { ...a, status: 'Deceased', deathReason: bulkDeceasedForm.reason, notes: bulkDeceasedForm.notes };
+                }
+                return a;
+            });
+
+            await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+            setIsBulkDeceasedOpen(false);
+            setBulkDeceasedForm({ count: '', reason: 'Sickness', notes: '' });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleBulkSale = async (e) => {
@@ -200,72 +209,85 @@ const Livestock = () => {
         const count = parseInt(bulkSaleForm.count);
         if (isNaN(count) || count <= 0) return alert("Invalid count");
 
-        const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
-        // Sort by ID
-        active.sort((a, b) => {
-            const numA = parseInt(a.id.split('-').pop());
-            const numB = parseInt(b.id.split('-').pop());
-            return numA - numB;
-        });
+        setIsSaving(true);
+        try {
+            const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+            // Sort by ID
+            active.sort((a, b) => {
+                const numA = parseInt(a.id.split('-').pop());
+                const numB = parseInt(b.id.split('-').pop());
+                return numA - numB;
+            });
 
-        if (count > active.length) return alert(`Only ${active.length} active animals available.`);
-
-        const toUpdate = active.slice(0, count);
-        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
-            if (toUpdate.find(u => u.id === a.id)) {
-                return { ...a, status: 'Sold', soldPrice: Number(bulkSaleForm.pricePerAnimal), soldDate: bulkSaleForm.soldDate };
+            if (count > active.length) {
+                setIsSaving(false);
+                return alert(`Only ${active.length} active animals available.`);
             }
-            return a;
-        });
 
-        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
-        setIsBulkSaleOpen(false);
-        setBulkSaleForm({ count: '', pricePerAnimal: '', soldDate: new Date().toISOString().split('T')[0] });
+            const toUpdate = active.slice(0, count);
+            const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+                if (toUpdate.find(u => u.id === a.id)) {
+                    return { ...a, status: 'Sold', soldPrice: Number(bulkSaleForm.pricePerAnimal), soldDate: bulkSaleForm.soldDate };
+                }
+                return a;
+            });
+
+            await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+            setIsBulkSaleOpen(false);
+            setBulkSaleForm({ count: '', pricePerAnimal: '', soldDate: new Date().toISOString().split('T')[0] });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleFlockEdit = async (e) => {
         e.preventDefault();
-        // Determine target animals based on targetGroup
-        const targetStatus = flockEditForm.targetGroup === 'Sick' ? 'Sick' : 'Healthy';
+        setIsSaving(true);
+        try {
+            // Determine target animals based on targetGroup
+            const targetStatus = flockEditForm.targetGroup === 'Sick' ? 'Sick' : 'Healthy';
 
-        // Find animals matching the target status (Healthy ones might have undefined or 'Healthy' status)
-        const targetAnimals = (selectedBatch?.animals || []).filter(a => {
-            const status = a.status || 'Healthy';
-            return status === targetStatus;
-        });
+            // Find animals matching the target status (Healthy ones might have undefined or 'Healthy' status)
+            const targetAnimals = (selectedBatch?.animals || []).filter(a => {
+                const status = a.status || 'Healthy';
+                return status === targetStatus;
+            });
 
-        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
-            const currentStatus = a.status || 'Healthy';
+            const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+                const currentStatus = a.status || 'Healthy';
 
-            // Only update animals in the target group
-            if (currentStatus === targetStatus) {
-                // Update weight history if changed
-                let newHistory = a.weightHistory || [];
-                if (flockEditForm.avgWeight && Number(flockEditForm.avgWeight) !== Number(a.weight)) {
-                    newHistory = [...newHistory, { date: new Date().toISOString().split('T')[0], weight: Number(flockEditForm.avgWeight) }];
+                // Only update animals in the target group
+                if (currentStatus === targetStatus) {
+                    // Update weight history if changed
+                    let newHistory = a.weightHistory || [];
+                    if (flockEditForm.avgWeight && Number(flockEditForm.avgWeight) !== Number(a.weight)) {
+                        newHistory = [...newHistory, { date: new Date().toISOString().split('T')[0], weight: Number(flockEditForm.avgWeight) }];
+                    }
+
+                    // Preserve existing fields if form value is empty/null, otherwise update
+                    return {
+                        ...a,
+                        weight: flockEditForm.avgWeight ? Number(flockEditForm.avgWeight) : a.weight,
+                        // Only update status if explicitly changed (though usually this edit is for attributes, not status change)
+                        // status: flockEditForm.status || a.status, 
+                        // Revised: If we are 'treating' sick animals, maybe we just update weight/notes, not status here. 
+                        // Status change is handled by Transition.
+
+                        weightHistory: newHistory,
+                        // Apply new fields
+                        purchaseCost: flockEditForm.avgCost ? Number(flockEditForm.avgCost) : a.purchaseCost,
+                        boughtDate: flockEditForm.boughtDate || a.boughtDate,
+                        notes: flockEditForm.notes ? (a.notes ? a.notes + '; ' + flockEditForm.notes : flockEditForm.notes) : a.notes
+                    };
                 }
+                return a;
+            });
 
-                // Preserve existing fields if form value is empty/null, otherwise update
-                return {
-                    ...a,
-                    weight: flockEditForm.avgWeight ? Number(flockEditForm.avgWeight) : a.weight,
-                    // Only update status if explicitly changed (though usually this edit is for attributes, not status change)
-                    // status: flockEditForm.status || a.status, 
-                    // Revised: If we are 'treating' sick animals, maybe we just update weight/notes, not status here. 
-                    // Status change is handled by Transition.
-
-                    weightHistory: newHistory,
-                    // Apply new fields
-                    purchaseCost: flockEditForm.avgCost ? Number(flockEditForm.avgCost) : a.purchaseCost,
-                    boughtDate: flockEditForm.boughtDate || a.boughtDate,
-                    notes: flockEditForm.notes ? (a.notes ? a.notes + '; ' + flockEditForm.notes : flockEditForm.notes) : a.notes
-                };
-            }
-            return a;
-        });
-
-        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
-        setIsFlockEditOpen(false);
+            await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+            setIsFlockEditOpen(false);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleSickTransition = async (e) => {
@@ -273,32 +295,40 @@ const Livestock = () => {
         const count = parseInt(sickTransitionForm.count);
         if (isNaN(count) || count <= 0) return alert("Invalid count");
 
-        // Filter source animals (Healthy or Sick)
-        const sourceAnimals = (selectedBatch?.animals || []).filter(a => {
-            const status = a.status || 'Healthy';
-            return status === sickTransitionForm.fromStatus;
-        });
+        setIsSaving(true);
+        try {
+            // Filter source animals (Healthy or Sick)
+            const sourceAnimals = (selectedBatch?.animals || []).filter(a => {
+                const status = a.status || 'Healthy';
+                return status === sickTransitionForm.fromStatus;
+            });
 
-        // Sort by ID to take next available
-        sourceAnimals.sort((a, b) => {
-            const numA = parseInt(a.id.split('-').pop());
-            const numB = parseInt(b.id.split('-').pop());
-            return numA - numB;
-        });
+            // Sort by ID to take next available
+            sourceAnimals.sort((a, b) => {
+                const numA = parseInt(a.id.split('-').pop());
+                const numB = parseInt(b.id.split('-').pop());
+                return numA - numB;
+            });
 
-        if (count > sourceAnimals.length) return alert(`Only ${sourceAnimals.length} animals available in ${sickTransitionForm.fromStatus} state.`);
-
-        const toUpdate = sourceAnimals.slice(0, count);
-        const updatedAnimals = (selectedBatch?.animals || []).map(a => {
-            if (toUpdate.find(u => u.id === a.id)) {
-                return { ...a, status: sickTransitionForm.toStatus, notes: sickTransitionForm.notes ? (a.notes ? a.notes + '; ' + sickTransitionForm.notes : sickTransitionForm.notes) : a.notes };
+            if (count > sourceAnimals.length) {
+                setIsSaving(false);
+                return alert(`Only ${sourceAnimals.length} animals available in ${sickTransitionForm.fromStatus} state.`);
             }
-            return a;
-        });
 
-        await updateBatch(selectedBatch.id, { animals: updatedAnimals });
-        setIsSickTransitionOpen(false);
-        setSickTransitionForm({ count: '', fromStatus: '', toStatus: '', notes: '' });
+            const toUpdate = sourceAnimals.slice(0, count);
+            const updatedAnimals = (selectedBatch?.animals || []).map(a => {
+                if (toUpdate.find(u => u.id === a.id)) {
+                    return { ...a, status: sickTransitionForm.toStatus, notes: sickTransitionForm.notes ? (a.notes ? a.notes + '; ' + sickTransitionForm.notes : sickTransitionForm.notes) : a.notes };
+                }
+                return a;
+            });
+
+            await updateBatch(selectedBatch.id, { animals: updatedAnimals });
+            setIsSickTransitionOpen(false);
+            setSickTransitionForm({ count: '', fromStatus: '', toStatus: '', notes: '' });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
 
@@ -386,7 +416,7 @@ const Livestock = () => {
         : (totalActiveAnimals > 0 ? monthlyGeneralExpenses / totalActiveAnimals : 0);
 
     // --- HANDLERS ---
-    const handleBatchSubmit = (e) => {
+    const handleBatchSubmit = async (e) => {
         e.preventDefault();
 
         // Validation: Cannot complete if there are active animals
@@ -401,34 +431,39 @@ const Livestock = () => {
             }
         }
 
-        if (selectedBatch) {
-            updateBatch(selectedBatch.id, batchForm);
-        } else {
-            // New Batch: Generate Short ID (G1, S1, P1, C1...)
-            // 1. Get Prefix
-            const typePrefixMap = { 'Goat': 'G', 'Sheep': 'S', 'Poultry': 'P', 'Chicken': 'P', 'Cow': 'C' }; // Mapping Poultry/Chicken to P as per user
-            const prefix = typePrefixMap[batchForm.type] || batchForm.type[0].toUpperCase();
+        setIsSaving(true);
+        try {
+            if (selectedBatch) {
+                await updateBatch(selectedBatch.id, batchForm);
+            } else {
+                // New Batch: Generate Short ID (G1, S1, P1, C1...)
+                // 1. Get Prefix
+                const typePrefixMap = { 'Goat': 'G', 'Sheep': 'S', 'Poultry': 'P', 'Chicken': 'P', 'Cow': 'C' }; // Mapping Poultry/Chicken to P as per user
+                const prefix = typePrefixMap[batchForm.type] || batchForm.type[0].toUpperCase();
 
-            // 2. Count existing batches of this type
-            const existingCount = data.batches.filter(b => {
-                // Match type strictly? Or match prefix? 
-                // If user mixes 'Chicken' and 'Poultry', they should share sequence if mapped to 'P'
-                // But wait, existing batches might not have shortId. 
-                // So we rely on 'type'. 
-                // If batchForm.type is 'Chicken', we count 'Chicken' and 'Poultry'?
-                if (batchForm.type === 'Chicken' || batchForm.type === 'Poultry') {
-                    return b.type === 'Chicken' || b.type === 'Poultry';
-                }
-                return b.type === batchForm.type;
-            }).length;
+                // 2. Count existing batches of this type
+                const existingCount = data.batches.filter(b => {
+                    // Match type strictly? Or match prefix? 
+                    // If user mixes 'Chicken' and 'Poultry', they should share sequence if mapped to 'P'
+                    // But wait, existing batches might not have shortId. 
+                    // So we rely on 'type'. 
+                    // If batchForm.type is 'Chicken', we count 'Chicken' and 'Poultry'?
+                    if (batchForm.type === 'Chicken' || batchForm.type === 'Poultry') {
+                        return b.type === 'Chicken' || b.type === 'Poultry';
+                    }
+                    return b.type === batchForm.type;
+                }).length;
 
-            const nextNum = existingCount + 1;
-            const newShortId = `${prefix}${nextNum}`;
+                const nextNum = existingCount + 1;
+                const newShortId = `${prefix}${nextNum}`;
 
-            addBatch({ ...batchForm, shortId: newShortId });
+                await addBatch({ ...batchForm, shortId: newShortId });
+            }
+            setIsBatchModalOpen(false);
+            setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising', color: '#3B82F6' });
+        } finally {
+            setIsSaving(false);
         }
-        setIsBatchModalOpen(false);
-        setBatchForm({ name: '', type: 'Goat', startDate: '', status: 'Raising', color: '#3B82F6' });
     };
 
     const handleMigrateIds = async () => {
@@ -486,6 +521,7 @@ const Livestock = () => {
 
     const handleAnimalSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
             // Construct Age String
             // Construct Age String
@@ -710,6 +746,8 @@ const Livestock = () => {
             setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', ageYears: '', ageMonths: '', ageDays: '', category: 'Kid', date: new Date().toISOString().split('T')[0] });
         } catch (error) {
             console.error('Error adding animals:', error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -723,36 +761,39 @@ const Livestock = () => {
         e.preventDefault();
         if (!selectedBatch) return;
 
-        let recordName = medicalForm.name === 'Other' ? medicalForm.otherName : medicalForm.name;
-
-        // For De-worming, auto-set name if empty
-        if (medicalForm.type === 'De-worming') {
-            recordName = recordName || "De-worming";
-        }
-
-        if (!recordName) {
-            alert("Please select or enter a medicine name");
-            return;
-        }
-
-        // Determine Target Animals using explicit state
-        let targetIds = [];
-        if (medicalTargetMode === 'All') {
-            targetIds = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').map(a => a.id);
-        } else if (medicalTargetMode === 'ActiveFlock') {
-            targetIds = (selectedBatch.animals || []).filter(a => (a.status === 'Healthy' || !a.status) && a.status !== 'Sold' && a.status !== 'Deceased' && a.status !== 'Sick').map(a => a.id);
-        } else if (medicalTargetMode === 'SickBay') {
-            targetIds = (selectedBatch.animals || []).filter(a => a.status === 'Sick').map(a => a.id);
-        } else {
-            targetIds = selectedMedicalAnimals;
-        }
-
-        if (targetIds.length === 0) {
-            alert("No animals selected for this record.");
-            return;
-        }
-
+        setIsSaving(true);
         try {
+            let recordName = medicalForm.name === 'Other' ? medicalForm.otherName : medicalForm.name;
+
+            // For De-worming, auto-set name if empty
+            if (medicalForm.type === 'De-worming') {
+                recordName = recordName || "De-worming";
+            }
+
+            if (!recordName) {
+                setIsSaving(false);
+                alert("Please select or enter a medicine name");
+                return;
+            }
+
+            // Determine Target Animals using explicit state
+            let targetIds = [];
+            if (medicalTargetMode === 'All') {
+                targetIds = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').map(a => a.id);
+            } else if (medicalTargetMode === 'ActiveFlock') {
+                targetIds = (selectedBatch.animals || []).filter(a => (a.status === 'Healthy' || !a.status) && a.status !== 'Sold' && a.status !== 'Deceased' && a.status !== 'Sick').map(a => a.id);
+            } else if (medicalTargetMode === 'SickBay') {
+                targetIds = (selectedBatch.animals || []).filter(a => a.status === 'Sick').map(a => a.id);
+            } else {
+                targetIds = selectedMedicalAnimals;
+            }
+
+            if (targetIds.length === 0) {
+                setIsSaving(false);
+                alert("No animals selected for this record.");
+                return;
+            }
+
             if (editingMedicalRecordId) {
                 // UPDATE Existing Record
                 const originalRecord = (selectedBatch.medical || []).find(r => r.id === editingMedicalRecordId);
@@ -848,6 +889,8 @@ const Livestock = () => {
         } catch (err) {
             console.error("Error saving medical record:", err);
             alert("Failed to save: " + err.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -866,35 +909,40 @@ const Livestock = () => {
 
     const handleExpenseSubmit = async (e) => {
         e.preventDefault();
-        if (selectedBatch) {
-            if (editingBatchExpense) {
-                // Edit Mode
-                await updateExpense(editingBatchExpense.id, {
-                    ...expenseForm,
-                    amount: Number(expenseForm.amount),
-                    category: expenseForm.type
-                });
-                setEditingBatchExpense(null);
-            } else {
-                // Add Mode
-                // FIX: Use addExpense from context to ensure it syncs to global expenses
-                // The context function handles adding to 'expenses' collection AND updating the 'batch' document
-                await addExpense({
-                    ...expenseForm,
-                    amount: Number(expenseForm.amount), // Ensure number
-                    category: expenseForm.type, // Map type to category
-                    batchId: selectedBatch.id,
-                    date: expenseForm.date || new Date().toISOString().split('T')[0]
-                });
+        setIsSaving(true);
+        try {
+            if (selectedBatch) {
+                if (editingBatchExpense) {
+                    // Edit Mode
+                    await updateExpense(editingBatchExpense.id, {
+                        ...expenseForm,
+                        amount: Number(expenseForm.amount),
+                        category: expenseForm.type
+                    });
+                    setEditingBatchExpense(null);
+                } else {
+                    // Add Mode
+                    // FIX: Use addExpense from context to ensure it syncs to global expenses
+                    // The context function handles adding to 'expenses' collection AND updating the 'batch' document
+                    await addExpense({
+                        ...expenseForm,
+                        amount: Number(expenseForm.amount), // Ensure number
+                        category: expenseForm.type, // Map type to category
+                        batchId: selectedBatch.id,
+                        date: expenseForm.date || new Date().toISOString().split('T')[0]
+                    });
+                }
             }
+            setIsExpenseModalOpen(false);
+            setExpenseForm({
+                type: 'Feed',
+                description: '',
+                amount: '',
+                date: new Date().toISOString().split('T')[0]
+            });
+        } finally {
+            setIsSaving(false);
         }
-        setIsExpenseModalOpen(false);
-        setExpenseForm({
-            type: 'Feed',
-            description: '',
-            amount: '',
-            date: new Date().toISOString().split('T')[0]
-        });
     };
 
     const handleDeleteBatch = async () => {
@@ -908,6 +956,7 @@ const Livestock = () => {
     const handleContactSubmit = async (e) => {
         e.preventDefault();
         console.log("Submitting contact:", contactForm);
+        setIsSaving(true);
         try {
             await addContact(contactForm);
             alert("Contact Added Successfully!");
@@ -916,6 +965,8 @@ const Livestock = () => {
         } catch (error) {
             console.error("Error adding contact:", error);
             alert("Failed to add contact: " + error.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -1038,9 +1089,14 @@ const Livestock = () => {
         const total = Number(sellForm.totalPrice);
         const pricePerAnimal = count > 0 ? Math.round(total / count) : 0;
 
-        // Use the selected IDs
-        await sellSelectedAnimals(selectedBatch.id, selectedAnimalsToSell, pricePerAnimal);
-        setIsSellModalOpen(false);
+        setIsSaving(true);
+        try {
+            // Use the selected IDs
+            await sellSelectedAnimals(selectedBatch.id, selectedAnimalsToSell, pricePerAnimal);
+            setIsSellModalOpen(false);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const toggleAnimalSelection = (id) => {
@@ -1067,6 +1123,7 @@ const Livestock = () => {
             return;
         }
 
+        setIsSaving(true);
         try {
             const newWeight = Number(weightForm.weight);
             const date = weightForm.date;
@@ -1103,6 +1160,8 @@ const Livestock = () => {
             setWeightForm({ weight: '', date: new Date().toISOString().split('T')[0] });
         } catch (error) {
             console.error("Error saving weight:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -1271,6 +1330,73 @@ const Livestock = () => {
                         <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed</button>
                     </div>
 
+                    {/* Batch Summary Cards - Hide Financials for Vets */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        {/* 1. Date */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Start Date</div>
+                            <div className="font-bold text-gray-800 flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-blue-500" />
+                                {selectedBatch.startDate}
+                            </div>
+                        </div>
+
+                        {/* 2. Age */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Batch Age</div>
+                            <div className="font-bold text-purple-600">
+                                {formatAge(ageStats.years, ageStats.months, ageStats.days)}
+                            </div>
+                        </div>
+
+                        {/* 3. Investment - Hide for Vets */}
+                        {/* 3. Investment - Hide for Vets */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Investment</div>
+                            <div className="font-bold text-gray-800">₹{Math.round(batchFinancials.investment).toLocaleString('en-IN')}</div>
+                            <div className="text-[10px] text-gray-400 mt-1">
+                                Pur: ₹{Math.round(batchFinancials.purchase).toLocaleString()} + Exp: ₹{Math.round(batchFinancials.expenses).toLocaleString()}
+                            </div>
+                        </div>
+
+                        {/* 4. Current Value - Hide for Vets */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Current Value</div>
+                            <div className="font-bold text-green-600">₹{Math.round(batchFinancials.currentValue).toLocaleString('en-IN')}</div>
+                            <div className={`text-[10px] font-bold mt-1 ${batchFinancials.roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {batchFinancials.roi >= 0 ? '+' : ''}{batchFinancials.roi.toFixed(1)}% ROI
+                            </div>
+                        </div>
+
+                        {/* Vet-Specific Filler Card if needed? Or just let grid reflow (cols-4 works fine with 2 items? No, it will leave gaps) */}
+
+
+                    </div>
+
+                    {/* Tabs Navigation - Hide Expenses for Vets */}
+                    <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
+                        <button
+                            onClick={() => setBatchTab('animals')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${batchTab === 'animals' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Animals List
+                        </button>
+                        <button
+                            onClick={() => setBatchTab('expenses')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${batchTab === 'expenses' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Expenses
+                        </button>
+                        <button
+                            onClick={() => setBatchTab('weight')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${batchTab === 'weight' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Weight History
+                        </button>
+                    </div>
+
+                    {/* Summary Stats */}
+                    {/* Summary Stats - Hide for Vets */}
                     {/* Summary Stats */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
@@ -1292,6 +1418,7 @@ const Livestock = () => {
                             </p>
                         </div>
                     </div>
+
 
                     {/* Sold Animals Hierarchical View */}
                     <div className="space-y-4">
@@ -1770,7 +1897,9 @@ const Livestock = () => {
                         </div>
                         <div className="flex justify-end gap-3 mt-6">
                             <button type="button" onClick={() => setIsBatchModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Create Batch</button>
+                            <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating...</> : 'Create Batch'}
+                            </button>
                         </div>
                     </form>
                 </Modal>
@@ -1870,8 +1999,8 @@ const Livestock = () => {
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                             <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                                Confirm Sale (₹ {(Number(sellForm.pricePerAnimal) * selectedAnimalsToSell.length).toLocaleString()})
+                            <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing Sale...</> : <>Confirm Sale (₹ {(Number(sellForm.pricePerAnimal) * selectedAnimalsToSell.length).toLocaleString()})</>}
                             </button>
                         </div>
                     </form>
@@ -1906,6 +2035,7 @@ const Livestock = () => {
                             {selectedBatch.shortId && <span className="px-3 py-1 bg-gray-100 text-gray-500 text-sm rounded-lg border border-gray-200 font-mono">#{selectedBatch.shortId}</span>}
                         </h1>
                         <button onClick={() => openBatchModal(selectedBatch)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><Edit2 className="w-4 h-4" /></button>
+                        {/* Sell Button - Now in Header */}
                         {/* Sell Button - Now in Header */}
                         {activeAnimals.length > 0 && (
                             <button onClick={openSellModal} className="p-2 text-green-600 hover:bg-green-50 rounded-full transition-colors flex items-center gap-1" title="Sell Animals">
@@ -3044,7 +3174,9 @@ const Livestock = () => {
                             </button>
                         )}
                         <button type="button" onClick={() => setIsAnimalModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">{editingAnimalId ? 'Save Changes' : 'Add Animals'}</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : (editingAnimalId ? 'Save Changes' : 'Add Animals')}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3076,7 +3208,9 @@ const Livestock = () => {
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">{editingBatchExpense ? "Update Expense" : "Add Expense"}</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : (editingBatchExpense ? "Update Expense" : "Add Expense")}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3108,7 +3242,9 @@ const Livestock = () => {
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsWeightModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Record</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Save Record'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3161,8 +3297,8 @@ const Livestock = () => {
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            Confirm Sale ({selectedAnimalsToSell.length})
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</> : `Confirm Sale (${selectedAnimalsToSell.length})`}
                         </button>
                     </div>
                 </form>
@@ -3226,7 +3362,9 @@ const Livestock = () => {
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsBatchModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Update Batch</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Updating...</> : 'Update Batch'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3411,7 +3549,9 @@ const Livestock = () => {
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsMedicalModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">Save Record</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Save Record'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3460,7 +3600,9 @@ const Livestock = () => {
                     </div>
                     <div className="flex justify-end gap-3 pt-4">
                         <button type="button" onClick={() => setIsBulkDeceasedOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm Deceased</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Confirming...</> : 'Confirm Deceased'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3508,7 +3650,9 @@ const Livestock = () => {
                     </div>
                     <div className="flex justify-end gap-3 pt-4">
                         <button type="button" onClick={() => setIsBulkSaleOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm Sale</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</> : 'Confirm Sale'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3580,7 +3724,9 @@ const Livestock = () => {
 
                     <div className="flex justify-end gap-3 pt-4">
                         <button type="button" onClick={() => setIsFlockEditOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Update Flock</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Updating...</> : 'Update Flock'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -3621,8 +3767,8 @@ const Livestock = () => {
 
                     <div className="flex justify-end gap-3 pt-4">
                         <button type="button" onClick={() => setIsSickTransitionOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className={`px-4 py-2 text-white rounded-lg ${sickTransitionForm.toStatus === 'Sick' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-                            Confirm Move
+                        <button type="submit" disabled={isSaving} className={`px-4 py-2 text-white rounded-lg ${sickTransitionForm.toStatus === 'Sick' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} disabled:opacity-50 disabled:cursor-not-allowed flex items-center`}>
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Moving...</> : 'Confirm Move'}
                         </button>
                     </div>
                 </form>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, UserCheck, Phone, ChevronDown, ChevronUp, Camera, Upload, CreditCard, Wallet, Calendar, DollarSign, Trash2, ShieldCheck, User, Edit2 } from 'lucide-react';
+import { Plus, UserCheck, Phone, ChevronDown, ChevronUp, Camera, Upload, CreditCard, Wallet, Calendar, DollarSign, Trash2, ShieldCheck, User, Edit2, Loader2 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +13,7 @@ const Employees = () => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [expandedId, setExpandedId] = useState(null);
     const [selectedEmployeeForPayment, setSelectedEmployeeForPayment] = useState(null);
     const [selectedEmployeeForEdit, setSelectedEmployeeForEdit] = useState(null);
@@ -67,37 +68,52 @@ const Employees = () => {
 
     const handleAdd = async (e) => {
         e.preventDefault();
-        await addEmployee({
-            ...newEmployee,
-            salary: parseFloat(newEmployee.salary),
-            payments: []
-        });
-        setIsAddModalOpen(false);
-        setNewEmployee({ id: '', name: '', role: 'Helper', phone: '', salary: '', aadhar: '', photo: null, status: 'Active', employedSince: new Date().toISOString().split('T')[0] });
+        setIsSaving(true);
+        try {
+            await addEmployee({
+                ...newEmployee,
+                salary: parseFloat(newEmployee.salary),
+                payments: []
+            });
+            setIsAddModalOpen(false);
+            setNewEmployee({ id: '', name: '', role: 'Helper', phone: '', salary: '', aadhar: '', photo: null, status: 'Active', employedSince: new Date().toISOString().split('T')[0] });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleAddPayment = async (e) => {
         e.preventDefault();
-        if (selectedEmployeeForPayment) {
-            await addEmployeePayment(selectedEmployeeForPayment.id, {
-                ...paymentForm,
-                amount: parseFloat(paymentForm.amount),
-                date: new Date().toISOString()
-            });
-            setIsPaymentModalOpen(false);
-            setPaymentForm({ type: 'Salary', amount: '', month: new Date().toISOString().slice(0, 7), note: '' });
+        setIsSaving(true);
+        try {
+            if (selectedEmployeeForPayment) {
+                await addEmployeePayment(selectedEmployeeForPayment.id, {
+                    ...paymentForm,
+                    amount: parseFloat(paymentForm.amount),
+                    date: new Date().toISOString()
+                });
+                setIsPaymentModalOpen(false);
+                setPaymentForm({ type: 'Salary', amount: '', month: new Date().toISOString().slice(0, 7), note: '' });
+            }
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleEdit = async (e) => {
         e.preventDefault();
-        if (selectedEmployeeForEdit) {
-            await updateEmployee(selectedEmployeeForEdit.id, {
-                ...editForm,
-                salary: parseFloat(editForm.salary)
-            });
-            setIsEditModalOpen(false);
-            setExpandedId(null);
+        setIsSaving(true);
+        try {
+            if (selectedEmployeeForEdit) {
+                await updateEmployee(selectedEmployeeForEdit.id, {
+                    ...editForm,
+                    salary: parseFloat(editForm.salary)
+                });
+                setIsEditModalOpen(false);
+                setExpandedId(null);
+            }
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -444,8 +460,13 @@ const Employees = () => {
                         <input required type="date" value={newEmployee.employedSince} onChange={e => setNewEmployee({ ...newEmployee, employedSince: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
 
-                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0">
-                        Register Employee
+                    <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Register Employee'}
                     </button>
                 </form>
             </Modal>
@@ -495,8 +516,13 @@ const Employees = () => {
                         </div>
                     )}
 
-                    <button type="submit" className={`w-full text-white py-4 rounded-xl font-black text-lg shadow-lg transition-all ${paymentForm.type === 'Salary' ? 'bg-green-600 shadow-green-100 hover:bg-green-700' : 'bg-amber-600 shadow-amber-100 hover:bg-amber-700'}`}>
-                        Confirm {paymentForm.type} Entry
+                    <button type="submit" disabled={isSaving} className={`w-full text-white py-4 rounded-xl font-black text-lg shadow-lg transition-all ${paymentForm.type === 'Salary' ? 'bg-green-600 shadow-green-100 hover:bg-green-700' : 'bg-amber-600 shadow-amber-100 hover:bg-amber-700'} disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}>
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                                Saving...
+                            </>
+                        ) : `Confirm ${paymentForm.type} Entry`}
                     </button>
                 </form>
             </Modal>
@@ -583,8 +609,13 @@ const Employees = () => {
                         </div>
                     </div>
 
-                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0">
-                        Update Employee Details
+                    <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Update Employee Details'}
                     </button>
                     {isSuperAdmin && (
                         <button

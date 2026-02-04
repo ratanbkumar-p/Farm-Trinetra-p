@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, ArrowLeft, Edit2, Trash2, Wallet, Shovel, Bug } from 'lucide-react';
+import { Plus, ArrowLeft, Edit2, Trash2, Wallet, Shovel, Bug, Loader2 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -63,6 +63,7 @@ const Fruits = () => {
     const [editingSale, setEditingSale] = useState(null);
     const [editingExpense, setEditingExpense] = useState(null);
     const [fruitTab, setFruitTab] = useState('sales'); // 'sales' | 'labor' | 'pesticides'
+    const [isSaving, setIsSaving] = useState(false);
 
     // Forms
     const [fruitForm, setFruitForm] = useState({
@@ -188,14 +189,19 @@ const Fruits = () => {
         setIsFruitModalOpen(true);
     };
 
-    const handleFruitSubmit = (e) => {
+    const handleFruitSubmit = async (e) => {
         e.preventDefault();
-        if (isEditMode) {
-            updateFruit(fruitForm.id, fruitForm);
-        } else {
-            addFruit(fruitForm);
+        setIsSaving(true);
+        try {
+            if (isEditMode) {
+                await updateFruit(fruitForm.id, fruitForm);
+            } else {
+                await addFruit(fruitForm);
+            }
+            setIsFruitModalOpen(false);
+        } finally {
+            setIsSaving(false);
         }
-        setIsFruitModalOpen(false);
     };
 
     const openEditSaleModal = (sale) => {
@@ -204,21 +210,26 @@ const Fruits = () => {
         setIsSaleModalOpen(true);
     };
 
-    const handleSaleSubmit = (e) => {
+    const handleSaleSubmit = async (e) => {
         e.preventDefault();
-        if (editingSale) {
-            updateFruitSale(selectedFruit.id, editingSale.id, saleForm);
-        } else {
-            addFruitSale(selectedFruit.id, saleForm);
+        setIsSaving(true);
+        try {
+            if (editingSale) {
+                await updateFruitSale(selectedFruit.id, editingSale.id, saleForm);
+            } else {
+                await addFruitSale(selectedFruit.id, saleForm);
+            }
+            setIsSaleModalOpen(false);
+            setEditingSale(null);
+            setSaleForm({
+                date: new Date().toISOString().split('T')[0],
+                quantity: '',
+                unit: 'kg',
+                amount: ''
+            });
+        } finally {
+            setIsSaving(false);
         }
-        setIsSaleModalOpen(false);
-        setEditingSale(null);
-        setSaleForm({
-            date: new Date().toISOString().split('T')[0],
-            quantity: '',
-            unit: 'kg',
-            amount: ''
-        });
     };
 
     const openEditExpenseModal = (expense) => {
@@ -232,77 +243,87 @@ const Fruits = () => {
         setIsLaborModalOpen(true);
     };
 
-    const handleLaborSubmit = (e) => {
+    const handleLaborSubmit = async (e) => {
         e.preventDefault();
-        const expenseData = {
-            date: laborForm.date,
-            category: laborForm.laborType,
-            description: `${selectedFruit?.name || 'Fruit'}: ${laborForm.description || laborForm.laborType}`,
-            amount: Number(laborForm.amount),
-            paidTo: 'Labor',
-            fruitId: selectedFruit.id
-        };
+        setIsSaving(true);
+        try {
+            const expenseData = {
+                date: laborForm.date,
+                category: laborForm.laborType,
+                description: `${selectedFruit?.name || 'Fruit'}: ${laborForm.description || laborForm.laborType}`,
+                amount: Number(laborForm.amount),
+                paidTo: 'Labor',
+                fruitId: selectedFruit.id
+            };
 
-        if (editingExpense) {
-            updateExpense(editingExpense.id, expenseData);
-        } else {
-            addExpense(expenseData);
+            if (editingExpense) {
+                await updateExpense(editingExpense.id, expenseData);
+            } else {
+                await addExpense(expenseData);
+            }
+            setIsLaborModalOpen(false);
+            setEditingExpense(null);
+            setLaborForm({
+                date: new Date().toISOString().split('T')[0],
+                laborType: 'Planting',
+                description: '',
+                amount: ''
+            });
+        } finally {
+            setIsSaving(false);
         }
-        setIsLaborModalOpen(false);
-        setEditingExpense(null);
-        setLaborForm({
-            date: new Date().toISOString().split('T')[0],
-            laborType: 'Planting',
-            description: '',
-            amount: ''
-        });
     };
 
     const handlePesticideSubmit = async (e) => {
         e.preventDefault();
-        const pestName = pesticideForm.pesticideName === 'Other' ? pesticideForm.otherName : pesticideForm.pesticideName;
-        if (!pestName) {
-            alert('Please select or enter a pesticide name');
-            return;
-        }
+        setIsSaving(true);
+        try {
+            const pestName = pesticideForm.pesticideName === 'Other' ? pesticideForm.otherName : pesticideForm.pesticideName;
+            if (!pestName) {
+                alert('Please select or enter a pesticide name');
+                return;
+            }
 
-        // Add to fruit's pesticides array
-        let expenseId = null;
-        if (pesticideForm.cost) {
-            expenseId = await addExpense({
+            // Add to fruit's pesticides array
+            let expenseId = null;
+            if (pesticideForm.cost) {
+                expenseId = await addExpense({
+                    date: pesticideForm.date,
+                    category: 'Pesticide Purchase', // Changed to distinguish from Application Labor
+                    description: `${selectedFruit?.name || 'Fruit'}: ${pestName} (Material)`,
+                    amount: Number(pesticideForm.cost),
+                    paidTo: 'Pesticide',
+                    fruitId: selectedFruit.id
+                });
+            }
+
+            const pestRecord = {
+                id: Date.now().toString(),
                 date: pesticideForm.date,
-                category: 'Pesticide Purchase', // Changed to distinguish from Application Labor
-                description: `${selectedFruit?.name || 'Fruit'}: ${pestName} (Material)`,
-                amount: Number(pesticideForm.cost),
-                paidTo: 'Pesticide',
-                fruitId: selectedFruit.id
+                name: pestName,
+                quantity: pesticideForm.quantity,
+                unit: pesticideForm.unit,
+                cost: Number(pesticideForm.cost) || 0,
+                notes: pesticideForm.notes,
+                expenseId: expenseId // Link to global expense
+            };
+
+            const updatedPesticides = [...(selectedFruit.pesticides || []), pestRecord];
+            updateFruit(selectedFruit.id, { ...selectedFruit, pesticides: updatedPesticides });
+
+            setIsPesticideModalOpen(false);
+            setPesticideForm({
+                date: new Date().toISOString().split('T')[0],
+                pesticideName: '',
+                otherName: '',
+                quantity: '',
+                unit: 'liters',
+                cost: '',
+                notes: ''
             });
+        } finally {
+            setIsSaving(false);
         }
-
-        const pestRecord = {
-            id: Date.now().toString(),
-            date: pesticideForm.date,
-            name: pestName,
-            quantity: pesticideForm.quantity,
-            unit: pesticideForm.unit,
-            cost: Number(pesticideForm.cost) || 0,
-            notes: pesticideForm.notes,
-            expenseId: expenseId // Link to global expense
-        };
-
-        const updatedPesticides = [...(selectedFruit.pesticides || []), pestRecord];
-        updateFruit(selectedFruit.id, { ...selectedFruit, pesticides: updatedPesticides });
-
-        setIsPesticideModalOpen(false);
-        setPesticideForm({
-            date: new Date().toISOString().split('T')[0],
-            pesticideName: '',
-            otherName: '',
-            quantity: '',
-            unit: 'liters',
-            cost: '',
-            notes: ''
-        });
     };
 
     // --- FRUIT LIST VIEW ---
@@ -491,8 +512,19 @@ const Fruits = () => {
                                 <option value="Harvested">Harvested</option>
                             </select>
                         </div>
-                        <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
-                            {isEditMode ? 'Update Fruit' : 'Add Fruit'}
+                        <button
+                            type="submit"
+                            disabled={isSaving}
+                            className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                isEditMode ? 'Update Fruit' : 'Add Fruit'
+                            )}
                         </button>
                     </form>
                 </Modal>
@@ -820,8 +852,17 @@ const Fruits = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                        Record Sale
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Record Sale'}
                     </button>
                 </form>
             </Modal>
@@ -881,8 +922,17 @@ const Fruits = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-orange-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors">
-                        Add Labor Expense
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Add Labor Expense'}
                     </button>
                 </form>
             </Modal>
@@ -973,8 +1023,17 @@ const Fruits = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-yellow-600 text-white py-3 rounded-xl font-bold hover:bg-yellow-700 transition-colors">
-                        Add Pesticide Record
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-yellow-600 text-white py-3 rounded-xl font-bold hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Add Pesticide Record'}
                     </button>
                 </form>
             </Modal>
@@ -1045,8 +1104,17 @@ const Fruits = () => {
                             <option value="Harvested">Harvested</option>
                         </select>
                     </div>
-                    <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
-                        Update Fruit
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Update Fruit'}
                     </button>
                 </form>
             </Modal>

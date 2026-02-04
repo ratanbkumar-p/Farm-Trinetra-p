@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, AlertTriangle, ChevronDown, ChevronUp, Sprout, DollarSign, Bell, Clock, Users } from 'lucide-react';
+import { Activity, AlertTriangle, ChevronDown, ChevronUp, Sprout, DollarSign, Bell, Clock, Users, TrendingUp } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useSettings } from '../context/SettingsContext';
 import { getMonthsBetween, calculateMonthlyAllocations } from '../lib/allocationUtils';
@@ -227,10 +227,10 @@ const Dashboard = () => {
 
     // --- Unified Expenses (excludes yearly and salaries - those are calculated separately) ---
     const unifiedExpenses = useMemo(() => {
-        const all = [...data.expenses];
-        const globalIds = new Set(data.expenses.map(e => e.id));
+        const all = [...(data.expenses || [])];
+        const globalIds = new Set((data.expenses || []).map(e => e.id));
 
-        data.batches.forEach(batch => {
+        (data.batches || []).forEach(batch => {
             (batch.expenses || []).forEach(localExp => {
                 if (!globalIds.has(localExp.id)) {
                     all.push({
@@ -260,7 +260,7 @@ const Dashboard = () => {
     const getAggregatedLivestock = (types) => {
         // Accept single type or array of types (for Chicken/Poultry)
         const typeArray = Array.isArray(types) ? types : [types];
-        const batches = data.batches.filter(b => typeArray.includes(b.type) && b.status !== 'Completed' && b.status !== 'Archived');
+        const batches = (data.batches || []).filter(b => typeArray.includes(b.type) && b.status !== 'Completed' && b.status !== 'Archived');
         let activeCount = 0, deceasedCount = 0, boughtCost = 0, directExpenses = 0, allocatedExpenses = 0, totalStartCount = 0;
 
         batches.forEach(batch => {
@@ -297,12 +297,12 @@ const Dashboard = () => {
     // --- Active Agriculture ---
     const activeAgriculture = useMemo(() => {
         const items = [
-            ...data.crops.filter(c => c.status === 'Growing').map(c => ({ id: c.id, name: c.name, plantedDate: c.plantedDate, seedCost: Number(c.seedCost) || 0, type: 'Vegetables' })),
-            ...data.fruits.filter(f => f.status === 'Growing').map(f => ({ id: f.id, name: f.name, plantedDate: f.plantedDate, seedCost: Number(f.seedCost) || 0, type: 'Fruits' })),
+            ...(data.crops || []).filter(c => c.status === 'Growing').map(c => ({ id: c.id, name: c.name, plantedDate: c.plantedDate, seedCost: Number(c.seedCost) || 0, type: 'Vegetables' })),
+            ...(data.fruits || []).filter(f => f.status === 'Growing').map(f => ({ id: f.id, name: f.name, plantedDate: f.plantedDate, seedCost: Number(f.seedCost) || 0, type: 'Fruits' })),
         ];
         return items.map(item => {
             const itemExpenses = unifiedExpenses.filter(e => e.cropId === item.id || e.fruitId === item.id).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-            const fullObj = item.type === 'Vegetables' ? data.crops.find(c => c.id === item.id) : data.fruits.find(f => f.id === item.id);
+            const fullObj = item.type === 'Vegetables' ? (data.crops || []).find(c => c.id === item.id) : (data.fruits || []).find(f => f.id === item.id);
             const revenue = fullObj?.sales?.reduce((sum, s) => sum + (Number(s.amount) || 0), 0) || 0;
             return { item, stats: { totalCost: item.seedCost + itemExpenses, revenue, profit: revenue - (item.seedCost + itemExpenses) } };
         });
@@ -343,7 +343,7 @@ const Dashboard = () => {
     const soldStats = useMemo(() => {
         let soldCount = 0, investment = 0, revenue = 0;
 
-        data.batches.forEach(b => {
+        (data.batches || []).forEach(b => {
             (b.animals || []).forEach(a => {
                 if (a.status === 'Sold' && isInFilter(a.soldDate, soldFilter)) {
                     soldCount++;
@@ -353,8 +353,8 @@ const Dashboard = () => {
             });
         });
 
-        data.crops.forEach(c => { (c.sales || []).forEach(s => { if (isInFilter(s.date, soldFilter)) revenue += (Number(s.amount) || 0); }); });
-        data.fruits.forEach(f => { (f.sales || []).forEach(s => { if (isInFilter(s.date, soldFilter)) revenue += (Number(s.amount) || 0); }); });
+        (data.crops || []).forEach(c => { (c.sales || []).forEach(s => { if (isInFilter(s.date, soldFilter)) revenue += (Number(s.amount) || 0); }); });
+        (data.fruits || []).forEach(f => { (f.sales || []).forEach(s => { if (isInFilter(s.date, soldFilter)) revenue += (Number(s.amount) || 0); }); });
 
         return { soldCount, investment, revenue, profit: revenue - investment };
     }, [data, soldFilter]);
@@ -463,7 +463,7 @@ const Dashboard = () => {
         const list = [];
         const meds = settings?.scheduledMedications || [];
         const today = new Date();
-        data.batches.forEach(batch => {
+        (data.batches || []).forEach(batch => {
             if (batch.status === 'Completed' || batch.status === 'Archived') return;
             meds.forEach(med => {
                 if (!med.name || med.name === 'New Medication') return;
@@ -479,7 +479,6 @@ const Dashboard = () => {
         });
         return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
     }, [data.batches, settings]);
-
 
     return (
         <div className="pb-20 max-w-[1920px] mx-auto">

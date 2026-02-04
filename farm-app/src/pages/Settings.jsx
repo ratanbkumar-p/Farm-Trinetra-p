@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { useData } from '../context/DataContext';
 // Removed useTheme import
-import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail, Stethoscope, Plus, Syringe, Clock, Bell, Bug, Package } from 'lucide-react';
+import { Users, Shield, Eye, ShieldCheck, UserPlus, Trash2, Mail, Stethoscope, Plus, Syringe, Clock, Bell, Bug, Package, Loader2 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 
 const Settings = () => {
@@ -12,6 +12,9 @@ const Settings = () => {
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'viewer' });
     const [newMedicalOption, setNewMedicalOption] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [deletingInviteId, setDeletingInviteId] = useState(null);
+    const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
 
     const handleAddMedicalOption = (e) => {
         e.preventDefault();
@@ -45,15 +48,19 @@ const Settings = () => {
     };
 
     const handleRoleChange = async (userId, newRole) => {
+        setUpdatingUserRoleId(userId);
         try {
             await updateUserRole(userId, newRole);
         } catch (error) {
             alert('Failed to update role: ' + error.message);
+        } finally {
+            setUpdatingUserRoleId(null);
         }
     };
 
     const handleInviteSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
             await inviteUser(inviteForm.email, inviteForm.name, inviteForm.role);
             setIsInviteModalOpen(false);
@@ -61,15 +68,20 @@ const Settings = () => {
             alert('User invited successfully!');
         } catch (error) {
             alert('Failed to invite: ' + error.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleRemoveInvite = async (id) => {
         if (window.confirm('Remove this invitation?')) {
+            setDeletingInviteId(id);
             try {
                 await removeInvite(id);
             } catch (e) {
                 alert('Error: ' + e.message);
+            } finally {
+                setDeletingInviteId(null);
             }
         }
     };
@@ -145,8 +157,9 @@ const Settings = () => {
                                         ) : (
                                             <select
                                                 value={u.role || 'viewer'}
+                                                disabled={updatingUserRoleId === u.id}
                                                 onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                                                className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500/20 outline-none"
+                                                className={`px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500/20 outline-none ${updatingUserRoleId === u.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <option value="admin">Admin</option>
                                                 <option value="inventory_admin">Inventory Admin</option>
@@ -199,9 +212,10 @@ const Settings = () => {
                                         </span>
                                         <button
                                             onClick={() => handleRemoveInvite(u.id)}
-                                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                                            disabled={deletingInviteId === u.id}
+                                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            {deletingInviteId === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                         </button>
                                     </div>
                                 </div>
@@ -597,17 +611,19 @@ const Settings = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                         <select
                             value={inviteForm.role}
-                            onChange={e => setInviteForm({ ...inviteForm, role: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 outline-none"
+                            onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500/20"
                         >
                             <option value="viewer">Viewer (Read Only)</option>
                             <option value="inventory_admin">Inventory Admin</option>
-                            <option value="admin">Admin (Read & Write)</option>
+                            <option value="admin">Admin (Full Access)</option>
                         </select>
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Send Invite</button>
+                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sending...</> : 'Send Invite'}
+                        </button>
                     </div>
                 </form>
             </Modal>

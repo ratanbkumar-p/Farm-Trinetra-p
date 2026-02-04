@@ -79,7 +79,9 @@ export const DataProvider = ({ children }) => {
         fruits: [],
         invoices: [],
         inventory: [],
-        contacts: [], // Added contacts
+        contacts: [], // Vet contacts
+        farmContacts: [], // Farm contacts with groups
+        contactGroups: [], // Contact groups
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -99,7 +101,7 @@ export const DataProvider = ({ children }) => {
         }
         const unsubscribes = [];
 
-        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices', 'inventory', 'contacts'];
+        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices', 'inventory', 'contacts', 'farmContacts', 'contactGroups'];
 
         baseCollections.forEach(baseName => {
             const firestoreCollName = getCollectionName(baseName);
@@ -789,6 +791,51 @@ export const DataProvider = ({ children }) => {
         await updateDoc(doc(db, getCollectionName('contacts'), id), updates);
     };
 
+    // === FARM CONTACTS & GROUPS FUNCTIONS ===
+
+    // Contact Groups
+    const addContactGroup = async (group) => {
+        const id = generateId('GRP');
+        const newGroup = {
+            ...group,
+            createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, getCollectionName('contactGroups'), id), newGroup);
+        return id;
+    };
+
+    const updateContactGroup = async (id, updates) => {
+        await updateDoc(doc(db, getCollectionName('contactGroups'), id), updates);
+    };
+
+    const deleteContactGroup = async (id) => {
+        // Also delete all contacts in this group
+        const contactsInGroup = data.farmContacts.filter(c => c.groupId === id);
+        for (const contact of contactsInGroup) {
+            await deleteDoc(doc(db, getCollectionName('farmContacts'), contact.id));
+        }
+        await deleteDoc(doc(db, getCollectionName('contactGroups'), id));
+    };
+
+    // Farm Contacts (with groups)
+    const addFarmContact = async (contact) => {
+        const id = generateId('FC');
+        const newContact = {
+            ...contact,
+            createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, getCollectionName('farmContacts'), id), newContact);
+        return id;
+    };
+
+    const updateFarmContact = async (id, updates) => {
+        await updateDoc(doc(db, getCollectionName('farmContacts'), id), updates);
+    };
+
+    const deleteFarmContact = async (id) => {
+        await deleteDoc(doc(db, getCollectionName('farmContacts'), id));
+    };
+
     // === ALLOCATION FUNCTIONS ===
 
     /**
@@ -1129,6 +1176,13 @@ export const DataProvider = ({ children }) => {
             addContact,
             deleteContact,
             updateContact,
+            // Farm contacts & groups
+            addContactGroup,
+            updateContactGroup,
+            deleteContactGroup,
+            addFarmContact,
+            updateFarmContact,
+            deleteFarmContact,
             cleanupOrphanedExpenses,
             // Allocation functions
             processMonthlyAllocations,

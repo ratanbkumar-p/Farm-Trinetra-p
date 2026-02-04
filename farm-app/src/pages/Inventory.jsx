@@ -16,21 +16,23 @@ import {
     Stethoscope,
     Activity,
     Thermometer,
-    Download
+    Download,
+    Loader2
 } from 'lucide-react';
 
 const Inventory = () => {
     const { data, addInventoryItem, updateInventoryItem, deleteInventoryItem } = useData();
-    const { canEdit, userRole } = useAuth();
+    const { user, isAdmin, isSuperAdmin } = useAuth();
 
-    // Inventory Admins can also edit
-    const canManageInventory = canEdit || userRole === 'inventory_admin';
+    // Inventory Admins can also edit, Vets can edit
+    const canManageInventory = isAdmin || isSuperAdmin;
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('Medicine');
     const [editingItem, setEditingItem] = useState(null);
     const [loadingSeed, setLoadingSeed] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -100,6 +102,7 @@ const Inventory = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
             const payload = {
                 ...formData,
@@ -115,6 +118,8 @@ const Inventory = () => {
             closeModal();
         } catch (error) {
             console.error("Error saving inventory:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -221,9 +226,9 @@ const Inventory = () => {
                         <button
                             onClick={loadStarterKit}
                             disabled={loadingSeed}
-                            className="flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2.5 rounded-xl transition-all font-bold"
+                            className="flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2.5 rounded-xl transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Download className="w-5 h-5" />
+                            {loadingSeed ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                             {loadingSeed ? 'Loading...' : 'Load Starter Kit'}
                         </button>
                     )}
@@ -509,9 +514,17 @@ const Inventory = () => {
 
                     <button
                         type="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-1 active:translate-y-0"
+                        disabled={isSaving}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                     >
-                        {editingItem ? 'Update Item' : 'Add Item'}
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            editingItem ? 'Update Item' : 'Add Item'
+                        )}
                     </button>
                 </form>
             </Modal>

@@ -12,6 +12,7 @@ import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
 import Invoices from './pages/Invoices';
 import Contacts from './pages/Contacts';
+import FarmContacts from './pages/FarmContacts';
 import Login from './pages/Login';
 
 
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="inventory" element={<Inventory />} />
         <Route path="invoices" element={<Invoices />} />
         <Route path="contacts" element={<Contacts />} />
+        <Route path="farm-contacts" element={<FarmContacts />} />
         <Route path="settings" element={<Settings />} />
 
       </Route>

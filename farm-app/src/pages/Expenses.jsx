@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, TrendingDown, Filter, Calendar, Trash2, Users, Edit2 } from 'lucide-react';
+import { Plus, TrendingDown, Filter, Calendar, Trash2, Users, Edit2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
@@ -19,6 +19,7 @@ const Expenses = () => {
     const [filterBatchId, setFilterBatchId] = useState('all');
     const [editingExpense, setEditingExpense] = useState(null);
     const [editingYearlyExpense, setEditingYearlyExpense] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const [newExpense, setNewExpense] = useState({
         date: new Date().toISOString().split('T')[0],
@@ -38,33 +39,38 @@ const Expenses = () => {
         startDate: new Date().toISOString().split('T')[0]
     });
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (editingExpense) {
-            // Edit mode
-            updateExpense(editingExpense.id, {
-                ...newExpense,
-                amount: parseFloat(newExpense.amount)
+        setIsSaving(true);
+        try {
+            if (editingExpense) {
+                // Edit mode
+                await updateExpense(editingExpense.id, {
+                    ...newExpense,
+                    amount: parseFloat(newExpense.amount)
+                });
+                setEditingExpense(null);
+            } else {
+                // Add mode
+                await addExpense({
+                    ...newExpense,
+                    amount: parseFloat(newExpense.amount)
+                });
+            }
+            setIsModalOpen(false);
+            setNewExpense({
+                date: new Date().toISOString().split('T')[0],
+                category: 'Feed',
+                description: '',
+                amount: '',
+                paidTo: '',
+                batchId: '',
+                cropId: '',
+                fruitId: ''
             });
-            setEditingExpense(null);
-        } else {
-            // Add mode
-            addExpense({
-                ...newExpense,
-                amount: parseFloat(newExpense.amount)
-            });
+        } finally {
+            setIsSaving(false);
         }
-        setIsModalOpen(false);
-        setNewExpense({
-            date: new Date().toISOString().split('T')[0],
-            category: 'Feed',
-            description: '',
-            amount: '',
-            paidTo: '',
-            batchId: '',
-            cropId: '',
-            fruitId: ''
-        });
     };
 
     const openEditModal = (expense) => {
@@ -575,8 +581,19 @@ const Expenses = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-red-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
-                        {editingExpense ? 'Update Expense' : 'Save Expense'}
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            editingExpense ? 'Update Expense' : 'Save Expense'
+                        )}
                     </button>
                 </form>
             </Modal>
@@ -637,8 +654,19 @@ const Expenses = () => {
                             <span className="font-bold text-blue-600">₹ {Math.round(Number(newYearlyExpense.amount) / 12).toLocaleString()}</span>
                         </div>
                     )}
-                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors">
-                        {editingYearlyExpense ? 'Update Yearly Expense' : 'Save Yearly Expense'}
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            editingYearlyExpense ? 'Update Yearly Expense' : 'Save Yearly Expense'
+                        )}
                     </button>
                 </form>
             </Modal>

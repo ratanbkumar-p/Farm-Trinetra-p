@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, User, Edit2 } from 'lucide-react';
+import { X, Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, User, Edit2, Loader2 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -15,11 +15,14 @@ const VetContactModal = ({ isOpen, onClose }) => {
         location: '',
         type: 'Doctor'
     });
+    const [isSaving, setIsSaving] = useState(false);
+    const [deletingContactId, setDeletingContactId] = useState(null);
 
     const canEdit = authCanEdit;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
             if (editingContactId) {
                 await updateContact(editingContactId, contactForm);
@@ -32,6 +35,8 @@ const VetContactModal = ({ isOpen, onClose }) => {
         } catch (error) {
             console.error("Error submitting contact:", error);
             alert("Failed to save contact");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -48,7 +53,15 @@ const VetContactModal = ({ isOpen, onClose }) => {
 
     const handleDelete = async (id) => {
         if (window.confirm('Delete this contact?')) {
-            await deleteContact(id);
+            setDeletingContactId(id);
+            try {
+                await deleteContact(id);
+            } catch (error) {
+                console.error("Error deleting contact:", error);
+                alert("Failed to delete contact");
+            } finally {
+                setDeletingContactId(null);
+            }
         }
     };
 
@@ -173,9 +186,10 @@ const VetContactModal = ({ isOpen, onClose }) => {
                                         <div className="md:col-span-2 pt-2">
                                             <button
                                                 type="submit"
-                                                className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
+                                                disabled={isSaving}
+                                                className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                                             >
-                                                {editingContactId ? 'Update Contact' : 'Save Contact'}
+                                                {isSaving ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Saving...</> : (editingContactId ? 'Update Contact' : 'Save Contact')}
                                             </button>
                                         </div>
                                     </form>
@@ -208,10 +222,11 @@ const VetContactModal = ({ isOpen, onClose }) => {
                                             </button>
                                             <button
                                                 onClick={() => handleDelete(contact.id)}
-                                                className="p-1 text-gray-300 hover:text-red-500 transition-all"
+                                                disabled={deletingContactId === contact.id}
+                                                className="p-1 text-gray-300 hover:text-red-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                 title="Delete Contact"
                                             >
-                                                <Trash2 className="w-4 h-4" />
+                                                {deletingContactId === contact.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                             </button>
                                         </div>
                                     )}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel, Bug } from 'lucide-react';
+import { Plus, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel, Bug, Loader2 } from 'lucide-react';
 import Table from '../components/ui/Table';
 import { motion } from 'framer-motion';
 import Modal from '../components/ui/Modal';
@@ -63,6 +63,7 @@ const Agriculture = () => {
     const [editingSale, setEditingSale] = useState(null);
     const [editingExpense, setEditingExpense] = useState(null);
     const [cropTab, setCropTab] = useState('sales'); // 'sales' | 'labor' | 'pesticides'
+    const [isSaving, setIsSaving] = useState(false);
 
     // Forms
     const [cropForm, setCropForm] = useState({
@@ -181,14 +182,19 @@ const Agriculture = () => {
         setIsCropModalOpen(true);
     };
 
-    const handleCropSubmit = (e) => {
+    const handleCropSubmit = async (e) => {
         e.preventDefault();
-        if (isEditMode) {
-            updateCrop(cropForm.id, cropForm);
-        } else {
-            addCrop(cropForm);
+        setIsSaving(true);
+        try {
+            if (isEditMode) {
+                await updateCrop(cropForm.id, cropForm);
+            } else {
+                await addCrop(cropForm);
+            }
+            setIsCropModalOpen(false);
+        } finally {
+            setIsSaving(false);
         }
-        setIsCropModalOpen(false);
     };
 
     const openEditSaleModal = (sale) => {
@@ -197,21 +203,26 @@ const Agriculture = () => {
         setIsSaleModalOpen(true);
     };
 
-    const handleSaleSubmit = (e) => {
+    const handleSaleSubmit = async (e) => {
         e.preventDefault();
-        if (editingSale) {
-            updateCropSale(selectedCrop.id, editingSale.id, saleForm);
-        } else {
-            addCropSale(selectedCrop.id, saleForm);
+        setIsSaving(true);
+        try {
+            if (editingSale) {
+                await updateCropSale(selectedCrop.id, editingSale.id, saleForm);
+            } else {
+                await addCropSale(selectedCrop.id, saleForm);
+            }
+            setIsSaleModalOpen(false);
+            setEditingSale(null);
+            setSaleForm({
+                date: new Date().toISOString().split('T')[0],
+                quantity: '',
+                unit: 'kg',
+                amount: ''
+            });
+        } finally {
+            setIsSaving(false);
         }
-        setIsSaleModalOpen(false);
-        setEditingSale(null);
-        setSaleForm({
-            date: new Date().toISOString().split('T')[0],
-            quantity: '',
-            unit: 'kg',
-            amount: ''
-        });
     };
 
     const openEditExpenseModal = (expense) => {
@@ -225,75 +236,85 @@ const Agriculture = () => {
         setIsLaborModalOpen(true);
     };
 
-    const handleLaborSubmit = (e) => {
+    const handleLaborSubmit = async (e) => {
         e.preventDefault();
-        const expenseData = {
-            date: laborForm.date,
-            laborType: laborForm.laborType,
-            category: laborForm.laborType,
-            description: laborForm.description,
-            amount: Number(laborForm.amount),
-            paidTo: 'Labor'
-        };
+        setIsSaving(true);
+        try {
+            const expenseData = {
+                date: laborForm.date,
+                laborType: laborForm.laborType,
+                category: laborForm.laborType,
+                description: laborForm.description,
+                amount: Number(laborForm.amount),
+                paidTo: 'Labor'
+            };
 
-        if (editingExpense) {
-            updateExpense(editingExpense.id, expenseData);
-        } else {
-            addCropExpense(selectedCrop.id, expenseData);
+            if (editingExpense) {
+                await updateExpense(editingExpense.id, expenseData);
+            } else {
+                await addCropExpense(selectedCrop.id, expenseData);
+            }
+            setIsLaborModalOpen(false);
+            setEditingExpense(null);
+            setLaborForm({
+                date: new Date().toISOString().split('T')[0],
+                laborType: 'Sowing',
+                description: '',
+                amount: ''
+            });
+        } finally {
+            setIsSaving(false);
         }
-        setIsLaborModalOpen(false);
-        setEditingExpense(null);
-        setLaborForm({
-            date: new Date().toISOString().split('T')[0],
-            laborType: 'Sowing',
-            description: '',
-            amount: ''
-        });
     };
 
     const handlePesticideSubmit = async (e) => {
         e.preventDefault();
-        const pestName = pesticideForm.pesticideName === 'Other' ? pesticideForm.otherName : pesticideForm.pesticideName;
-        if (!pestName) {
-            alert('Please select or enter a pesticide name');
-            return;
-        }
+        setIsSaving(true);
+        try {
+            const pestName = pesticideForm.pesticideName === 'Other' ? pesticideForm.otherName : pesticideForm.pesticideName;
+            if (!pestName) {
+                alert('Please select or enter a pesticide name');
+                return;
+            }
 
-        let expenseId = null;
-        if (pesticideForm.cost) {
-            expenseId = await addCropExpense(selectedCrop.id, {
+            let expenseId = null;
+            if (pesticideForm.cost) {
+                expenseId = await addCropExpense(selectedCrop.id, {
+                    date: pesticideForm.date,
+                    laborType: 'Pesticide Purchase', // Changed to distinguish from Application Labor
+                    description: `${pestName} (Material)`,
+                    amount: Number(pesticideForm.cost),
+                    paidTo: 'Pesticide'
+                });
+            }
+
+            const pestRecord = {
+                id: Date.now().toString(),
                 date: pesticideForm.date,
-                laborType: 'Pesticide Purchase', // Changed to distinguish from Application Labor
-                description: `${pestName} (Material)`,
-                amount: Number(pesticideForm.cost),
-                paidTo: 'Pesticide'
+                name: pestName,
+                quantity: pesticideForm.quantity,
+                unit: pesticideForm.unit,
+                cost: Number(pesticideForm.cost) || 0,
+                notes: pesticideForm.notes,
+                expenseId: expenseId // Link to global expense
+            };
+
+            const updatedPesticides = [...(selectedCrop.pesticides || []), pestRecord];
+            updateCrop(selectedCrop.id, { ...selectedCrop, pesticides: updatedPesticides });
+
+            setIsPesticideModalOpen(false);
+            setPesticideForm({
+                date: new Date().toISOString().split('T')[0],
+                pesticideName: '',
+                otherName: '',
+                quantity: '',
+                unit: 'liters',
+                cost: '',
+                notes: ''
             });
+        } finally {
+            setIsSaving(false);
         }
-
-        const pestRecord = {
-            id: Date.now().toString(),
-            date: pesticideForm.date,
-            name: pestName,
-            quantity: pesticideForm.quantity,
-            unit: pesticideForm.unit,
-            cost: Number(pesticideForm.cost) || 0,
-            notes: pesticideForm.notes,
-            expenseId: expenseId // Link to global expense
-        };
-
-        const updatedPesticides = [...(selectedCrop.pesticides || []), pestRecord];
-        updateCrop(selectedCrop.id, { ...selectedCrop, pesticides: updatedPesticides });
-
-        setIsPesticideModalOpen(false);
-        setPesticideForm({
-            date: new Date().toISOString().split('T')[0],
-            pesticideName: '',
-            otherName: '',
-            quantity: '',
-            unit: 'liters',
-            cost: '',
-            notes: ''
-        });
     };
 
     // --- CROP LIST VIEW ---
@@ -482,8 +503,19 @@ const Agriculture = () => {
                                 <option value="Harvested">Harvested</option>
                             </select>
                         </div>
-                        <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                            {isEditMode ? 'Update Crop' : 'Add Crop'}
+                        <button
+                            type="submit"
+                            disabled={isSaving}
+                            className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                isEditMode ? 'Update Crop' : 'Add Crop'
+                            )}
                         </button>
                     </form>
                 </Modal>
@@ -813,8 +845,17 @@ const Agriculture = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-green-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                        Record Sale
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Record Sale'}
                     </button>
                 </form>
             </Modal>
@@ -874,8 +915,17 @@ const Agriculture = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-orange-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors">
-                        Add Labor Expense
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Add Labor Expense'}
                     </button>
                 </form>
             </Modal>
@@ -966,8 +1016,17 @@ const Agriculture = () => {
                             className="w-full px-4 py-2 bg-gray-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-yellow-500/20"
                         />
                     </div>
-                    <button type="submit" className="w-full bg-yellow-600 text-white py-3 rounded-xl font-bold hover:bg-yellow-700 transition-colors">
-                        Add Pesticide Record
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-yellow-600 text-white py-3 rounded-xl font-bold hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Add Pesticide Record'}
                     </button>
                 </form>
             </Modal>
@@ -1038,8 +1097,17 @@ const Agriculture = () => {
                             <option value="Harvested">Harvested</option>
                         </select>
                     </div>
-                    <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                        Update Crop
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Saving...
+                            </>
+                        ) : 'Update Crop'}
                     </button>
                 </form>
             </Modal>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Download, Trash2, FileText, Eye } from 'lucide-react';
+import { Plus, Download, Trash2, FileText, Eye, Loader2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import Modal from '../components/ui/Modal';
 import Table from '../components/ui/Table';
@@ -11,6 +11,8 @@ const Invoices = () => {
     const { isAdmin } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [previewInvoice, setPreviewInvoice] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [deletingInvoiceId, setDeletingInvoiceId] = useState(null);
 
     const [newInvoice, setNewInvoice] = useState({
         customerName: '',
@@ -149,23 +151,46 @@ const Invoices = () => {
     };
 
     // Handle form submit
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         const invoice = {
             ...newInvoice,
             invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
             date: new Date().toLocaleDateString('en-IN'),
             total: calculateSubtotal(newInvoice.items)
         };
-        addInvoice(invoice);
-        setIsModalOpen(false);
-        setNewInvoice({
-            customerName: '',
-            customerAddress: '',
-            customerPhone: '',
-            items: [{ description: '', quantity: 1, rate: 0 }],
-            notes: ''
-        });
+
+        try {
+            await addInvoice(invoice);
+            setIsModalOpen(false);
+            setNewInvoice({
+                customerName: '',
+                customerAddress: '',
+                customerPhone: '',
+                items: [{ description: '', quantity: 1, rate: 0 }],
+                notes: ''
+            });
+        } catch (error) {
+            console.error("Error adding invoice:", error);
+            alert("Failed to create invoice: " + error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteInvoice = async (id) => {
+        if (window.confirm("Are you sure you want to delete this invoice?")) {
+            setDeletingInvoiceId(id);
+            try {
+                await deleteInvoice(id);
+            } catch (error) {
+                console.error("Error deleting invoice:", error);
+                alert("Failed to delete invoice: " + error.message);
+            } finally {
+                setDeletingInvoiceId(null);
+            }
+        }
     };
 
     const invoices = data.invoices || [];
@@ -243,11 +268,12 @@ const Invoices = () => {
                                     </button>
                                     {isAdmin && (
                                         <button
-                                            onClick={() => deleteInvoice(invoice.id)}
-                                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            onClick={() => handleDeleteInvoice(invoice.id)}
+                                            disabled={deletingInvoiceId === invoice.id}
+                                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                             title="Delete"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            {deletingInvoiceId === invoice.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                         </button>
                                     )}
                                 </div>
@@ -373,9 +399,10 @@ const Invoices = () => {
 
                     <button
                         type="submit"
-                        className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors"
+                        disabled={isSaving}
+                        className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                     >
-                        Create Invoice
+                        {isSaving ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" />Creating...</> : 'Create Invoice'}
                     </button>
                 </form>
             </Modal>
