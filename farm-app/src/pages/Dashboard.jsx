@@ -297,16 +297,50 @@ const Dashboard = () => {
     // --- Active Agriculture ---
     const activeAgriculture = useMemo(() => {
         const items = [
-            ...(data.crops || []).filter(c => c.status === 'Growing').map(c => ({ id: c.id, name: c.name, plantedDate: c.plantedDate, seedCost: Number(c.seedCost) || 0, type: 'Vegetables' })),
-            ...(data.fruits || []).filter(f => f.status === 'Growing').map(f => ({ id: f.id, name: f.name, plantedDate: f.plantedDate, seedCost: Number(f.seedCost) || 0, type: 'Fruits' })),
+            ...(data.crops || []).filter(c => c.status === 'Growing').map(c => ({ id: c.id, name: c.name, plantedDate: c.plantedDate || c.date, seedCost: Number(c.seedCost) || 0, type: 'Vegetables', obj: c })),
+            ...(data.fruits || []).filter(f => f.status === 'Growing').map(f => ({ id: f.id, name: f.name, plantedDate: f.plantedDate || f.date, seedCost: Number(f.seedCost) || 0, type: 'Fruits', obj: f })),
         ];
+
         return items.map(item => {
-            const itemExpenses = unifiedExpenses.filter(e => e.cropId === item.id || e.fruitId === item.id).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-            const fullObj = item.type === 'Vegetables' ? (data.crops || []).find(c => c.id === item.id) : (data.fruits || []).find(f => f.id === item.id);
-            const revenue = fullObj?.sales?.reduce((sum, s) => sum + (Number(s.amount) || 0), 0) || 0;
-            return { item, stats: { totalCost: item.seedCost + itemExpenses, revenue, profit: revenue - (item.seedCost + itemExpenses) } };
+            let directExpenses = 0;
+            let allocatedExpenses = 0;
+
+            // 1. Direct Expenses
+            directExpenses = unifiedExpenses
+                .filter(e => (item.type === 'Vegetables' ? e.cropId === item.id : e.fruitId === item.id))
+                .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+            // 2. Allocated Expenses (Salaries)
+            const startDateStr = item.plantedDate;
+            if (startDateStr) {
+                const months = getMonthsBetween(startDateStr.substring(0, 10)); // YYYY-MM
+                months.forEach(monthKey => {
+                    const allocs = calculateMonthlyAllocations(data, monthKey, 'fullMonth');
+                    const myAlloc = allocs.find(a =>
+                        (item.type === 'Vegetables' ? a.targetType === 'Crop' : a.targetType === 'Fruit') &&
+                        a.targetId === item.id
+                    );
+                    if (myAlloc) {
+                        allocatedExpenses += (Number(myAlloc.amount) || 0);
+                    }
+                });
+            }
+
+            const revenue = (item.obj.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+            const totalCost = item.seedCost + directExpenses + allocatedExpenses;
+
+            return {
+                item,
+                stats: {
+                    totalCost,
+                    revenue,
+                    profit: revenue - totalCost,
+                    directExpenses,
+                    allocatedExpenses
+                }
+            };
         });
-    }, [data.crops, data.fruits, unifiedExpenses]);
+    }, [data.crops, data.fruits, unifiedExpenses, data.employees, data.yearlyExpenses]);
 
     // --- Date Filter ---
     const isInFilter = (dateStr, filter) => {

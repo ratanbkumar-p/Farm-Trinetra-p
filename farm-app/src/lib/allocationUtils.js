@@ -1,5 +1,5 @@
 // Monthly Allocation Calculation Utilities
-// Calculates employee cost allocation to livestock batches (Goat, Sheep, Chicken only)
+// Calculates employee cost allocation to livestock batches, fruits, and crops based on their assignment
 
 // Eligible batch types for allocation
 export const ALLOCATION_ELIGIBLE_TYPES = ['Goat', 'Sheep', 'Chicken', 'Poultry'];
@@ -14,6 +14,20 @@ export const getBatchInvestment = (batch) => {
         const cost = Number(animal.purchaseCost) || Number(animal.cost) || Number(animal.boughtPrice) || 0;
         return sum + cost;
     }, 0);
+};
+
+/**
+ * Get total investment (seed/plant cost) for a Fruit
+ */
+export const getFruitInvestment = (fruit) => {
+    return Number(fruit.seedCost) || 0;
+};
+
+/**
+ * Get total investment (seed cost) for a Crop (Vegetable)
+ */
+export const getCropInvestment = (crop) => {
+    return Number(crop.seedCost) || 0;
 };
 
 /**
@@ -50,13 +64,47 @@ export const wasBatchActiveInMonth = (batch, monthKey) => {
 };
 
 /**
+ * Check if a Fruit/Crop was active during a specific month
+ */
+export const wasCropActiveInMonth = (item, monthKey) => {
+    if (!item) return false;
+    const plantedDateStr = item.plantedDate || item.date || item.createdAt;
+    if (!plantedDateStr) return false;
+
+    const plantedDate = new Date(plantedDateStr);
+    if (isNaN(plantedDate.getTime())) return false;
+
+    const [year, month] = monthKey.split('-').map(Number);
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59);
+
+    if (plantedDate > monthEnd) return false;
+
+    // If item is harvested/removed, check if it was active in this month
+    if (item.status === 'Harvested' || item.status === 'Removed') {
+        const endDate = item.harvestedDate || item.removedDate ? new Date(item.harvestedDate || item.removedDate) : null;
+        if (endDate && endDate < monthStart) return false;
+    }
+
+    return true;
+};
+
+/**
  * Check if an employee was active during a specific month
  * @param {Object} employee - The employee object
  * @param {string} monthKey - Month in YYYY-MM format
  */
 export const wasEmployeeActiveInMonth = (employee, monthKey) => {
     if (!employee) return false;
-    if (employee.status !== 'Active') return false;
+    // We consider 'Active' employees and employees who might have left but were active in this month
+    // For simplicity, using current status check + employedSince check
+    // Ideally should check exit date too
+
+    if (employee.status !== 'Active') {
+        // TODO: specific check for when they left
+        // For now, only allocating active employees
+        return false;
+    }
 
     // Get employment start date
     const startDateStr = employee.employedSince || employee.createdAt;
@@ -97,92 +145,132 @@ export const getEmployeeDaysInMonth = (employee, monthKey) => {
 };
 
 /**
- * Calculate monthly allocation for all eligible batches
- * @param {Object} data - Data context data (batches, employees, yearlyExpenses)
+ * Calculate monthly allocation for all eligible batches, fruits, and crops
+ * @param {Object} data - Data context data (batches, crops, fruits, employees, yearlyExpenses)
  * @param {string} monthKey - Month in YYYY-MM format
  * @param {string} allocationMode - 'fullMonth' or 'prorated'
- * @returns {Array} Array of allocation objects per batch
+ * @returns {Array} Array of allocation objects per batch/fruit/crop
  */
 export const calculateMonthlyAllocations = (data, monthKey, allocationMode = 'fullMonth') => {
-    const { batches, employees, yearlyExpenses = [] } = data;
+    const { batches = [], crops = [], fruits = [], employees = [], yearlyExpenses = [] } = data;
 
-    // Get eligible batches (Goat, Sheep, Chicken, Poultry that were active in this month)
+    // 1. Identify Eligible Targets (Active in this month)
     const eligibleBatches = batches.filter(b =>
         ALLOCATION_ELIGIBLE_TYPES.includes(b.type) &&
         wasBatchActiveInMonth(b, monthKey)
     );
 
-    if (eligibleBatches.length === 0) return [];
+    const eligibleFruits = fruits.filter(f => wasCropActiveInMonth(f, monthKey));
+    const eligibleVegetables = crops.filter(c => wasCropActiveInMonth(c, monthKey));
 
-    // Calculate total investment across eligible batches
+    // 2. Calculate Investment Pools
     const batchInvestments = eligibleBatches.map(batch => ({
-        batch,
-        investment: getBatchInvestment(batch)
+        id: batch.id,
+        type: 'Batch',
+        name: batch.name || `Batch ${batch.id}`,
+        investment: getBatchInvestment(batch),
+        obj: batch
     }));
+    const totalBatchInvestment = batchInvestments.reduce((sum, item) => sum + item.investment, 0);
 
-    const totalInvestment = batchInvestments.reduce((sum, bi) => sum + bi.investment, 0);
-    if (totalInvestment === 0) return []; // Can't allocate without investment
+    const fruitInvestments = eligibleFruits.map(fruit => ({
+        id: fruit.id,
+        type: 'Fruit',
+        name: fruit.name,
+        investment: getFruitInvestment(fruit),
+        obj: fruit
+    }));
+    const totalFruitInvestment = fruitInvestments.reduce((sum, item) => sum + item.investment, 0);
 
-    // Get active employees and their contribution for this month
+    const vegInvestments = eligibleVegetables.map(crop => ({
+        id: crop.id,
+        type: 'Crop', // Represents Vegetables
+        name: crop.name,
+        investment: getCropInvestment(crop),
+        obj: crop
+    }));
+    const totalVegInvestment = vegInvestments.reduce((sum, item) => sum + item.investment, 0);
+
+    // 3. Process Employee Salaries
     const activeEmployees = employees.filter(e => wasEmployeeActiveInMonth(e, monthKey));
 
-    // Calculate total salary to allocate
-    let totalSalaryToAllocate = 0;
-    const employeeContributions = activeEmployees.map(emp => {
+    let totalSalaryForLivestock = 0;
+    let totalSalaryForFruits = 0;
+    let totalSalaryForVegetables = 0;
+
+    const allocations = [];
+
+    activeEmployees.forEach(emp => {
         const monthlySalary = Number(emp.salary) || 0;
-        let contribution = monthlySalary;
+        let actualSalary = monthlySalary;
 
         if (allocationMode === 'prorated') {
             const [year, month] = monthKey.split('-').map(Number);
             const daysInMonth = new Date(year, month, 0).getDate();
             const daysActive = getEmployeeDaysInMonth(emp, monthKey);
-            contribution = (monthlySalary / daysInMonth) * daysActive;
+            actualSalary = (monthlySalary / daysInMonth) * daysActive;
         }
 
-        totalSalaryToAllocate += contribution;
+        // Determine Sectors
+        // Default to Livestock if no allocation specified
+        const allocations = (emp.expenseAllocation && emp.expenseAllocation.length > 0)
+            ? emp.expenseAllocation
+            : ['Livestock'];
 
-        return {
-            id: emp.id,
-            name: emp.name,
-            monthlySalary,
-            contribution: Math.round(contribution)
-        };
+        const splitCount = allocations.length;
+        const sharePerSector = actualSalary / splitCount;
+
+        if (allocations.includes('Livestock')) {
+            totalSalaryForLivestock += sharePerSector;
+        }
+        if (allocations.includes('Fruits')) {
+            totalSalaryForFruits += sharePerSector;
+        }
+        if (allocations.includes('Vegetables')) {
+            totalSalaryForVegetables += sharePerSector;
+        }
     });
 
-    // Calculate yearly expenses divided by 12 for monthly share
+    // 4. Process Yearly Expenses (General OpEx)
+    // NOTE: For now, we keep General OpEx allocated to Livestock to preserve historical logic
+    // unless user requests it to be split too. Defaulting to Livestock Batches for stability.
     const totalYearlyExpenses = yearlyExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
     const monthlyExpenseShare = totalYearlyExpenses / 12;
 
-    // Total pool to allocate = employee salaries + monthly share of yearly expenses
-    const totalToAllocate = totalSalaryToAllocate + monthlyExpenseShare;
+    // Add General OpEx to Livestock Pool
+    const totalLivestockPool = totalSalaryForLivestock + monthlyExpenseShare;
+    // Fruits and Veg only get Salary allocations for now
+    const totalFruitPool = totalSalaryForFruits;
+    const totalVegPool = totalSalaryForVegetables;
 
-    if (totalToAllocate === 0) return [];
+    // Helper to distribute pool to targets based on investment
+    const distribute = (pool, targets, totalInvestment, salaryPool, expensePool) => {
+        if (pool <= 0 || targets.length === 0 || totalInvestment <= 0) return;
 
-    // Allocate to each batch based on investment proportion
-    const allocations = batchInvestments.map(({ batch, investment }) => {
-        const proportion = investment / totalInvestment;
-        const amount = Math.round(totalToAllocate * proportion);
+        targets.forEach(target => {
+            const proportion = target.investment / totalInvestment;
+            const amount = Math.round(pool * proportion);
 
-        // Calculate per-employee share for this batch
-        const employeeShares = employeeContributions.map(ec => ({
-            id: ec.id,
-            name: ec.name,
-            share: Math.round(ec.contribution * proportion)
-        }));
+            allocations.push({
+                targetId: target.id,
+                targetType: target.type, // 'Batch', 'Fruit', 'Crop'
+                batchId: target.type === 'Batch' ? target.id : undefined, // Legacy support
+                batchName: target.name,
+                month: monthKey,
+                amount,
+                investment: target.investment,
+                proportion: Math.round(proportion * 100),
+                salaryComponent: Math.round(salaryPool * proportion),
+                expenseComponent: Math.round(expensePool * proportion),
+                calculatedAt: new Date().toISOString()
+            });
+        });
+    };
 
-        return {
-            batchId: batch.id,
-            batchName: batch.name || batch.id,
-            month: monthKey,
-            amount,
-            investment,
-            proportion: Math.round(proportion * 100),
-            employees: employeeShares,
-            salaryComponent: Math.round(totalSalaryToAllocate * proportion),
-            expenseComponent: Math.round(monthlyExpenseShare * proportion),
-            calculatedAt: new Date().toISOString()
-        };
-    });
+    // Execute Determinations
+    distribute(totalLivestockPool, batchInvestments, totalBatchInvestment, totalSalaryForLivestock, monthlyExpenseShare);
+    distribute(totalFruitPool, fruitInvestments, totalFruitInvestment, totalSalaryForFruits, 0);
+    distribute(totalVegPool, vegInvestments, totalVegInvestment, totalSalaryForVegetables, 0);
 
     return allocations;
 };

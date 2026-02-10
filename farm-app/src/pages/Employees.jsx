@@ -28,7 +28,8 @@ const Employees = () => {
         aadhar: '',
         photo: null,
         status: 'Active',
-        employedSince: new Date().toISOString().split('T')[0]
+        employedSince: new Date().toISOString().split('T')[0],
+        expenseAllocation: ['Livestock']
     });
 
     const [paymentForm, setPaymentForm] = useState({
@@ -47,8 +48,29 @@ const Employees = () => {
         aadhar: '',
         photo: null,
         status: 'Active',
-        employedSince: ''
+        employedSince: '',
+        expenseAllocation: ['Livestock']
     });
+
+    const toggleAllocation = (option, mode = 'add') => {
+        const currentAllocations = mode === 'edit' ? editForm.expenseAllocation : newEmployee.expenseAllocation;
+        let newAllocations;
+
+        if (currentAllocations.includes(option)) {
+            newAllocations = currentAllocations.filter(a => a !== option);
+        } else {
+            newAllocations = [...currentAllocations, option];
+        }
+
+        // Prevent empty selection
+        if (newAllocations.length === 0) return;
+
+        if (mode === 'edit') {
+            setEditForm({ ...editForm, expenseAllocation: newAllocations });
+        } else {
+            setNewEmployee({ ...newEmployee, expenseAllocation: newAllocations });
+        }
+    };
 
     const handlePhotoUpload = async (e, mode = 'add') => {
         const file = e.target.files[0];
@@ -76,7 +98,7 @@ const Employees = () => {
                 payments: []
             });
             setIsAddModalOpen(false);
-            setNewEmployee({ id: '', name: '', role: 'Helper', phone: '', salary: '', aadhar: '', photo: null, status: 'Active', employedSince: new Date().toISOString().split('T')[0] });
+            setNewEmployee({ id: '', name: '', role: 'Helper', phone: '', salary: '', aadhar: '', photo: null, status: 'Active', employedSince: new Date().toISOString().split('T')[0], expenseAllocation: ['Livestock'] });
         } finally {
             setIsSaving(false);
         }
@@ -128,7 +150,8 @@ const Employees = () => {
             aadhar: employee.aadhar || '',
             photo: employee.photo || null,
             status: employee.status || 'Active',
-            employedSince: employee.employedSince || employee.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0]
+            employedSince: employee.employedSince || employee.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+            expenseAllocation: employee.expenseAllocation || ['Livestock']
         });
         setIsEditModalOpen(true);
     };
@@ -213,6 +236,11 @@ const Employees = () => {
                                         </span>
                                     </div>
                                     <p className="text-sm text-gray-500 font-medium">{employee.role} • ID: <span className="text-blue-600 font-bold">{employee.id}</span></p>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {(employee.expenseAllocation || ['Livestock']).map(alloc => (
+                                            <span key={alloc} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded border border-gray-200">{alloc}</span>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
@@ -460,6 +488,23 @@ const Employees = () => {
                         <input required type="date" value={newEmployee.employedSince} onChange={e => setNewEmployee({ ...newEmployee, employedSince: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
 
+                    <div>
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Expense Allocation</label>
+                        <div className="flex flex-wrap gap-2">
+                            {['Livestock', 'Fruits', 'Vegetables'].map(option => (
+                                <button
+                                    key={option}
+                                    type="button"
+                                    onClick={() => toggleAllocation(option, 'add')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${newEmployee.expenseAllocation.includes(option) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}
+                                >
+                                    {option}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1 italic">* Salary will be split equally among selected categories.</p>
+                    </div>
+
                     <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
                         {isSaving ? (
                             <>
@@ -607,6 +652,23 @@ const Employees = () => {
                             <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Employed Since</label>
                             <input type="date" value={editForm.employedSince} onChange={e => setEditForm({ ...editForm, employedSince: e.target.value })} className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20" />
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Expense Allocation</label>
+                        <div className="flex flex-wrap gap-2">
+                            {['Livestock', 'Fruits', 'Vegetables'].map(option => (
+                                <button
+                                    key={option}
+                                    type="button"
+                                    onClick={() => toggleAllocation(option, 'edit')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${editForm.expenseAllocation.includes(option) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}
+                                >
+                                    {option}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1 italic">* Salary will be split equally among selected categories.</p>
                     </div>
 
                     <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
