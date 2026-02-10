@@ -1330,70 +1330,7 @@ const Livestock = () => {
                         <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed</button>
                     </div>
 
-                    {/* Batch Summary Cards - Hide Financials for Vets */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                        {/* 1. Date */}
-                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Start Date</div>
-                            <div className="font-bold text-gray-800 flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-blue-500" />
-                                {selectedBatch.startDate}
-                            </div>
-                        </div>
 
-                        {/* 2. Age */}
-                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Batch Age</div>
-                            <div className="font-bold text-purple-600">
-                                {formatAge(ageStats.years, ageStats.months, ageStats.days)}
-                            </div>
-                        </div>
-
-                        {/* 3. Investment - Hide for Vets */}
-                        {/* 3. Investment - Hide for Vets */}
-                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Investment</div>
-                            <div className="font-bold text-gray-800">₹{Math.round(batchFinancials.investment).toLocaleString('en-IN')}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">
-                                Pur: ₹{Math.round(batchFinancials.purchase).toLocaleString()} + Exp: ₹{Math.round(batchFinancials.expenses).toLocaleString()}
-                            </div>
-                        </div>
-
-                        {/* 4. Current Value - Hide for Vets */}
-                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <div className="text-xs text-gray-500 font-bold uppercase mb-1">Current Value</div>
-                            <div className="font-bold text-green-600">₹{Math.round(batchFinancials.currentValue).toLocaleString('en-IN')}</div>
-                            <div className={`text-[10px] font-bold mt-1 ${batchFinancials.roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {batchFinancials.roi >= 0 ? '+' : ''}{batchFinancials.roi.toFixed(1)}% ROI
-                            </div>
-                        </div>
-
-                        {/* Vet-Specific Filler Card if needed? Or just let grid reflow (cols-4 works fine with 2 items? No, it will leave gaps) */}
-
-
-                    </div>
-
-                    {/* Tabs Navigation - Hide Expenses for Vets */}
-                    <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
-                        <button
-                            onClick={() => setBatchTab('animals')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${batchTab === 'animals' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            Animals List
-                        </button>
-                        <button
-                            onClick={() => setBatchTab('expenses')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${batchTab === 'expenses' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            Expenses
-                        </button>
-                        <button
-                            onClick={() => setBatchTab('weight')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${batchTab === 'weight' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            Weight History
-                        </button>
-                    </div>
 
                     {/* Summary Stats */}
                     {/* Summary Stats - Hide for Vets */}
