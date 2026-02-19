@@ -48,8 +48,8 @@ const FRUIT_EMOJIS = {
     'peach': '🍑', 'aadu': '🍑',
     'pear': '🍐', 'nashpati': '🍐',
     'cherry': '🍒',
-    'papaya': '🍈', 'papita': '🍈',
-    'guava': '🍈', 'amrud': '🍈',
+    'papaya': '__PAPAYA__', 'papita': '__PAPAYA__',
+    'guava': '__GUAVA__', 'amrud': '__GUAVA__',
     'pomegranate': '🫐', 'anar': '🫐',
     'fig': '🫐', 'anjeer': '🫐',
     'moringa': '🌿', 'drumstick': '🌿', 'sahjan': '🌿',
@@ -65,6 +65,13 @@ const getEmojiForCrop = (name, type) => {
         if (lowerName.includes(key) || key.includes(lowerName)) return emoji;
     }
     return emojiMap['default'];
+};
+
+const renderCropEmoji = (name, type, sizeClass = 'text-2xl') => {
+    const emojiStr = getEmojiForCrop(name, type);
+    if (emojiStr === '__GUAVA__') return <img src="/emojis/guava.svg" alt="guava" style={{ width: '1.3em', height: '1.3em', display: 'inline-block', verticalAlign: 'middle' }} />;
+    if (emojiStr === '__PAPAYA__') return <img src="/emojis/papaya.svg" alt="papaya" style={{ width: '1.3em', height: '1.3em', display: 'inline-block', verticalAlign: 'middle' }} />;
+    return <span className={sizeClass}>{emojiStr}</span>;
 };
 
 // --- Helper Components ---
@@ -162,14 +169,14 @@ const LivestockCard = ({ type, stats }) => {
 
 // 3. Active Crop Card
 const ActiveCropCard = ({ type, item, stats }) => {
-    const emoji = getEmojiForCrop(item.name, type);
+    const emoji = renderCropEmoji(item.name, type, 'text-2xl');
     const profit = stats.profit;
 
     return (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md">
             <div className="p-4">
                 <div className="flex items-center gap-3 mb-4">
-                    <span className="text-2xl">{emoji}</span>
+                    <span style={{ fontSize: '1.5rem', display: 'inline-flex', alignItems: 'center' }}>{emoji}</span>
                     <div className="min-w-0 flex-1">
                         <h4 className="font-bold text-gray-900 truncate">{item.name}</h4>
                         <p className="text-xs text-gray-400">{item.plantedDate || 'No date'}</p>

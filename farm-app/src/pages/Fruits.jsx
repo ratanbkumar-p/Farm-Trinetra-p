@@ -23,8 +23,8 @@ const FRUIT_EMOJIS = {
     'peach': '🍑', 'aadu': '🍑',
     'pear': '🍐', 'nashpati': '🍐',
     'cherry': '🍒',
-    'papaya': '🍈', 'papita': '🍈',
-    'guava': '🍈', 'amrud': '🍈',
+    'papaya': '__PAPAYA__', 'papita': '__PAPAYA__',
+    'guava': '__GUAVA__', 'amrud': '__GUAVA__',
     'pomegranate': '🫐', 'anar': '🫐',
     'fig': '🫐', 'anjeer': '🫐',
     'moringa': '🌿', 'drumstick': '🌿', 'sahjan': '🌿',
@@ -38,13 +38,20 @@ const FRUIT_EMOJIS = {
     'default': '🍎'
 };
 
-const getFruitEmoji = (name) => {
+const getFruitEmojiStr = (name) => {
     const lowerName = (name || '').toLowerCase().trim();
     if (FRUIT_EMOJIS[lowerName]) return FRUIT_EMOJIS[lowerName];
     for (const [key, emoji] of Object.entries(FRUIT_EMOJIS)) {
         if (lowerName.includes(key) || key.includes(lowerName)) return emoji;
     }
     return FRUIT_EMOJIS['default'];
+};
+
+const renderFruitEmoji = (name, sizeClass = 'text-xl') => {
+    const emojiStr = getFruitEmojiStr(name);
+    if (emojiStr === '__GUAVA__') return <img src="/emojis/guava.svg" alt="guava" style={{ width: '1.3em', height: '1.3em', display: 'inline-block', verticalAlign: 'middle' }} />;
+    if (emojiStr === '__PAPAYA__') return <img src="/emojis/papaya.svg" alt="papaya" style={{ width: '1.3em', height: '1.3em', display: 'inline-block', verticalAlign: 'middle' }} />;
+    return <span className={sizeClass}>{emojiStr}</span>;
 };
 
 const Fruits = () => {
@@ -409,7 +416,7 @@ const Fruits = () => {
                                 >
                                     <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xl">{getFruitEmoji(fruit.name)}</span>
+                                            {renderFruitEmoji(fruit.name, 'text-xl')}
                                             <div>
                                                 <h3 className="text-base font-bold text-gray-800">{fruit.name}</h3>
                                                 <span className="text-xs text-gray-500 block min-h-[1rem]">{fruit.variety || '\u00A0'}</span>
@@ -546,7 +553,7 @@ const Fruits = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="flex items-center gap-3">
-                    <span className="text-4xl">{getFruitEmoji(selectedFruit.name)}</span>
+                    <span className="text-4xl" style={{ fontSize: '2.25rem', lineHeight: '1', display: 'inline-flex', alignItems: 'center' }}>{renderFruitEmoji(selectedFruit.name, 'text-4xl')}</span>
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">{selectedFruit.name}</h1>
                         <p className="text-gray-500">{selectedFruit.variety} • Planted: {selectedFruit.plantedDate}</p>

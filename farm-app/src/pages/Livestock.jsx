@@ -1310,6 +1310,34 @@ const Livestock = () => {
         }
     };
 
+    // Per-animal break-even price:
+    // Each animal absorbs expenses proportional to its purchase cost
+    // Break-Even = purchaseCost + (purchaseCost / totalPurchaseCost) * totalExpenses
+    const calculateAnimalBreakEven = (animal, batch) => {
+        if (!batch || !animal) return 0;
+        const animals = batch.animals || [];
+        const purchaseCost = Number(animal.purchaseCost) || 0;
+        const totalAnimalCost = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+        const expenses = batch.expenses || [];
+        const totalSpecificExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        const storedAllocationsTotal = (batch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
+        const activeAnimals = animals.filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+        const batchActiveValue = activeAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+        const calculatedAllocatedExpense = !fallbackToHeadcount
+            ? batchActiveValue * expenseAllocationRatio
+            : activeAnimals.length * expenseAllocationRatio;
+        const allocatedExpense = storedAllocationsTotal > 0 ? storedAllocationsTotal : calculatedAllocatedExpense;
+        const totalExpenses = totalSpecificExpenses + allocatedExpense;
+
+        let expenseShare = 0;
+        if (totalAnimalCost > 0) {
+            expenseShare = (purchaseCost / totalAnimalCost) * totalExpenses;
+        } else if (animals.length > 0) {
+            expenseShare = totalExpenses / animals.length;
+        }
+        return Math.round(purchaseCost + expenseShare);
+    };
+
     // --- RENDER: MAIN LIST ---
     if (!selectedBatch) {
         if (mainTab === 'sold') {
@@ -2058,6 +2086,11 @@ const Livestock = () => {
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4">
+                                                            {/* Break-Even Price: before the down arrow */}
+                                                            <div className="text-right hidden sm:block" onClick={e => e.stopPropagation()}>
+                                                                <p className="text-xs text-gray-400">Break-Even</p>
+                                                                <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</p>
+                                                            </div>
                                                             <div className="text-gray-400 group-hover:text-blue-600">
                                                                 {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                                             </div>
@@ -2512,6 +2545,11 @@ const Livestock = () => {
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4">
+                                                            {/* Break-Even Price: before the down arrow */}
+                                                            <div className="text-right hidden sm:block" onClick={e => e.stopPropagation()}>
+                                                                <p className="text-xs text-gray-400">Break-Even</p>
+                                                                <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</p>
+                                                            </div>
                                                             <div className="text-gray-400 group-hover:text-blue-600">
                                                                 {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                                             </div>
