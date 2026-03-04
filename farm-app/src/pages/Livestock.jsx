@@ -164,6 +164,10 @@ const Livestock = () => {
     // Dashboard Expansion State
     const [expandedCard, setExpandedCard] = useState(null); // 'active', 'sick', 'mortality', 'sold'
 
+    // Global PDF Modal State
+    const [isGlobalPdfModalOpen, setIsGlobalPdfModalOpen] = useState(false);
+    const [globalPdfFilterTypes, setGlobalPdfFilterTypes] = useState(['Goat', 'Sheep', 'Poultry', 'Chicken', 'Cow']);
+
     // --- HANDLERS FOR FLOCK ---
     const handleBulkDeceased = async (e) => {
         e.preventDefault();
@@ -336,6 +340,69 @@ const Livestock = () => {
 
     // --- DERIVED DATA ---
     const selectedBatch = data.batches.find(b => b.id === selectedBatchId);
+
+    const handleGlobalPdfDownload = () => {
+        try {
+            const doc = new jsPDF();
+
+            // filter allSoldAnimals base on globalPdfFilterTypes
+            const filteredSoldAnimals = allSoldAnimals.filter(a => globalPdfFilterTypes.includes(a.batchType));
+
+            if (filteredSoldAnimals.length === 0) {
+                alert("No sold animals found for the selected types.");
+                setIsGlobalPdfModalOpen(false);
+                return;
+            }
+
+            const filteredSoldStats = filteredSoldAnimals.reduce((acc, a) => {
+                const rev = Number(a.soldPrice) || 0;
+                const cost = a.trueCost || 0;
+                acc.totalRevenue += rev;
+                acc.totalCost += cost;
+                acc.totalProfit += (rev - cost);
+                return acc;
+            }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
+
+            doc.setFillColor(41, 128, 185);
+            doc.rect(0, 0, 210, 30, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont("helvetica", "bold");
+            doc.text("Trinetra Farms", 14, 20);
+
+            doc.setTextColor(50, 50, 50);
+            doc.setFontSize(16);
+            doc.text("Global Sales Report", 14, 40);
+
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 46);
+            doc.text(`Types Selected: ${globalPdfFilterTypes.join(', ')}`, 14, 52);
+            doc.text(`Total Animals Sold: ${filteredSoldAnimals.length}`, 14, 58);
+            doc.text(`Total Revenue: Rs. ${filteredSoldStats.totalRevenue.toLocaleString()}`, 100, 46);
+            doc.text(`Total Cost: Rs. ${filteredSoldStats.totalCost.toLocaleString()}`, 100, 52);
+            doc.text(`Gross Profit: Rs. ${filteredSoldStats.totalProfit.toLocaleString()}`, 100, 58);
+
+            autoTable(doc, {
+                startY: 65,
+                theme: 'striped',
+                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 245, 245] },
+                head: [['Batch', 'Type', 'ID', 'Weight', 'Bought', 'Cost (Rs)', 'Expenses', 'Total Cost', 'Sold', 'Price (Rs)', 'Profit (Rs)']],
+                body: filteredSoldAnimals.map(a => [
+                    a.batchName || 'N/A', a.batchType || 'N/A', a.id, `${a.weight || 0} kg`,
+                    a.boughtDate || 'N/A', Math.round(a.originalPrice) || 0, Math.round(a.expenses), Math.round(a.trueCost),
+                    a.soldDate || 'N/A', Number(a.soldPrice) || 0,
+                    ((Number(a.soldPrice) || 0) - (a.trueCost || 0))
+                ])
+            });
+            doc.save('Trinetra_Farms_Global_Sales_Report.pdf');
+            setIsGlobalPdfModalOpen(false);
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            alert("Failed to generate PDF. Check console for details.");
+        }
+    };
 
     // --- DERIVED DATA MOVED BELOW ---
 
@@ -1318,13 +1385,20 @@ const Livestock = () => {
         } else if (animals.length > 0) {
             expenseShare = totalExpenses / animals.length;
         }
-        return Math.round(purchaseCost + expenseShare);
+        return {
+            originalPrice: purchaseCost,
+            expenses: Math.round(expenseShare),
+            trueCost: Math.round(purchaseCost + expenseShare)
+        };
     };
 
     const allSoldAnimals = useMemo(() => {
         return data.batches.flatMap(b => (b.animals || [])
             .filter(a => a.status === 'Sold')
-            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type, trueCost: calculateAnimalBreakEven(a, b) }))
+            .map(a => {
+                const costs = calculateAnimalBreakEven(a, b);
+                return { ...a, batchId: b.id, batchName: b.name, batchType: b.type, originalPrice: costs.originalPrice, expenses: costs.expenses, trueCost: costs.trueCost };
+            })
         ).sort((a, b) => new Date(b.soldDate || 0) - new Date(a.soldDate || 0));
     }, [data.batches, fallbackToHeadcount, expenseAllocationRatio]);
 
@@ -1342,7 +1416,10 @@ const Livestock = () => {
     const allDeceasedAnimals = useMemo(() => {
         return data.batches.flatMap(b => (b.animals || [])
             .filter(a => a.status === 'Deceased')
-            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type, trueCost: calculateAnimalBreakEven(a, b) }))
+            .map(a => {
+                const costs = calculateAnimalBreakEven(a, b);
+                return { ...a, batchId: b.id, batchName: b.name, batchType: b.type, originalPrice: costs.originalPrice, expenses: costs.expenses, trueCost: costs.trueCost };
+            })
         ).sort((a, b) => new Date(b.deceasedDate || 0) - new Date(a.deceasedDate || 0));
     }, [data.batches, fallbackToHeadcount, expenseAllocationRatio]);
 
@@ -1364,48 +1441,7 @@ const Livestock = () => {
                             <h1 className="text-3xl font-bold text-gray-900">Sold Animals</h1>
                             <p className="text-gray-500">Track all sold animals across batches</p>
                         </div>
-                        <button onClick={() => {
-                            try {
-                                const doc = new jsPDF();
-
-                                doc.setFillColor(41, 128, 185);
-                                doc.rect(0, 0, 210, 30, 'F');
-                                doc.setTextColor(255, 255, 255);
-                                doc.setFontSize(22);
-                                doc.setFont("helvetica", "bold");
-                                doc.text("Trinetra Farms", 14, 20);
-
-                                doc.setTextColor(50, 50, 50);
-                                doc.setFontSize(16);
-                                doc.text("Global Sales Report", 14, 40);
-
-                                doc.setFontSize(10);
-                                doc.setTextColor(100, 100, 100);
-                                doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 46);
-                                doc.text(`Total Animals Sold: ${allSoldAnimals.length}`, 14, 52);
-                                doc.text(`Total Revenue: Rs. ${soldStats.totalRevenue.toLocaleString()}`, 14, 58);
-                                doc.text(`Total Cost: Rs. ${soldStats.totalCost.toLocaleString()}`, 14, 64);
-                                doc.text(`Gross Profit: Rs. ${soldStats.totalProfit.toLocaleString()}`, 14, 70);
-
-                                autoTable(doc, {
-                                    startY: 75,
-                                    theme: 'striped',
-                                    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
-                                    alternateRowStyles: { fillColor: [245, 245, 245] },
-                                    head: [['Batch', 'Type', 'ID', 'Weight', 'Bought', 'Cost (Rs)', 'Sold', 'Price (Rs)', 'Profit (Rs)']],
-                                    body: allSoldAnimals.map(a => [
-                                        a.batchName || 'N/A', a.batchType || 'N/A', a.id, `${a.weight || 0} kg`,
-                                        a.boughtDate || 'N/A', a.trueCost || 0,
-                                        a.soldDate || 'N/A', Number(a.soldPrice) || 0,
-                                        ((Number(a.soldPrice) || 0) - (a.trueCost || 0))
-                                    ])
-                                });
-                                doc.save('Trinetra_Farms_Global_Sales_Report.pdf');
-                            } catch (error) {
-                                console.error("Error generating PDF:", error);
-                                alert("Failed to generate PDF. Check console for details.");
-                            }
-                        }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
+                        <button onClick={() => setIsGlobalPdfModalOpen(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
                             Download PDF
                         </button>
                     </div>
@@ -2150,7 +2186,7 @@ const Livestock = () => {
                                                             {/* Break-Even Price: before the down arrow */}
                                                             <div className="text-right block" onClick={e => e.stopPropagation()}>
                                                                 <p className="text-xs text-gray-400">Break-Even</p>
-                                                                <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</p>
+                                                                <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).trueCost.toLocaleString()}</p>
                                                             </div>
                                                             <div className="text-gray-400 group-hover:text-blue-600">
                                                                 {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -2609,7 +2645,7 @@ const Livestock = () => {
                                                             {/* Break-Even Price: before the down arrow */}
                                                             <div className="text-right block" onClick={e => e.stopPropagation()}>
                                                                 <p className="text-xs text-gray-400">Break-Even</p>
-                                                                <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</p>
+                                                                <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).trueCost.toLocaleString()}</p>
                                                             </div>
                                                             <div className="text-gray-400 group-hover:text-blue-600">
                                                                 {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -2983,7 +3019,7 @@ const Livestock = () => {
                         <button onClick={() => {
                             try {
                                 const doc = new jsPDF();
-                                const trueTotalCost = soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0);
+                                const trueTotalCost = soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0);
                                 const trueProfit = soldRevenue - trueTotalCost;
 
                                 doc.setFillColor(41, 128, 185);
@@ -3011,14 +3047,14 @@ const Livestock = () => {
                                     theme: 'striped',
                                     headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
                                     alternateRowStyles: { fillColor: [245, 245, 245] },
-                                    head: [['ID', 'Gender', 'Category', 'Weight', 'Bought', 'Cost (Rs)', 'Sold', 'Price (Rs)', 'Profit (Rs)']],
+                                    head: [['ID', 'Gender', 'Category', 'Weight', 'Bought', 'Cost (Rs)', 'Expenses', 'Total Cost', 'Sold', 'Price (Rs)', 'Profit']],
                                     body: soldAnimals.map(a => {
                                         const cCost = calculateAnimalBreakEven(a, selectedBatch);
                                         return [
                                             a.id, a.gender || 'N/A', a.category || 'N/A', `${a.weight} kg`,
-                                            a.boughtDate || 'N/A', cCost,
+                                            a.boughtDate || 'N/A', Math.round(cCost.originalPrice), Math.round(cCost.expenses), Math.round(cCost.trueCost),
                                             a.soldDate || 'N/A', Number(a.soldPrice) || 0,
-                                            (Number(a.soldPrice) || 0) - cCost
+                                            (Number(a.soldPrice) || 0) - cCost.trueCost
                                         ]
                                     })
                                 });
@@ -3044,13 +3080,13 @@ const Livestock = () => {
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <p className="text-xs text-gray-500 uppercase">Animal Cost <span className="text-[10px] text-gray-400 lowercase">(inc. expenses)</span></p>
                             <p className="text-2xl font-bold text-gray-800">
-                                ₹ {soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0).toLocaleString()}
+                                ₹ {soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0).toLocaleString()}
                             </p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <p className="text-xs text-gray-500 uppercase">Gross Profit</p>
-                            <p className={`text-2xl font-bold ${soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                ₹ {(soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0)).toLocaleString()}
+                            <p className={`text-2xl font-bold ${soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ₹ {(soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0)).toLocaleString()}
                             </p>
                         </div>
                     </div>
@@ -3110,8 +3146,16 @@ const Livestock = () => {
                                                         <table className="w-full text-sm">
                                                             <tbody>
                                                                 <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Cost Basis:</td>
-                                                                    <td className="font-medium text-right text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</td>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Bought Price:</td>
+                                                                    <td className="font-medium text-right text-gray-800">₹{calculateAnimalBreakEven(animal, selectedBatch).originalPrice.toLocaleString()}</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Expenses Share:</td>
+                                                                    <td className="font-medium text-right text-gray-600">₹{calculateAnimalBreakEven(animal, selectedBatch).expenses.toLocaleString()}</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Total Cost:</td>
+                                                                    <td className="font-medium text-right text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).trueCost.toLocaleString()}</td>
                                                                 </tr>
                                                                 <tr>
                                                                     <td className="text-gray-500 whitespace-nowrap">Sale Price:</td>
@@ -3119,8 +3163,8 @@ const Livestock = () => {
                                                                 </tr>
                                                                 <tr className="border-t border-gray-50">
                                                                     <td className="text-gray-500 whitespace-nowrap pt-1">Net Profit:</td>
-                                                                    <td className={`font-bold text-right pt-1 ${(Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                        ₹{((Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch)).toLocaleString()}
+                                                                    <td className={`font-bold text-right pt-1 ${(Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch).trueCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                        ₹{((Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch).trueCost).toLocaleString()}
                                                                     </td>
                                                                 </tr>
                                                             </tbody>
@@ -4044,6 +4088,42 @@ const Livestock = () => {
                 </form>
             </Modal>
 
+
+            {/* Global PDF Filter Modal */}
+            <Modal isOpen={isGlobalPdfModalOpen} onClose={() => setIsGlobalPdfModalOpen(false)} title="Download Global Sales PDF">
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">Select which animal types to include in your global sales report:</p>
+                    <div className="space-y-2">
+                        {['Goat', 'Sheep', 'Poultry', 'Chicken', 'Cow'].map(type => (
+                            <label key={type} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors">
+                                <input
+                                    type="checkbox"
+                                    className="w-4 h-4 text-blue-600 rounded"
+                                    checked={globalPdfFilterTypes.includes(type)}
+                                    onChange={(e) => {
+                                        if (e.target.checked) {
+                                            setGlobalPdfFilterTypes(prev => [...prev, type]);
+                                        } else {
+                                            setGlobalPdfFilterTypes(prev => prev.filter(t => t !== type));
+                                        }
+                                    }}
+                                />
+                                <span className="font-medium text-gray-700">{type} batches</span>
+                            </label>
+                        ))}
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4 border-t mt-4">
+                        <button onClick={() => setIsGlobalPdfModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                        <button
+                            onClick={handleGlobalPdfDownload}
+                            disabled={globalPdfFilterTypes.length === 0}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                        >
+                            Generate PDF
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
         </div>
     );
