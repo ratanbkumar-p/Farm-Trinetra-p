@@ -1038,17 +1038,30 @@ const Livestock = () => {
 
     const handleQuickSelect = (type) => {
         const active = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
-        let toSelect = [];
+        let groupIds = [];
 
         if (type === 'Kids') {
-            toSelect = active.filter(a => isKid(a)).map(a => a.id);
+            groupIds = active.filter(a => isKid(a)).map(a => a.id);
         } else if (type === 'Adults') {
-            toSelect = active.filter(a => !isKid(a)).map(a => a.id);
+            groupIds = active.filter(a => !isKid(a)).map(a => a.id);
         } else {
             // Both / All
-            toSelect = active.map(a => a.id);
+            groupIds = active.map(a => a.id);
         }
-        setSelectedAnimalsToSell(toSelect);
+
+        const allSelected = groupIds.length > 0 && groupIds.every(id => selectedAnimalsToSell.includes(id));
+
+        if (allSelected) {
+            setSelectedAnimalsToSell(prev => prev.filter(id => !groupIds.includes(id)));
+        } else {
+            setSelectedAnimalsToSell(prev => {
+                const newSelection = [...prev];
+                groupIds.forEach(id => {
+                    if (!newSelection.includes(id)) newSelection.push(id);
+                });
+                return newSelection;
+            });
+        }
     };
 
     // Selective Sell Handler
@@ -1063,11 +1076,10 @@ const Livestock = () => {
         }
 
         // Default to "Total Price" based on minSellPrice
-        const totalSuggested = Math.round(financials.minSellPrice * activeAnimals.length);
-
+        // Default to 0 based on user request
         setSellForm({
-            totalPrice: totalSuggested,
-            pricePerAnimal: '', // specific override per animal? No, we use total now.
+            totalPrice: 0,
+            pricePerAnimal: 0,
             // Select all by default
             selectedIds: activeAnimals.map(a => a.id)
         });
@@ -1964,7 +1976,7 @@ const Livestock = () => {
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                             <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button type="submit" disabled={isSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            <button type="submit" disabled={isSaving || Number(sellForm.pricePerAnimal) === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
                                 {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing Sale...</> : <>Confirm Sale (₹ {(Number(sellForm.pricePerAnimal) * selectedAnimalsToSell.length).toLocaleString()})</>}
                             </button>
                         </div>
@@ -2087,7 +2099,7 @@ const Livestock = () => {
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             {/* Break-Even Price: before the down arrow */}
-                                                            <div className="text-right hidden sm:block" onClick={e => e.stopPropagation()}>
+                                                            <div className="text-right block" onClick={e => e.stopPropagation()}>
                                                                 <p className="text-xs text-gray-400">Break-Even</p>
                                                                 <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</p>
                                                             </div>
@@ -2546,7 +2558,7 @@ const Livestock = () => {
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             {/* Break-Even Price: before the down arrow */}
-                                                            <div className="text-right hidden sm:block" onClick={e => e.stopPropagation()}>
+                                                            <div className="text-right block" onClick={e => e.stopPropagation()}>
                                                                 <p className="text-xs text-gray-400">Break-Even</p>
                                                                 <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</p>
                                                             </div>
@@ -3272,7 +3284,7 @@ const Livestock = () => {
 
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                        <button type="submit" disabled={isSaving || Number(sellForm.totalPrice) === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
                             {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</> : `Confirm Sale (${selectedAnimalsToSell.length})`}
                         </button>
                     </div>
