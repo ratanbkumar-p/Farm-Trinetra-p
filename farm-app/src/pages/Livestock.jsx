@@ -343,7 +343,7 @@ const Livestock = () => {
 
     const handleGlobalPdfDownload = () => {
         try {
-            const doc = new jsPDF();
+            const doc = new jsPDF('landscape');
 
             // filter allSoldAnimals base on globalPdfFilterTypes
             const filteredSoldAnimals = allSoldAnimals.filter(a => globalPdfFilterTypes.includes(a.batchType));
@@ -364,7 +364,7 @@ const Livestock = () => {
             }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
 
             doc.setFillColor(41, 128, 185);
-            doc.rect(0, 0, 210, 30, 'F');
+            doc.rect(0, 0, 297, 30, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
             doc.setFont("helvetica", "bold");
@@ -379,14 +379,15 @@ const Livestock = () => {
             doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 46);
             doc.text(`Types Selected: ${globalPdfFilterTypes.join(', ')}`, 14, 52);
             doc.text(`Total Animals Sold: ${filteredSoldAnimals.length}`, 14, 58);
-            doc.text(`Total Revenue: Rs. ${filteredSoldStats.totalRevenue.toLocaleString()}`, 100, 46);
-            doc.text(`Total Cost: Rs. ${filteredSoldStats.totalCost.toLocaleString()}`, 100, 52);
-            doc.text(`Gross Profit: Rs. ${filteredSoldStats.totalProfit.toLocaleString()}`, 100, 58);
+            doc.text(`Total Revenue: Rs. ${filteredSoldStats.totalRevenue.toLocaleString()}`, 200, 46);
+            doc.text(`Total Cost: Rs. ${filteredSoldStats.totalCost.toLocaleString()}`, 200, 52);
+            doc.text(`Gross Profit: Rs. ${filteredSoldStats.totalProfit.toLocaleString()}`, 200, 58);
 
             autoTable(doc, {
                 startY: 65,
                 theme: 'striped',
-                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak', halign: 'center' },
+                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', halign: 'center' },
                 alternateRowStyles: { fillColor: [245, 245, 245] },
                 head: [['Batch', 'Type', 'ID', 'Weight', 'Bought', 'Cost (Rs)', 'Expenses', 'Total Cost', 'Sold', 'Price (Rs)', 'Profit (Rs)']],
                 body: filteredSoldAnimals.map(a => [
@@ -1106,7 +1107,7 @@ const Livestock = () => {
     const openSellModal = () => {
         // Calculate suggested price
         const financials = calculateBatchFinancials(selectedBatch);
-        const activeAnimals = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+        const activeAnimals = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
 
         if (activeAnimals.length === 0) {
             alert('No active animals to sell!');
@@ -1982,7 +1983,7 @@ const Livestock = () => {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Allocated (Staff/General):</span>
-                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).allocatedExpense).toLocaleString()}</span>
+                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).allocatedPerAnimal).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between pt-2 border-t border-blue-200 font-bold">
                                     <span className="text-blue-800">Total Cost Basis:</span>
@@ -2002,21 +2003,21 @@ const Livestock = () => {
                             <div className="flex gap-2 mb-2">
                                 <button
                                     type="button"
-                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(sellForm.breakEvenPrice * 1.1) })}
+                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(financials.minSellPrice * 1.1) })}
                                     className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
                                 >
                                     Min + 10%
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(sellForm.breakEvenPrice * 1.2) })}
+                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(financials.minSellPrice * 1.2) })}
                                     className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
                                 >
                                     Min + 20%
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(sellForm.breakEvenPrice * 1.3) })}
+                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(financials.minSellPrice * 1.3) })}
                                     className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
                                 >
                                     Min + 30%
@@ -3018,12 +3019,12 @@ const Livestock = () => {
                         </div>
                         <button onClick={() => {
                             try {
-                                const doc = new jsPDF();
+                                const doc = new jsPDF('landscape');
                                 const trueTotalCost = soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0);
                                 const trueProfit = soldRevenue - trueTotalCost;
 
                                 doc.setFillColor(41, 128, 185);
-                                doc.rect(0, 0, 210, 30, 'F');
+                                doc.rect(0, 0, 297, 30, 'F');
                                 doc.setTextColor(255, 255, 255);
                                 doc.setFontSize(22);
                                 doc.setFont("helvetica", "bold");
@@ -3038,14 +3039,15 @@ const Livestock = () => {
                                 doc.text(`Type: ${selectedBatch.type}`, 14, 46);
                                 doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 52);
                                 doc.text(`Sold Animals: ${soldAnimals.length}`, 14, 58);
-                                doc.text(`Revenue: Rs. ${soldRevenue.toLocaleString()}`, 100, 46);
-                                doc.text(`Cost Segment: Rs. ${trueTotalCost.toLocaleString()}`, 100, 52);
-                                doc.text(`Gross Profit: Rs. ${trueProfit.toLocaleString()}`, 100, 58);
+                                doc.text(`Revenue: Rs. ${soldRevenue.toLocaleString()}`, 200, 46);
+                                doc.text(`Cost Segment: Rs. ${trueTotalCost.toLocaleString()}`, 200, 52);
+                                doc.text(`Gross Profit: Rs. ${trueProfit.toLocaleString()}`, 200, 58);
 
                                 autoTable(doc, {
                                     startY: 65,
                                     theme: 'striped',
-                                    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                                    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak', halign: 'center' },
+                                    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', halign: 'center' },
                                     alternateRowStyles: { fillColor: [245, 245, 245] },
                                     head: [['ID', 'Gender', 'Category', 'Weight', 'Bought', 'Cost (Rs)', 'Expenses', 'Total Cost', 'Sold', 'Price (Rs)', 'Profit']],
                                     body: soldAnimals.map(a => {
