@@ -337,38 +337,7 @@ const Livestock = () => {
     // --- DERIVED DATA ---
     const selectedBatch = data.batches.find(b => b.id === selectedBatchId);
 
-    const allSoldAnimals = useMemo(() => {
-        return data.batches.flatMap(b => (b.animals || [])
-            .filter(a => a.status === 'Sold')
-            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type }))
-        ).sort((a, b) => new Date(b.soldDate || 0) - new Date(a.soldDate || 0));
-    }, [data.batches]);
-
-    const soldStats = useMemo(() => {
-        return allSoldAnimals.reduce((acc, a) => {
-            const rev = Number(a.soldPrice) || 0;
-            const cost = Number(a.purchaseCost) || 0;
-            acc.totalRevenue += rev;
-            acc.totalCost += cost;
-            acc.totalProfit += (rev - cost);
-            return acc;
-        }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
-    }, [allSoldAnimals]);
-
-    const allDeceasedAnimals = useMemo(() => {
-        return data.batches.flatMap(b => (b.animals || [])
-            .filter(a => a.status === 'Deceased')
-            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type }))
-        ).sort((a, b) => new Date(b.deceasedDate || 0) - new Date(a.deceasedDate || 0));
-    }, [data.batches]);
-
-    const deceasedStats = useMemo(() => {
-        const totalLoss = allDeceasedAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-        return {
-            totalLoss,
-            avgLoss: allDeceasedAnimals.length > 0 ? Math.round(totalLoss / allDeceasedAnimals.length) : 0
-        };
-    }, [allDeceasedAnimals]);
+    // --- DERIVED DATA MOVED BELOW ---
 
     // Calculate total active value (purchase cost) across all batches for expense allocation
     const totalActiveValue = useMemo(() => {
@@ -1352,6 +1321,39 @@ const Livestock = () => {
         return Math.round(purchaseCost + expenseShare);
     };
 
+    const allSoldAnimals = useMemo(() => {
+        return data.batches.flatMap(b => (b.animals || [])
+            .filter(a => a.status === 'Sold')
+            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type, trueCost: calculateAnimalBreakEven(a, b) }))
+        ).sort((a, b) => new Date(b.soldDate || 0) - new Date(a.soldDate || 0));
+    }, [data.batches, fallbackToHeadcount, expenseAllocationRatio]);
+
+    const soldStats = useMemo(() => {
+        return allSoldAnimals.reduce((acc, a) => {
+            const rev = Number(a.soldPrice) || 0;
+            const cost = a.trueCost || 0;
+            acc.totalRevenue += rev;
+            acc.totalCost += cost;
+            acc.totalProfit += (rev - cost);
+            return acc;
+        }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
+    }, [allSoldAnimals]);
+
+    const allDeceasedAnimals = useMemo(() => {
+        return data.batches.flatMap(b => (b.animals || [])
+            .filter(a => a.status === 'Deceased')
+            .map(a => ({ ...a, batchId: b.id, batchName: b.name, batchType: b.type, trueCost: calculateAnimalBreakEven(a, b) }))
+        ).sort((a, b) => new Date(b.deceasedDate || 0) - new Date(a.deceasedDate || 0));
+    }, [data.batches, fallbackToHeadcount, expenseAllocationRatio]);
+
+    const deceasedStats = useMemo(() => {
+        const totalLoss = allDeceasedAnimals.reduce((sum, a) => sum + (a.trueCost || 0), 0);
+        return {
+            totalLoss,
+            avgLoss: allDeceasedAnimals.length > 0 ? Math.round(totalLoss / allDeceasedAnimals.length) : 0
+        };
+    }, [allDeceasedAnimals]);
+
     // --- RENDER: MAIN LIST ---
     if (!selectedBatch) {
         if (mainTab === 'sold') {
@@ -1363,19 +1365,46 @@ const Livestock = () => {
                             <p className="text-gray-500">Track all sold animals across batches</p>
                         </div>
                         <button onClick={() => {
-                            const doc = new jsPDF();
-                            doc.text('Global Sold Animals Report', 14, 15);
-                            doc.autoTable({
-                                startY: 25,
-                                head: [['Batch', 'Type', 'ID', 'Weight', 'Bought', 'Cost (₹)', 'Sold', 'Price (₹)', 'Profit (₹)']],
-                                body: allSoldAnimals.map(a => [
-                                    a.batchName || 'N/A', a.batchType || 'N/A', a.id, `${a.weight || 0} kg`,
-                                    a.boughtDate || 'N/A', Number(a.purchaseCost) || 0,
-                                    a.soldDate || 'N/A', Number(a.soldPrice) || 0,
-                                    (Number(a.soldPrice) || 0) - (Number(a.purchaseCost) || 0)
-                                ])
-                            });
-                            doc.save('All_Sold_Animals_Report.pdf');
+                            try {
+                                const doc = new jsPDF();
+
+                                doc.setFillColor(41, 128, 185);
+                                doc.rect(0, 0, 210, 30, 'F');
+                                doc.setTextColor(255, 255, 255);
+                                doc.setFontSize(22);
+                                doc.setFont("helvetica", "bold");
+                                doc.text("Trinetra Farms", 14, 20);
+
+                                doc.setTextColor(50, 50, 50);
+                                doc.setFontSize(16);
+                                doc.text("Global Sales Report", 14, 40);
+
+                                doc.setFontSize(10);
+                                doc.setTextColor(100, 100, 100);
+                                doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 46);
+                                doc.text(`Total Animals Sold: ${allSoldAnimals.length}`, 14, 52);
+                                doc.text(`Total Revenue: Rs. ${soldStats.totalRevenue.toLocaleString()}`, 14, 58);
+                                doc.text(`Total Cost: Rs. ${soldStats.totalCost.toLocaleString()}`, 14, 64);
+                                doc.text(`Gross Profit: Rs. ${soldStats.totalProfit.toLocaleString()}`, 14, 70);
+
+                                doc.autoTable({
+                                    startY: 75,
+                                    theme: 'striped',
+                                    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                                    alternateRowStyles: { fillColor: [245, 245, 245] },
+                                    head: [['Batch', 'Type', 'ID', 'Weight', 'Bought', 'Cost (Rs)', 'Sold', 'Price (Rs)', 'Profit (Rs)']],
+                                    body: allSoldAnimals.map(a => [
+                                        a.batchName || 'N/A', a.batchType || 'N/A', a.id, `${a.weight || 0} kg`,
+                                        a.boughtDate || 'N/A', a.trueCost || 0,
+                                        a.soldDate || 'N/A', Number(a.soldPrice) || 0,
+                                        ((Number(a.soldPrice) || 0) - (a.trueCost || 0))
+                                    ])
+                                });
+                                doc.save('Trinetra_Farms_Global_Sales_Report.pdf');
+                            } catch (error) {
+                                console.error("Error generating PDF:", error);
+                                alert("Failed to generate PDF. Check console for details.");
+                            }
                         }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
                             Download PDF
                         </button>
@@ -2952,19 +2981,52 @@ const Livestock = () => {
                             <p className="text-gray-500 text-sm">Track financials and details of sold animals in this batch.</p>
                         </div>
                         <button onClick={() => {
-                            const doc = new jsPDF();
-                            doc.text(`Sold Animals Report: ${selectedBatch.name}`, 14, 15);
-                            doc.autoTable({
-                                startY: 25,
-                                head: [['ID', 'Gender', 'Category', 'Weight', 'Bought', 'Cost (₹)', 'Sold', 'Price (₹)', 'Profit (₹)']],
-                                body: soldAnimals.map(a => [
-                                    a.id, a.gender || 'N/A', a.category || 'N/A', `${a.weight} kg`,
-                                    a.boughtDate || 'N/A', Number(a.purchaseCost) || 0,
-                                    a.soldDate || 'N/A', Number(a.soldPrice) || 0,
-                                    (Number(a.soldPrice) || 0) - (Number(a.purchaseCost) || 0)
-                                ])
-                            });
-                            doc.save(`${selectedBatch.name.replace(/\\s+/g, '_')}_Sold_Report.pdf`);
+                            try {
+                                const doc = new jsPDF();
+                                const trueTotalCost = soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0);
+                                const trueProfit = soldRevenue - trueTotalCost;
+
+                                doc.setFillColor(41, 128, 185);
+                                doc.rect(0, 0, 210, 30, 'F');
+                                doc.setTextColor(255, 255, 255);
+                                doc.setFontSize(22);
+                                doc.setFont("helvetica", "bold");
+                                doc.text("Trinetra Farms", 14, 20);
+
+                                doc.setTextColor(50, 50, 50);
+                                doc.setFontSize(16);
+                                doc.text(`Batch Sales Report: ${selectedBatch.name}`, 14, 40);
+
+                                doc.setFontSize(10);
+                                doc.setTextColor(100, 100, 100);
+                                doc.text(`Type: ${selectedBatch.type}`, 14, 46);
+                                doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 52);
+                                doc.text(`Sold Animals: ${soldAnimals.length}`, 14, 58);
+                                doc.text(`Revenue: Rs. ${soldRevenue.toLocaleString()}`, 100, 46);
+                                doc.text(`Cost Segment: Rs. ${trueTotalCost.toLocaleString()}`, 100, 52);
+                                doc.text(`Gross Profit: Rs. ${trueProfit.toLocaleString()}`, 100, 58);
+
+                                doc.autoTable({
+                                    startY: 65,
+                                    theme: 'striped',
+                                    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                                    alternateRowStyles: { fillColor: [245, 245, 245] },
+                                    head: [['ID', 'Gender', 'Category', 'Weight', 'Bought', 'Cost (Rs)', 'Sold', 'Price (Rs)', 'Profit (Rs)']],
+                                    body: soldAnimals.map(a => {
+                                        const cCost = calculateAnimalBreakEven(a, selectedBatch);
+                                        return [
+                                            a.id, a.gender || 'N/A', a.category || 'N/A', `${a.weight} kg`,
+                                            a.boughtDate || 'N/A', cCost,
+                                            a.soldDate || 'N/A', Number(a.soldPrice) || 0,
+                                            (Number(a.soldPrice) || 0) - cCost
+                                        ]
+                                    })
+                                });
+                                doc.save(`Trinetra_Farms_${selectedBatch.name.replace(/\s+/g, '_')}_Sales.pdf`);
+                            } catch (error) {
+                                console.error("Error generating PDF:", error);
+                                alert("Failed to generate PDF. Check console for details.");
+                            }
                         }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
                             Download PDF
                         </button>
@@ -2980,163 +3042,167 @@ const Livestock = () => {
                             <p className="text-2xl font-bold text-green-600">₹ {soldRevenue.toLocaleString()}</p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Animal Cost</p>
-                            <p className="text-2xl font-bold text-gray-800">₹ {soldAnimals.reduce((s, a) => s + (Number(a.purchaseCost) || 0), 0).toLocaleString()}</p>
+                            <p className="text-xs text-gray-500 uppercase">Animal Cost <span className="text-[10px] text-gray-400 lowercase">(inc. expenses)</span></p>
+                            <p className="text-2xl font-bold text-gray-800">
+                                ₹ {soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0).toLocaleString()}
+                            </p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                             <p className="text-xs text-gray-500 uppercase">Gross Profit</p>
-                            <p className={`text-2xl font-bold ${soldRevenue - soldAnimals.reduce((s, a) => s + (Number(a.purchaseCost) || 0), 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                ₹ {(soldRevenue - soldAnimals.reduce((s, a) => s + (Number(a.purchaseCost) || 0), 0)).toLocaleString()}
+                            <p className={`text-2xl font-bold ${soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ₹ {(soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch), 0)).toLocaleString()}
                             </p>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
-                        {soldAnimals.length > 0 ? (
-                            soldAnimals.map(animal => (
-                                <div key={animal.id} className="border-b border-gray-50 last:border-0">
-                                    <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedSoldType === animal.id ? 'bg-gray-50' : ''}`} onClick={() => setExpandedSoldType(prev => prev === animal.id ? null : animal.id)}>
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
-                                                {animal.gender === 'Male' ? 'M' : 'F'}
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                    {animal.id}
-                                                    <span className="text-gray-300 text-xs font-normal">|</span>
-                                                    <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                    {selectedBatch.type !== 'Poultry' && selectedBatch.type !== 'Chicken' && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
+                            {soldAnimals.length > 0 ? (
+                                soldAnimals.map(animal => (
+                                    <div key={animal.id} className="border-b border-gray-50 last:border-0">
+                                        <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedSoldType === animal.id ? 'bg-gray-50' : ''}`} onClick={() => setExpandedSoldType(prev => prev === animal.id ? null : animal.id)}>
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                    {animal.gender === 'Male' ? 'M' : 'F'}
                                                 </div>
-                                                <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                    <span>{animal.weight} kg</span>
-                                                    <span className="px-1.5 rounded bg-blue-100 text-blue-700">Sold</span>
+                                                <div>
+                                                    <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                        {animal.id}
+                                                        <span className="text-gray-300 text-xs font-normal">|</span>
+                                                        <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 flex gap-2 items-center">
+                                                        <span>{animal.weight} kg</span>
+                                                        <span className="px-1.5 rounded bg-blue-100 text-blue-700">Sold</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-right">
+                                                <div className="hidden sm:block">
+                                                    <p className="text-xs text-gray-400">Sold For</p>
+                                                    <p className="text-sm font-bold text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</p>
+                                                </div>
+                                                <div className="text-gray-400 group-hover:text-blue-600">
+                                                    {expandedSoldType === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 text-right">
-                                            <div className="hidden sm:block">
-                                                <p className="text-xs text-gray-400">Sold For</p>
-                                                <p className="text-sm font-bold text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</p>
-                                            </div>
-                                            <div className="text-gray-400 group-hover:text-blue-600">
-                                                {expandedSoldType === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {expandedSoldType === animal.id && (
-                                        <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 mt-2">
-                                                <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Dates</div>
-                                                    <table className="w-full text-sm">
-                                                        <tbody>
-                                                            <tr>
-                                                                <td className="text-gray-500 whitespace-nowrap">Bought:</td>
-                                                                <td className="font-medium text-right">{animal.boughtDate || 'N/A'}</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td className="text-gray-500 whitespace-nowrap">Sold:</td>
-                                                                <td className="font-medium text-right">{animal.soldDate || 'N/A'}</td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
+                                        {expandedSoldType === animal.id && (
+                                            <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 mt-2">
+                                                    <div className="bg-white p-3 rounded-lg border border-gray-100">
+                                                        <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Dates</div>
+                                                        <table className="w-full text-sm">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Bought:</td>
+                                                                    <td className="font-medium text-right">{animal.boughtDate || 'N/A'}</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Sold:</td>
+                                                                    <td className="font-medium text-right">{animal.soldDate || 'N/A'}</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                    <div className="bg-white p-3 rounded-lg border border-gray-100">
+                                                        <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Performance</div>
+                                                        <table className="w-full text-sm">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Cost Basis:</td>
+                                                                    <td className="font-medium text-right text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).toLocaleString()}</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td className="text-gray-500 whitespace-nowrap">Sale Price:</td>
+                                                                    <td className="font-medium text-right text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</td>
+                                                                </tr>
+                                                                <tr className="border-t border-gray-50">
+                                                                    <td className="text-gray-500 whitespace-nowrap pt-1">Net Profit:</td>
+                                                                    <td className={`font-bold text-right pt-1 ${(Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                        ₹{((Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch)).toLocaleString()}
+                                                                    </td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                    <div className="bg-white p-3 rounded-lg border border-gray-100 md:col-span-2">
+                                                        <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Weight History</div>
+                                                        {animal.weightHistory && animal.weightHistory.length > 0 ? (
+                                                            <div className="h-24">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <LineChart data={animal.weightHistory}>
+                                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                        <XAxis dataKey="date" hide />
+                                                                        <YAxis domain={['dataMin - 1', 'dataMax + 1']} hide />
+                                                                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                                        <Line type="monotone" dataKey="weight" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3, fill: '#3B82F6' }} />
+                                                                    </LineChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-gray-400 italic">No weight history recorded.</p>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Performance</div>
-                                                    <table className="w-full text-sm">
-                                                        <tbody>
-                                                            <tr>
-                                                                <td className="text-gray-500 whitespace-nowrap">Cost Basis:</td>
-                                                                <td className="font-medium text-right text-orange-600">₹{(Number(animal.purchaseCost) || 0).toLocaleString()}</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td className="text-gray-500 whitespace-nowrap">Sale Price:</td>
-                                                                <td className="font-medium text-right text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</td>
-                                                            </tr>
-                                                            <tr className="border-t border-gray-50">
-                                                                <td className="text-gray-500 whitespace-nowrap pt-1">Net Profit:</td>
-                                                                <td className={`font-bold text-right pt-1 ${(Number(animal.soldPrice) || 0) - (Number(animal.purchaseCost) || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                    ₹{((Number(animal.soldPrice) || 0) - (Number(animal.purchaseCost) || 0)).toLocaleString()}
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                <div className="bg-white p-3 rounded-lg border border-gray-100 md:col-span-2">
-                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Weight History</div>
-                                                    {animal.weightHistory && animal.weightHistory.length > 0 ? (
-                                                        <div className="h-24">
-                                                            <ResponsiveContainer width="100%" height="100%">
-                                                                <LineChart data={animal.weightHistory}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis dataKey="date" hide />
-                                                                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} hide />
-                                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                                                    <Line type="monotone" dataKey="weight" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3, fill: '#3B82F6' }} />
-                                                                </LineChart>
-                                                            </ResponsiveContainer>
+
+                                                {/* Medical Records for this sold animal */}
+                                                <div className="bg-white p-3 rounded-lg border border-gray-100 mt-2">
+                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-2">Medical Treatments</div>
+                                                    {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).map(mr => (
+                                                                <div key={mr.id} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
+                                                                    <div>
+                                                                        <span className="font-bold text-gray-700">{mr.type}</span>: {mr.name}
+                                                                    </div>
+                                                                    <span className="text-gray-500">{mr.date}</span>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     ) : (
-                                                        <p className="text-sm text-gray-400 italic">No weight history recorded.</p>
+                                                        <p className="text-sm text-gray-400 italic">No medical treatments recorded.</p>
+                                                    )}
+                                                </div>
+
+                                                {/* Action Buttons */}
+                                                <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
+                                                    {canEdit && (
+                                                        <button onClick={() => {
+                                                            const p = prompt("Enter new sold price (₹):", animal.soldPrice);
+                                                            if (p !== null && !isNaN(p)) {
+                                                                const newAnimals = (selectedBatch.animals || []).map(a =>
+                                                                    a.id === animal.id ? { ...a, soldPrice: Number(p) } : a
+                                                                );
+                                                                updateBatch(selectedBatch.id, { animals: newAnimals });
+                                                            }
+                                                        }} className="px-3 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
+                                                            <Edit2 className="w-3 h-3" /> Edit Price
+                                                        </button>
+                                                    )}
+                                                    {isSuperAdmin && (
+                                                        <button onClick={() => {
+                                                            if (window.confirm(`Delete sold record for ${animal.id} completely? This will remove the animal.`)) {
+                                                                const newAnimals = (selectedBatch.animals || []).filter(a => a.id !== animal.id);
+                                                                updateBatch(selectedBatch.id, { animals: newAnimals });
+                                                            }
+                                                        }} className="px-3 py-1.5 text-red-600 bg-red-50 hover:bg-red-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
+                                                            <Trash2 className="w-3 h-3" /> Delete
+                                                        </button>
                                                     )}
                                                 </div>
                                             </div>
-
-                                            {/* Medical Records for this sold animal */}
-                                            <div className="bg-white p-3 rounded-lg border border-gray-100 mt-2">
-                                                <div className="text-xs text-gray-500 uppercase font-semibold mb-2">Medical Treatments</div>
-                                                {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).length > 0 ? (
-                                                    <div className="space-y-2">
-                                                        {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).map(mr => (
-                                                            <div key={mr.id} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
-                                                                <div>
-                                                                    <span className="font-bold text-gray-700">{mr.type}</span>: {mr.name}
-                                                                </div>
-                                                                <span className="text-gray-500">{mr.date}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm text-gray-400 italic">No medical treatments recorded.</p>
-                                                )}
-                                            </div>
-
-                                            {/* Action Buttons */}
-                                            <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
-                                                {canEdit && (
-                                                    <button onClick={() => {
-                                                        const p = prompt("Enter new sold price (₹):", animal.soldPrice);
-                                                        if (p !== null && !isNaN(p)) {
-                                                            const newAnimals = (selectedBatch.animals || []).map(a =>
-                                                                a.id === animal.id ? { ...a, soldPrice: Number(p) } : a
-                                                            );
-                                                            updateBatch(selectedBatch.id, { animals: newAnimals });
-                                                        }
-                                                    }} className="px-3 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
-                                                        <Edit2 className="w-3 h-3" /> Edit Price
-                                                    </button>
-                                                )}
-                                                {isSuperAdmin && (
-                                                    <button onClick={() => {
-                                                        if (window.confirm(`Delete sold record for ${animal.id} completely? This will remove the animal.`)) {
-                                                            const newAnimals = (selectedBatch.animals || []).filter(a => a.id !== animal.id);
-                                                            updateBatch(selectedBatch.id, { animals: newAnimals });
-                                                        }
-                                                    }} className="px-3 py-1.5 text-red-600 bg-red-50 hover:bg-red-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
-                                                        <Trash2 className="w-3 h-3" /> Delete
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-12 text-center text-gray-400">
+                                    <Stethoscope className="w-12 h-12 mx-auto mb-3 opacity-20" /> {/* Reused icon for now */}
+                                    <p>No sold animals found in this batch.</p>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="p-12 text-center text-gray-400">
-                                <Stethoscope className="w-12 h-12 mx-auto mb-3 opacity-20" /> {/* Reused icon for now */}
-                                <p>No sold animals found in this batch.</p>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
