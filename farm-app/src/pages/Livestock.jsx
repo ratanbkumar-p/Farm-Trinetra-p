@@ -167,6 +167,9 @@ const Livestock = () => {
     // Global PDF Modal State
     const [isGlobalPdfModalOpen, setIsGlobalPdfModalOpen] = useState(false);
     const [globalPdfFilterTypes, setGlobalPdfFilterTypes] = useState(['Goat', 'Sheep', 'Poultry', 'Chicken', 'Cow']);
+    const [globalPdfStartDate, setGlobalPdfStartDate] = useState('');
+    const [globalPdfEndDate, setGlobalPdfEndDate] = useState('');
+    const [globalPdfBatchId, setGlobalPdfBatchId] = useState('');
 
     // --- HANDLERS FOR FLOCK ---
     const handleBulkDeceased = async (e) => {
@@ -346,10 +349,20 @@ const Livestock = () => {
             const doc = new jsPDF('landscape');
 
             // filter allSoldAnimals base on globalPdfFilterTypes
-            const filteredSoldAnimals = allSoldAnimals.filter(a => globalPdfFilterTypes.includes(a.batchType));
+            let filteredSoldAnimals = allSoldAnimals.filter(a => globalPdfFilterTypes.includes(a.batchType));
+
+            if (globalPdfStartDate) {
+                filteredSoldAnimals = filteredSoldAnimals.filter(a => new Date(a.soldDate) >= new Date(globalPdfStartDate));
+            }
+            if (globalPdfEndDate) {
+                filteredSoldAnimals = filteredSoldAnimals.filter(a => new Date(a.soldDate) <= new Date(globalPdfEndDate));
+            }
+            if (globalPdfBatchId) {
+                filteredSoldAnimals = filteredSoldAnimals.filter(a => a.batchId === globalPdfBatchId);
+            }
 
             if (filteredSoldAnimals.length === 0) {
-                alert("No sold animals found for the selected types.");
+                alert("No sold animals found for the selected criteria.");
                 setIsGlobalPdfModalOpen(false);
                 return;
             }
@@ -377,14 +390,19 @@ const Livestock = () => {
             doc.setFontSize(10);
             doc.setTextColor(100, 100, 100);
             doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 46);
-            doc.text(`Types Selected: ${globalPdfFilterTypes.join(', ')}`, 14, 52);
-            doc.text(`Total Animals Sold: ${filteredSoldAnimals.length}`, 14, 58);
-            doc.text(`Total Revenue: Rs. ${filteredSoldStats.totalRevenue.toLocaleString()}`, 200, 46);
-            doc.text(`Total Cost: Rs. ${filteredSoldStats.totalCost.toLocaleString()}`, 200, 52);
-            doc.text(`Gross Profit: Rs. ${filteredSoldStats.totalProfit.toLocaleString()}`, 200, 58);
+            doc.text(`Types: ${globalPdfFilterTypes.length === 5 ? 'All' : globalPdfFilterTypes.join(', ')}`, 14, 52);
+            doc.text(`Dates: ${globalPdfStartDate ? new Date(globalPdfStartDate).toLocaleDateString() : 'Start'} to ${globalPdfEndDate ? new Date(globalPdfEndDate).toLocaleDateString() : 'Present'}`, 14, 58);
+            if (globalPdfBatchId) {
+                doc.text(`Batch: ${data.batches.find(b => b.id === globalPdfBatchId)?.name || ''}`, 14, 64);
+            }
+
+            doc.text(`Animals Sold: ${filteredSoldAnimals.length}`, 200, 46);
+            doc.text(`Total Revenue: Rs. ${filteredSoldStats.totalRevenue.toLocaleString()}`, 200, 52);
+            doc.text(`Total Cost: Rs. ${filteredSoldStats.totalCost.toLocaleString()}`, 200, 58);
+            doc.text(`Gross Profit: Rs. ${filteredSoldStats.totalProfit.toLocaleString()}`, 200, 64);
 
             autoTable(doc, {
-                startY: 65,
+                startY: 70,
                 theme: 'striped',
                 styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak', halign: 'center' },
                 headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', halign: 'center' },
@@ -2066,6 +2084,80 @@ const Livestock = () => {
                             </button>
                         </div>
                     </form>
+                </Modal>
+
+                {/* Global PDF Filter Modal */}
+                <Modal isOpen={isGlobalPdfModalOpen} onClose={() => setIsGlobalPdfModalOpen(false)} title="Download Global Sales PDF">
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-600">Select which options to include in your global sales report:</p>
+
+                        {/* Types */}
+                        <div className="flex gap-2 flex-wrap mb-4">
+                            {['Goat', 'Sheep', 'Poultry', 'Chicken', 'Cow'].map(type => (
+                                <label key={type} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors text-sm">
+                                    <input
+                                        type="checkbox"
+                                        className="w-4 h-4 text-blue-600 rounded"
+                                        checked={globalPdfFilterTypes.includes(type)}
+                                        onChange={(e) => {
+                                            if (e.target.checked) setGlobalPdfFilterTypes(prev => [...prev, type]);
+                                            else setGlobalPdfFilterTypes(prev => prev.filter(t => t !== type));
+                                        }}
+                                    />
+                                    <span className="font-medium text-gray-700">{type}</span>
+                                </label>
+                            ))}
+                        </div>
+
+                        {/* Batch Dropdown */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Batch (Optional)</label>
+                            <select
+                                value={globalPdfBatchId}
+                                onChange={e => setGlobalPdfBatchId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            >
+                                <option value="">All Batches</option>
+                                {data.batches.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name} ({b.type})</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Date Range */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                                <input
+                                    type="date"
+                                    value={globalPdfStartDate}
+                                    onChange={e => setGlobalPdfStartDate(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                                <input
+                                    type="date"
+                                    value={globalPdfEndDate}
+                                    onChange={e => setGlobalPdfEndDate(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex justify-end gap-3 pt-4 border-t mt-4">
+                            <button onClick={() => setIsGlobalPdfModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                            <button
+                                onClick={handleGlobalPdfDownload}
+                                disabled={globalPdfFilterTypes.length === 0}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                            >
+                                Generate PDF
+                            </button>
+                        </div>
+                    </div>
                 </Modal>
             </div>
         );
@@ -4088,43 +4180,6 @@ const Livestock = () => {
                         </button>
                     </div>
                 </form>
-            </Modal>
-
-
-            {/* Global PDF Filter Modal */}
-            <Modal isOpen={isGlobalPdfModalOpen} onClose={() => setIsGlobalPdfModalOpen(false)} title="Download Global Sales PDF">
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-600">Select which animal types to include in your global sales report:</p>
-                    <div className="space-y-2">
-                        {['Goat', 'Sheep', 'Poultry', 'Chicken', 'Cow'].map(type => (
-                            <label key={type} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors">
-                                <input
-                                    type="checkbox"
-                                    className="w-4 h-4 text-blue-600 rounded"
-                                    checked={globalPdfFilterTypes.includes(type)}
-                                    onChange={(e) => {
-                                        if (e.target.checked) {
-                                            setGlobalPdfFilterTypes(prev => [...prev, type]);
-                                        } else {
-                                            setGlobalPdfFilterTypes(prev => prev.filter(t => t !== type));
-                                        }
-                                    }}
-                                />
-                                <span className="font-medium text-gray-700">{type} batches</span>
-                            </label>
-                        ))}
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4 border-t mt-4">
-                        <button onClick={() => setIsGlobalPdfModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button
-                            onClick={handleGlobalPdfDownload}
-                            disabled={globalPdfFilterTypes.length === 0}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                        >
-                            Generate PDF
-                        </button>
-                    </div>
-                </div>
             </Modal>
 
         </div>
