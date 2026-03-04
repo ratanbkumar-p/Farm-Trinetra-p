@@ -9,7 +9,7 @@ import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getCurrentMonthKey, getMonthsBetween, ALLOCATION_ELIGIBLE_TYPES } from '../lib/allocationUtils';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 import { useLocation } from 'react-router-dom';
 
@@ -1387,7 +1387,7 @@ const Livestock = () => {
                                 doc.text(`Total Cost: Rs. ${soldStats.totalCost.toLocaleString()}`, 14, 64);
                                 doc.text(`Gross Profit: Rs. ${soldStats.totalProfit.toLocaleString()}`, 14, 70);
 
-                                doc.autoTable({
+                                autoTable(doc, {
                                     startY: 75,
                                     theme: 'striped',
                                     headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
@@ -3006,7 +3006,7 @@ const Livestock = () => {
                                 doc.text(`Cost Segment: Rs. ${trueTotalCost.toLocaleString()}`, 100, 52);
                                 doc.text(`Gross Profit: Rs. ${trueProfit.toLocaleString()}`, 100, 58);
 
-                                doc.autoTable({
+                                autoTable(doc, {
                                     startY: 65,
                                     theme: 'striped',
                                     headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
