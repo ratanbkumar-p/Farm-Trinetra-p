@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw, Users, ArrowRight, Loader2 } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
@@ -31,6 +31,91 @@ const formatWeight = (kg) => {
     const g = grams % 1000;
     return g > 0 ? `${k}kg ${g}g` : `${k}kg`;
 };
+
+// --- PERFORMANCE OPTIMIZED MODAL ---
+const GlobalPdfModal = memo(({
+    isOpen, onClose,
+    globalPdfFilterTypes, setGlobalPdfFilterTypes,
+    globalPdfBatchId, setGlobalPdfBatchId,
+    globalPdfStartDate, setGlobalPdfStartDate,
+    globalPdfEndDate, setGlobalPdfEndDate,
+    dataBatches, handleGlobalPdfDownload
+}) => {
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Download Global Sales PDF">
+            <div className="space-y-4">
+                <p className="text-sm text-gray-600">Select which options to include in your global sales report:</p>
+
+                {/* Types */}
+                <div className="flex gap-2 flex-wrap mb-4">
+                    {['Goat', 'Sheep', 'Poultry', 'Cow'].map(type => (
+                        <label key={type} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors text-sm">
+                            <input
+                                type="checkbox"
+                                className="w-4 h-4 text-blue-600 rounded"
+                                checked={globalPdfFilterTypes.includes(type)}
+                                onChange={(e) => {
+                                    if (e.target.checked) setGlobalPdfFilterTypes(prev => [...prev, type]);
+                                    else setGlobalPdfFilterTypes(prev => prev.filter(t => t !== type));
+                                }}
+                            />
+                            <span className="font-medium text-gray-700">{type}</span>
+                        </label>
+                    ))}
+                </div>
+
+                {/* Batch Dropdown */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Batch (Optional)</label>
+                    <select
+                        value={globalPdfBatchId}
+                        onChange={e => setGlobalPdfBatchId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                        <option value="">All Batches</option>
+                        {dataBatches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name} ({b.type})</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Date Range */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                        <input
+                            type="date"
+                            value={globalPdfStartDate}
+                            onChange={e => setGlobalPdfStartDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                        <input
+                            type="date"
+                            value={globalPdfEndDate}
+                            onChange={e => setGlobalPdfEndDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3 pt-4 border-t mt-4">
+                    <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                    <button
+                        onClick={handleGlobalPdfDownload}
+                        disabled={globalPdfFilterTypes.length === 0}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                    >
+                        Generate PDF
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+});
 
 const Livestock = () => {
     const location = useLocation();
@@ -4108,79 +4193,21 @@ const Livestock = () => {
                 </form>
             </Modal>
 
-            {/* Global PDF Filter Modal */}
-            <Modal isOpen={isGlobalPdfModalOpen} onClose={() => setIsGlobalPdfModalOpen(false)} title="Download Global Sales PDF">
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-600">Select which options to include in your global sales report:</p>
-
-                    {/* Types */}
-                    <div className="flex gap-2 flex-wrap mb-4">
-                        {['Goat', 'Sheep', 'Poultry', 'Cow'].map(type => (
-                            <label key={type} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors text-sm">
-                                <input
-                                    type="checkbox"
-                                    className="w-4 h-4 text-blue-600 rounded"
-                                    checked={globalPdfFilterTypes.includes(type)}
-                                    onChange={(e) => {
-                                        if (e.target.checked) setGlobalPdfFilterTypes(prev => [...prev, type]);
-                                        else setGlobalPdfFilterTypes(prev => prev.filter(t => t !== type));
-                                    }}
-                                />
-                                <span className="font-medium text-gray-700">{type}</span>
-                            </label>
-                        ))}
-                    </div>
-
-                    {/* Batch Dropdown */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Batch (Optional)</label>
-                        <select
-                            value={globalPdfBatchId}
-                            onChange={e => setGlobalPdfBatchId(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
-                        >
-                            <option value="">All Batches</option>
-                            {data.batches.map(b => (
-                                <option key={b.id} value={b.id}>{b.name} ({b.type})</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Date Range */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
-                            <input
-                                type="date"
-                                value={globalPdfStartDate}
-                                onChange={e => setGlobalPdfStartDate(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
-                            <input
-                                type="date"
-                                value={globalPdfEndDate}
-                                onChange={e => setGlobalPdfEndDate(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex justify-end gap-3 pt-4 border-t mt-4">
-                        <button onClick={() => setIsGlobalPdfModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button
-                            onClick={handleGlobalPdfDownload}
-                            disabled={globalPdfFilterTypes.length === 0}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                        >
-                            Generate PDF
-                        </button>
-                    </div>
-                </div>
-            </Modal>
+            {/* Global PDF Filter Modal (Memoized for performance) */}
+            <GlobalPdfModal
+                isOpen={isGlobalPdfModalOpen}
+                onClose={() => setIsGlobalPdfModalOpen(false)}
+                globalPdfFilterTypes={globalPdfFilterTypes}
+                setGlobalPdfFilterTypes={setGlobalPdfFilterTypes}
+                globalPdfBatchId={globalPdfBatchId}
+                setGlobalPdfBatchId={setGlobalPdfBatchId}
+                globalPdfStartDate={globalPdfStartDate}
+                setGlobalPdfStartDate={setGlobalPdfStartDate}
+                globalPdfEndDate={globalPdfEndDate}
+                setGlobalPdfEndDate={setGlobalPdfEndDate}
+                dataBatches={data.batches}
+                handleGlobalPdfDownload={handleGlobalPdfDownload}
+            />
         </div>
     );
 };
