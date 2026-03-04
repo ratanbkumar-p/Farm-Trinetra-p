@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getCurrentMonthKey, getMonthsBetween, ALLOCATION_ELIGIBLE_TYPES } from '../lib/allocationUtils';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 import { useLocation } from 'react-router-dom';
 
@@ -1360,6 +1362,23 @@ const Livestock = () => {
                             <h1 className="text-3xl font-bold text-gray-900">Sold Animals</h1>
                             <p className="text-gray-500">Track all sold animals across batches</p>
                         </div>
+                        <button onClick={() => {
+                            const doc = new jsPDF();
+                            doc.text('Global Sold Animals Report', 14, 15);
+                            doc.autoTable({
+                                startY: 25,
+                                head: [['Batch', 'Type', 'ID', 'Weight', 'Bought', 'Cost (₹)', 'Sold', 'Price (₹)', 'Profit (₹)']],
+                                body: allSoldAnimals.map(a => [
+                                    a.batchName || 'N/A', a.batchType || 'N/A', a.id, `${a.weight || 0} kg`,
+                                    a.boughtDate || 'N/A', Number(a.purchaseCost) || 0,
+                                    a.soldDate || 'N/A', Number(a.soldPrice) || 0,
+                                    (Number(a.soldPrice) || 0) - (Number(a.purchaseCost) || 0)
+                                ])
+                            });
+                            doc.save('All_Sold_Animals_Report.pdf');
+                        }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
+                            Download PDF
+                        </button>
                     </div>
 
                     {/* Tab Navigation */}
@@ -2041,6 +2060,7 @@ const Livestock = () => {
                 <button onClick={() => setBatchTab('animals')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'animals' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Overview</button>
                 <button onClick={() => setBatchTab('weight')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'weight' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>Weight Tracking</button>
                 <button onClick={() => setBatchTab('medical')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'medical' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500 hover:text-gray-800'}`}>Medical Records</button>
+                <button onClick={() => setBatchTab('sold')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>Sold Animals</button>
             </div>
 
             {/* TAB: OVERVIEW (Animals + Expenses) */}
@@ -2919,6 +2939,203 @@ const Livestock = () => {
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB: SOLD */}
+            {batchTab === 'sold' && (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h3 className="font-bold text-gray-800">Sold Animals</h3>
+                            <p className="text-gray-500 text-sm">Track financials and details of sold animals in this batch.</p>
+                        </div>
+                        <button onClick={() => {
+                            const doc = new jsPDF();
+                            doc.text(`Sold Animals Report: ${selectedBatch.name}`, 14, 15);
+                            doc.autoTable({
+                                startY: 25,
+                                head: [['ID', 'Gender', 'Category', 'Weight', 'Bought', 'Cost (₹)', 'Sold', 'Price (₹)', 'Profit (₹)']],
+                                body: soldAnimals.map(a => [
+                                    a.id, a.gender || 'N/A', a.category || 'N/A', `${a.weight} kg`,
+                                    a.boughtDate || 'N/A', Number(a.purchaseCost) || 0,
+                                    a.soldDate || 'N/A', Number(a.soldPrice) || 0,
+                                    (Number(a.soldPrice) || 0) - (Number(a.purchaseCost) || 0)
+                                ])
+                            });
+                            doc.save(`${selectedBatch.name.replace(/\\s+/g, '_')}_Sold_Report.pdf`);
+                        }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
+                            Download PDF
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <p className="text-xs text-gray-500 uppercase">Total Sold</p>
+                            <p className="text-2xl font-bold text-gray-800">{soldAnimals.length}</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <p className="text-xs text-gray-500 uppercase">Revenue</p>
+                            <p className="text-2xl font-bold text-green-600">₹ {soldRevenue.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <p className="text-xs text-gray-500 uppercase">Animal Cost</p>
+                            <p className="text-2xl font-bold text-gray-800">₹ {soldAnimals.reduce((s, a) => s + (Number(a.purchaseCost) || 0), 0).toLocaleString()}</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <p className="text-xs text-gray-500 uppercase">Gross Profit</p>
+                            <p className={`text-2xl font-bold ${soldRevenue - soldAnimals.reduce((s, a) => s + (Number(a.purchaseCost) || 0), 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ₹ {(soldRevenue - soldAnimals.reduce((s, a) => s + (Number(a.purchaseCost) || 0), 0)).toLocaleString()}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
+                        {soldAnimals.length > 0 ? (
+                            soldAnimals.map(animal => (
+                                <div key={animal.id} className="border-b border-gray-50 last:border-0">
+                                    <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedSoldType === animal.id ? 'bg-gray-50' : ''}`} onClick={() => setExpandedSoldType(prev => prev === animal.id ? null : animal.id)}>
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                {animal.gender === 'Male' ? 'M' : 'F'}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                    {animal.id}
+                                                    <span className="text-gray-300 text-xs font-normal">|</span>
+                                                    <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
+                                                </div>
+                                                <div className="text-xs text-gray-500 flex gap-2 items-center">
+                                                    <span>{animal.weight} kg</span>
+                                                    <span className="px-1.5 rounded bg-blue-100 text-blue-700">Sold</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 text-right">
+                                            <div className="hidden sm:block">
+                                                <p className="text-xs text-gray-400">Sold For</p>
+                                                <p className="text-sm font-bold text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</p>
+                                            </div>
+                                            <div className="text-gray-400 group-hover:text-blue-600">
+                                                {expandedSoldType === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {expandedSoldType === animal.id && (
+                                        <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 mt-2">
+                                                <div className="bg-white p-3 rounded-lg border border-gray-100">
+                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Dates</div>
+                                                    <table className="w-full text-sm">
+                                                        <tbody>
+                                                            <tr>
+                                                                <td className="text-gray-500 whitespace-nowrap">Bought:</td>
+                                                                <td className="font-medium text-right">{animal.boughtDate || 'N/A'}</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td className="text-gray-500 whitespace-nowrap">Sold:</td>
+                                                                <td className="font-medium text-right">{animal.soldDate || 'N/A'}</td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-lg border border-gray-100">
+                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Performance</div>
+                                                    <table className="w-full text-sm">
+                                                        <tbody>
+                                                            <tr>
+                                                                <td className="text-gray-500 whitespace-nowrap">Cost Basis:</td>
+                                                                <td className="font-medium text-right text-orange-600">₹{(Number(animal.purchaseCost) || 0).toLocaleString()}</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td className="text-gray-500 whitespace-nowrap">Sale Price:</td>
+                                                                <td className="font-medium text-right text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</td>
+                                                            </tr>
+                                                            <tr className="border-t border-gray-50">
+                                                                <td className="text-gray-500 whitespace-nowrap pt-1">Net Profit:</td>
+                                                                <td className={`font-bold text-right pt-1 ${(Number(animal.soldPrice) || 0) - (Number(animal.purchaseCost) || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                    ₹{((Number(animal.soldPrice) || 0) - (Number(animal.purchaseCost) || 0)).toLocaleString()}
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-lg border border-gray-100 md:col-span-2">
+                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Weight History</div>
+                                                    {animal.weightHistory && animal.weightHistory.length > 0 ? (
+                                                        <div className="h-24">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <LineChart data={animal.weightHistory}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                    <XAxis dataKey="date" hide />
+                                                                    <YAxis domain={['dataMin - 1', 'dataMax + 1']} hide />
+                                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                                    <Line type="monotone" dataKey="weight" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3, fill: '#3B82F6' }} />
+                                                                </LineChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-gray-400 italic">No weight history recorded.</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Medical Records for this sold animal */}
+                                            <div className="bg-white p-3 rounded-lg border border-gray-100 mt-2">
+                                                <div className="text-xs text-gray-500 uppercase font-semibold mb-2">Medical Treatments</div>
+                                                {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).length > 0 ? (
+                                                    <div className="space-y-2">
+                                                        {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).map(mr => (
+                                                            <div key={mr.id} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
+                                                                <div>
+                                                                    <span className="font-bold text-gray-700">{mr.type}</span>: {mr.name}
+                                                                </div>
+                                                                <span className="text-gray-500">{mr.date}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-gray-400 italic">No medical treatments recorded.</p>
+                                                )}
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
+                                                {canEdit && (
+                                                    <button onClick={() => {
+                                                        const p = prompt("Enter new sold price (₹):", animal.soldPrice);
+                                                        if (p !== null && !isNaN(p)) {
+                                                            const newAnimals = (selectedBatch.animals || []).map(a =>
+                                                                a.id === animal.id ? { ...a, soldPrice: Number(p) } : a
+                                                            );
+                                                            updateBatch(selectedBatch.id, { animals: newAnimals });
+                                                        }
+                                                    }} className="px-3 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
+                                                        <Edit2 className="w-3 h-3" /> Edit Price
+                                                    </button>
+                                                )}
+                                                {isSuperAdmin && (
+                                                    <button onClick={() => {
+                                                        if (window.confirm(`Delete sold record for ${animal.id} completely? This will remove the animal.`)) {
+                                                            const newAnimals = (selectedBatch.animals || []).filter(a => a.id !== animal.id);
+                                                            updateBatch(selectedBatch.id, { animals: newAnimals });
+                                                        }
+                                                    }} className="px-3 py-1.5 text-red-600 bg-red-50 hover:bg-red-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
+                                                        <Trash2 className="w-3 h-3" /> Delete
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="p-12 text-center text-gray-400">
+                                <Stethoscope className="w-12 h-12 mx-auto mb-3 opacity-20" /> {/* Reused icon for now */}
+                                <p>No sold animals found in this batch.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
