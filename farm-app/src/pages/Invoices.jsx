@@ -72,39 +72,15 @@ const Invoices = () => {
         doc.setFillColor(...ACCENT);
         doc.rect(0, 0, pw, 2, 'F');
 
-        /* ── 3. Logo with white rounded background ── */
-        const logoSize = 28;
-        const logoPad = 3;
-        // white rounded rect behind logo
-        doc.setFillColor(...WHITE);
-        doc.setDrawColor(...BORDER);
-        doc.setLineWidth(0.3);
-        doc.roundedRect(10, 8, logoSize + logoPad * 2, logoSize + logoPad * 2, 3, 3, 'FD');
-
-        try {
-            const response = await fetch('/logo.png');
-            if (response.ok) {
-                const blob = await response.blob();
-                const reader = new FileReader();
-                await new Promise(resolve => { reader.onload = resolve; reader.readAsDataURL(blob); });
-                doc.addImage(reader.result, 'PNG', 10 + logoPad, 8 + logoPad, logoSize, logoSize);
-            }
-        } catch (_) {
-            // fallback text logo
-            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.setTextColor(...ACCENT);
-            doc.text('TF', 19, 27);
-        }
-
-        /* ── 4. Company name beside logo ── */
+        /* ── 3. Company name ── */
         doc.setFontSize(18); doc.setFont('helvetica', 'bold');
         doc.setTextColor(...SLATE);
-        doc.text(COMPANY.name, 48, 22);
+        doc.text(COMPANY.name, 14, 22);
 
         doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
         doc.setTextColor(...MID_GRAY);
-        doc.text(`${COMPANY.village}, ${COMPANY.mandal}, ${COMPANY.district}`, 48, 29);
-        doc.text(COMPANY.state, 48, 35);
+        doc.text(`${COMPANY.village}, ${COMPANY.mandal}, ${COMPANY.district}`, 14, 30);
+        doc.text(COMPANY.state, 14, 37);
 
         /* ── 5. "INVOICE" label – top right ── */
         doc.setFontSize(26); doc.setFont('helvetica', 'bold');
@@ -422,16 +398,10 @@ const Invoices = () => {
                     <div className="font-sans space-y-4">
                         {/* Header: pastel slate bg */}
                         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                {/* Logo with white bg */}
-                                <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm">
-                                    <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-                                </div>
-                                <div>
-                                    <p className="font-black text-slate-800 text-lg tracking-wide leading-tight">TRINETRA FARMS</p>
-                                    <p className="text-slate-500 text-[10px] mt-0.5">{COMPANY.village}, {COMPANY.mandal}</p>
-                                    <p className="text-slate-400 text-[10px]">{COMPANY.district}, {COMPANY.state}</p>
-                                </div>
+                            <div>
+                                <p className="font-black text-slate-800 text-lg tracking-wide leading-tight">TRINETRA FARMS</p>
+                                <p className="text-slate-500 text-[10px] mt-0.5">{COMPANY.village}, {COMPANY.mandal}</p>
+                                <p className="text-slate-400 text-[10px]">{COMPANY.district}, {COMPANY.state}</p>
                             </div>
                             <div className="text-right flex-shrink-0">
                                 <p className="text-slate-800 text-2xl font-black tracking-wider">INVOICE</p>
