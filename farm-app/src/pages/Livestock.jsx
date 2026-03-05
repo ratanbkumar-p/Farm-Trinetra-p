@@ -1601,7 +1601,7 @@ const Livestock = () => {
                                 return acc;
                             }, {})).map(([type, animals]) => {
                                 const typeRevenue = animals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
-                                const typeCost = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+                                const typeCost = animals.reduce((sum, a) => sum + (Number(a.trueCost) || 0), 0);
                                 const typeProfit = typeRevenue - typeCost;
                                 const isExpanded = expandedSoldType === type;
 
@@ -1644,7 +1644,7 @@ const Livestock = () => {
                                             <div className="bg-blue-50/50 p-6 border-t border-blue-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                                                 {Object.entries(batches).map(([batchName, batchAnimals]) => {
                                                     const batchRevenue = batchAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
-                                                    const batchCost = batchAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
+                                                    const batchCost = batchAnimals.reduce((sum, a) => sum + (Number(a.trueCost) || 0), 0);
                                                     const batchProfit = batchRevenue - batchCost;
 
                                                     return (
@@ -1658,12 +1658,16 @@ const Livestock = () => {
                                                                 <div className="space-y-1 mt-4">
                                                                     <div className="flex justify-between text-sm">
                                                                         <span className="text-gray-500">Revenue</span>
-                                                                        <span className="font-bold text-gray-800">₹ {batchRevenue.toLocaleString()}</span>
+                                                                        <span className="font-bold text-gray-800">₹{Math.round(batchRevenue).toLocaleString()}</span>
                                                                     </div>
                                                                     <div className="flex justify-between text-sm">
-                                                                        <span className="text-gray-500">Profit</span>
+                                                                        <span className="text-gray-500">True Cost</span>
+                                                                        <span className="font-medium text-red-500">₹{Math.round(batchCost).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-sm border-t border-gray-100 pt-1 mt-1">
+                                                                        <span className="text-gray-600 font-semibold">Actual Profit</span>
                                                                         <span className={`font-bold ${batchProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                            {batchProfit >= 0 ? '+' : ''} ₹ {batchProfit.toLocaleString()}
+                                                                            {batchProfit >= 0 ? '+' : ''}₹{Math.round(batchProfit).toLocaleString()}
                                                                         </span>
                                                                     </div>
                                                                 </div>
