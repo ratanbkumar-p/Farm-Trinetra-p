@@ -82,6 +82,7 @@ export const DataProvider = ({ children }) => {
         contacts: [], // Vet contacts
         farmContacts: [], // Farm contacts with groups
         contactGroups: [], // Contact groups
+        eggLogs: [], // Global egg tracker
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -101,7 +102,7 @@ export const DataProvider = ({ children }) => {
         }
         const unsubscribes = [];
 
-        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices', 'inventory', 'contacts', 'farmContacts', 'contactGroups'];
+        const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices', 'inventory', 'contacts', 'farmContacts', 'contactGroups', 'eggLogs'];
 
         baseCollections.forEach(baseName => {
             const firestoreCollName = getCollectionName(baseName);
@@ -543,27 +544,23 @@ export const DataProvider = ({ children }) => {
         }
     };
 
-    // Egg Sales Support
-    const addEggSale = async (batchId, eggSale) => {
-        const batch = data.batches.find(b => b.id === batchId);
-        if (batch) {
-            const newSale = {
-                id: generateId('EGG'),
-                ...eggSale,
-                createdAt: new Date().toISOString()
-            };
-            await updateDoc(doc(db, getCollectionName('batches'), batchId), {
-                eggSales: [...(batch.eggSales || []), newSale]
-            });
-        }
+    // Global Egg Logs (Dashboard Tracker)
+    const addEggLog = async (logData) => {
+        const id = generateId('EGG');
+        const newLog = {
+            id,
+            ...logData,
+            createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, getCollectionName('eggLogs'), id), newLog);
     };
 
-    const deleteEggSale = async (batchId, saleId) => {
-        const batch = data.batches.find(b => b.id === batchId);
-        if (batch) {
-            const updatedEggSales = (batch.eggSales || []).filter(s => s.id !== saleId);
-            await updateDoc(doc(db, getCollectionName('batches'), batchId), { eggSales: updatedEggSales });
-        }
+    const updateEggLog = async (logId, updates) => {
+        await updateDoc(doc(db, getCollectionName('eggLogs'), logId), updates);
+    };
+
+    const deleteEggLog = async (logId) => {
+        await deleteDoc(doc(db, getCollectionName('eggLogs'), logId));
     };
 
     const revertSoldAnimal = async (batchId, animalId) => {
@@ -1189,8 +1186,9 @@ export const DataProvider = ({ children }) => {
             updateExpense,
             updateBatchExpense,
             deleteBatchExpense,
-            addEggSale,
-            deleteEggSale,
+            addEggLog,
+            updateEggLog,
+            deleteEggLog,
             updateEmployee,
             deleteEmployee,
             addEmployeePayment,
