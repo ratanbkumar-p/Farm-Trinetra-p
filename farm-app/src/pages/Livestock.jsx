@@ -129,8 +129,9 @@ const Livestock = () => {
     const [mainTab, setMainTab] = useState('active');
     const [isSaving, setIsSaving] = useState(false);
 
-    // Batch Detail Tab: 'animals' | 'expenses' | 'weight'
+    // Batch Detail Tab: 'animals' | 'expenses' | 'weight' | 'sold'
     const [batchTab, setBatchTab] = useState('animals');
+    const [batchSoldFilter, setBatchSoldFilter] = useState('1M');
 
     // Modals State
     const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
@@ -3424,25 +3425,48 @@ const Livestock = () => {
                     </div>
 
                     {/* Poultry / Chicken: Grouped Sales Table */}
-                    {(selectedBatch.type === 'Poultry' || selectedBatch.type === 'Chicken') && (
-                        <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
-                            <div className="px-5 py-4 border-b border-blue-50 flex items-center justify-between">
-                                <h4 className="font-bold text-gray-800">Sales History</h4>
-                                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full font-medium">{soldAnimals.length} birds sold</span>
-                            </div>
-                            {soldAnimals.length > 0 ? (() => {
-                                const groups = {};
-                                soldAnimals.forEach(animal => {
-                                    const key = `${animal.soldDate}_${animal.soldPrice}`;
-                                    if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0, ids: [] };
-                                    groups[key].count += 1;
-                                    groups[key].total += (Number(animal.soldPrice) || 0);
-                                    groups[key].cost += calculateAnimalBreakEven(animal, selectedBatch).trueCost;
-                                    groups[key].ids.push(animal.id);
-                                });
-                                const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                    {(selectedBatch.type === 'Poultry' || selectedBatch.type === 'Chicken') && (() => {
+                        // Filter soldAnimals by period
+                        const now = new Date();
+                        const filteredForTab = soldAnimals.filter(a => {
+                            const d = new Date(a.soldDate || 0);
+                            if (batchSoldFilter === 'All') return true;
+                            if (batchSoldFilter === '1M') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+                            const months = batchSoldFilter === '3M' ? 3 : batchSoldFilter === '6M' ? 6 : 12;
+                            const cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - months);
+                            return d >= cutoff;
+                        });
+                        const groups = {};
+                        filteredForTab.forEach(animal => {
+                            const key = `${animal.soldDate}_${animal.soldPrice}`;
+                            if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0, ids: [] };
+                            groups[key].count += 1;
+                            groups[key].total += (Number(animal.soldPrice) || 0);
+                            groups[key].cost += calculateAnimalBreakEven(animal, selectedBatch).trueCost;
+                            groups[key].ids.push(animal.id);
+                        });
+                        const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-                                return (
+                        return (
+                            <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
+                                <div className="px-5 py-4 border-b border-blue-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <h4 className="font-bold text-gray-800">Sales History</h4>
+                                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full font-medium">{filteredForTab.length} birds</span>
+                                    </div>
+                                    <div className="flex bg-gray-100 p-1 rounded-lg gap-0.5">
+                                        {[{ k: '1M', l: 'This Month' }, { k: '3M', l: '3 Months' }, { k: '6M', l: '6 Months' }, { k: '1Y', l: 'Year' }, { k: 'All', l: 'All Time' }].map(f => (
+                                            <button
+                                                key={f.k}
+                                                onClick={() => setBatchSoldFilter(f.k)}
+                                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${batchSoldFilter === f.k ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >
+                                                {f.l}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {bulkSales.length > 0 ? (
                                     <>
                                         {/* Desktop Table */}
                                         <div className="hidden md:block overflow-x-auto">
@@ -3550,15 +3574,15 @@ const Livestock = () => {
                                             })}
                                         </div>
                                     </>
-                                );
-                            })() : (
-                                <div className="p-12 text-center text-gray-400">
-                                    <p className="font-medium">No sales recorded yet.</p>
-                                    <p className="text-sm mt-1">Use the Sell Animals button to record a sale.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                ) : (
+                                    <div className="p-12 text-center text-gray-400">
+                                        <p className="font-medium">{soldAnimals.length > 0 ? `No sales in this period. Try a wider filter.` : 'No sales recorded yet.'}</p>
+                                        {soldAnimals.length > 0 && <button onClick={() => setBatchSoldFilter('All')} className="mt-2 text-sm text-blue-600 hover:underline">Show all time</button>}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Non-Poultry: Individual animal list */}
                     {selectedBatch.type !== 'Poultry' && selectedBatch.type !== 'Chicken' && (
