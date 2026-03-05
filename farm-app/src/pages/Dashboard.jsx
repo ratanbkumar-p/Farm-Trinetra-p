@@ -4,7 +4,7 @@ import { Activity, AlertTriangle, ChevronDown, ChevronUp, Sprout, DollarSign, Be
 import { useData } from '../context/DataContext';
 import { useSettings } from '../context/SettingsContext';
 import { getMonthsBetween, calculateMonthlyAllocations } from '../lib/allocationUtils';
-import Modal from '../components/ui/Modal';
+import EggTrackerPage from './EggTrackerPage';
 
 // --- Emoji Mappings ---
 const VEGETABLE_EMOJIS = {
@@ -168,49 +168,52 @@ const LivestockCard = ({ type, stats }) => {
     );
 };
 
-// 2.5 Egg Tracker Card
-const EggTrackerCard = ({ eggLogs = [], onAddLog }) => {
+// 2.5 Egg Tracker Card (Summary only - click opens full tracker page)
+const EggTrackerCard = ({ eggLogs = [], onOpen }) => {
     const totalCollected = eggLogs.filter(l => l.type === 'Collected').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
     const totalHatched = eggLogs.filter(l => l.type === 'Hatched').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
+    const totalSpoiled = eggLogs.filter(l => l.type === 'Spoiled').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
     const totalSold = eggLogs.filter(l => l.type === 'Sold').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
     const totalRevenue = eggLogs.filter(l => l.type === 'Sold').reduce((sum, l) => sum + (Number(l.revenue) || 0), 0);
-
-    const inventory = totalCollected - totalHatched - totalSold;
+    const inStock = Math.max(0, totalCollected - totalHatched - totalSpoiled - totalSold);
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-yellow-200 overflow-hidden hover:shadow-md cursor-pointer transition-all h-full flex flex-col" onClick={onAddLog}>
+        <div className="bg-white rounded-2xl shadow-sm border border-yellow-200 overflow-hidden hover:shadow-md cursor-pointer transition-all h-full flex flex-col" onClick={onOpen}>
             <div className="p-5 flex-1 bg-gradient-to-br from-yellow-50 to-white">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <span className="text-3xl">🥚</span>
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl">🥚</span>
                         <div>
-                            <h4 className="font-bold text-yellow-900 leading-tight">Egg Tracker</h4>
-                            <p className="text-[10px] text-yellow-600 font-medium">Click to log</p>
+                            <h4 className="font-bold text-yellow-900 text-sm leading-tight">Egg Tracker</h4>
+                            <p className="text-[10px] text-yellow-600">Tap to manage</p>
                         </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-yellow-100 text-yellow-700 whitespace-nowrap">
-                        {inventory > 0 ? `${inventory} in stock` : '0 in stock'}
+                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-yellow-100 text-yellow-700">
+                        {inStock} in stock
                     </span>
                 </div>
 
-                <div className="space-y-3 mt-auto">
-                    <div className="flex justify-between items-end border-b border-yellow-100 pb-2 mb-3">
-                        <div className="text-[10px] text-gray-500 uppercase font-bold">Revenue</div>
-                        <div className="text-lg font-bold text-green-600 leading-none">₹{totalRevenue.toLocaleString()} <span className="text-[9px] text-gray-400 font-normal uppercase ml-0.5">Profit</span></div>
+                <div className="border-b border-yellow-100 pb-2 mb-2">
+                    <div className="text-[10px] text-gray-500 uppercase font-bold">Revenue (All Profit)</div>
+                    <div className="text-lg font-bold text-green-600">₹{totalRevenue.toLocaleString('en-IN')}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5">
+                    <div className="bg-white rounded-lg p-2 text-center border border-yellow-100">
+                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Collected</p>
+                        <p className="text-sm font-bold text-yellow-700">{totalCollected}</p>
                     </div>
-                    <div className="flex gap-2">
-                        <div className="flex-1 bg-white rounded-lg p-2 text-center border border-yellow-100 shadow-sm">
-                            <p className="text-[9px] text-gray-400 uppercase font-semibold mb-1">Collected</p>
-                            <p className="text-xs font-bold text-gray-700">{totalCollected}</p>
-                        </div>
-                        <div className="flex-1 bg-white rounded-lg p-2 text-center border border-yellow-100 shadow-sm">
-                            <p className="text-[9px] text-gray-400 uppercase font-semibold mb-1">Hatched</p>
-                            <p className="text-xs font-bold text-blue-600">{totalHatched}</p>
-                        </div>
-                        <div className="flex-1 bg-white rounded-lg p-2 text-center border border-yellow-100 shadow-sm">
-                            <p className="text-[9px] text-gray-400 uppercase font-semibold mb-1">Sold</p>
-                            <p className="text-xs font-bold text-green-600">{totalSold}</p>
-                        </div>
+                    <div className="bg-white rounded-lg p-2 text-center border border-blue-100">
+                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Hatched</p>
+                        <p className="text-sm font-bold text-blue-600">{totalHatched}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-2 text-center border border-green-100">
+                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Sold</p>
+                        <p className="text-sm font-bold text-green-600">{totalSold}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-2 text-center border border-red-100">
+                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Spoiled</p>
+                        <p className="text-sm font-bold text-red-500">{totalSpoiled}</p>
                     </div>
                 </div>
             </div>
@@ -279,50 +282,14 @@ const AlertCard = ({ alert }) => {
 // --- Main Dashboard ---
 
 const Dashboard = () => {
-    const { data, addEggLog } = useData();
+    const { data } = useData();
     const { settings } = useSettings();
     const [soldFilter, setSoldFilter] = useState('Month');
-    const [isSaving, setIsSaving] = useState(false);
 
-    // Egg Log Modal State
-    const [isEggModalOpen, setIsEggModalOpen] = useState(false);
-    const [eggLogForm, setEggLogForm] = useState({
-        date: new Date().toISOString().split('T')[0],
-        type: 'Collected',
-        quantity: '',
-        revenue: '',
-        buyer: '',
-        notes: ''
-    });
+    // Egg Tracker Page State
+    const [isEggTrackerOpen, setIsEggTrackerOpen] = useState(false);
 
-    const handleEggLogSubmit = async (e) => {
-        e.preventDefault();
-        setIsSaving(true);
-        try {
-            await addEggLog({
-                date: eggLogForm.date,
-                type: eggLogForm.type,
-                quantity: Number(eggLogForm.quantity),
-                revenue: eggLogForm.type === 'Sold' ? Number(eggLogForm.revenue) : 0,
-                buyer: eggLogForm.type === 'Sold' ? eggLogForm.buyer : '',
-                notes: eggLogForm.notes
-            });
-            setIsEggModalOpen(false);
-            setEggLogForm({
-                date: new Date().toISOString().split('T')[0],
-                type: 'Collected',
-                quantity: '',
-                revenue: '',
-                buyer: '',
-                notes: ''
-            });
-        } catch (error) {
-            console.error("Error saving egg log:", error);
-            alert("Failed to save egg log");
-        } finally {
-            setIsSaving(false);
-        }
-    };
+
 
     // --- Unified Expenses (excludes yearly and salaries - those are calculated separately) ---
     const unifiedExpenses = useMemo(() => {
@@ -631,7 +598,7 @@ const Dashboard = () => {
                         <LivestockCard type="Goat" stats={goatStats} />
                         <LivestockCard type="Sheep" stats={sheepStats} />
                         <LivestockCard type="Chicken" stats={chickenStats} />
-                        <EggTrackerCard eggLogs={data.eggLogs || []} onAddLog={() => setIsEggModalOpen(true)} />
+                        <EggTrackerCard eggLogs={data.eggLogs || []} onOpen={() => setIsEggTrackerOpen(true)} />
                     </div>
 
                     {/* ROW 2: Crops */}
@@ -748,88 +715,10 @@ const Dashboard = () => {
                 </div>
             </div>
 
-            {/* Egg Log Modal */}
-            <Modal isOpen={isEggModalOpen} onClose={() => setIsEggModalOpen(false)} title="Log Egg Activity">
-                <form onSubmit={handleEggLogSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                        <input
-                            type="date"
-                            required
-                            value={eggLogForm.date}
-                            onChange={(e) => setEggLogForm({ ...eggLogForm, date: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Activity Type</label>
-                        <select
-                            value={eggLogForm.type}
-                            onChange={(e) => setEggLogForm({ ...eggLogForm, type: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
-                        >
-                            <option value="Collected">Collected</option>
-                            <option value="Hatched">Sent to Hatching</option>
-                            <option value="Sold">Sold</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity (Trays / Pieces)</label>
-                        <input
-                            type="number"
-                            required
-                            min="1"
-                            value={eggLogForm.quantity}
-                            onChange={(e) => setEggLogForm({ ...eggLogForm, quantity: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
-                            placeholder="e.g. 30"
-                        />
-                    </div>
-
-                    {eggLogForm.type === 'Sold' && (
-                        <>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Total Revenue (₹)</label>
-                                <input
-                                    type="number"
-                                    required
-                                    min="0"
-                                    value={eggLogForm.revenue}
-                                    onChange={(e) => setEggLogForm({ ...eggLogForm, revenue: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
-                                    placeholder="Total amount received"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Buyer (Optional)</label>
-                                <input
-                                    type="text"
-                                    value={eggLogForm.buyer}
-                                    onChange={(e) => setEggLogForm({ ...eggLogForm, buyer: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
-                                    placeholder="e.g. local market"
-                                />
-                            </div>
-                        </>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
-                        <textarea
-                            value={eggLogForm.notes}
-                            onChange={(e) => setEggLogForm({ ...eggLogForm, notes: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
-                            placeholder="Any details..."
-                            rows="2"
-                        />
-                    </div>
-
-                    <div className="flex justify-end pt-4 gap-3">
-                        <button type="button" onClick={() => setIsEggModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium flex items-center justify-center min-w-[100px] transition-colors">{isSaving ? 'Saving...' : 'Save Log'}</button>
-                    </div>
-                </form>
-            </Modal>
+            {/* Egg Tracker Full Page */}
+            {isEggTrackerOpen && (
+                <EggTrackerPage onClose={() => setIsEggTrackerOpen(false)} />
+            )}
         </div>
     );
 };

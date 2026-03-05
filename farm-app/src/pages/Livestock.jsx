@@ -120,7 +120,7 @@ const GlobalPdfModal = memo(({
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact, processMonthlyAllocations, getLiveAllocation, addEggSale, deleteEggSale } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact, processMonthlyAllocations, getLiveAllocation } = useData();
     const { canEdit, isSuperAdmin, isAdmin } = useAuth();
     const canEditRecords = isSuperAdmin || isAdmin;
     const [selectedBatchId, setSelectedBatchId] = useState(null);
@@ -1567,24 +1567,29 @@ const Livestock = () => {
                     {/* Summary Stats */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Total Sold</p>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Total Sold</p>
                             <p className="text-2xl font-bold text-blue-600">{allSoldAnimals.length}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">animals</p>
                         </div>
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Total Revenue</p>
-                            <p className="text-2xl font-bold text-green-600">₹ {soldStats.totalRevenue.toLocaleString()}</p>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Revenue</p>
+                            <p className="text-2xl font-bold text-green-600">₹{Math.round(soldStats.totalRevenue).toLocaleString()}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">total sale amount</p>
                         </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Animal Cost</p>
-                            <p className="text-2xl font-bold text-gray-800">₹ {soldStats.totalCost.toLocaleString()}</p>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-50 border">
+                            <p className="text-xs text-gray-500 uppercase font-semibold">True Cost</p>
+                            <p className="text-2xl font-bold text-red-600">₹{Math.round(soldStats.totalCost).toLocaleString()}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">purchase + expenses</p>
                         </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Gross Profit/Loss</p>
-                            <p className={`text-2xl font-bold ${soldStats.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                ₹ {soldStats.totalProfit.toLocaleString()}
+                        <div className={`p-4 rounded-xl shadow-sm border ${soldStats.totalProfit >= 0 ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Actual Profit</p>
+                            <p className={`text-2xl font-bold ${soldStats.totalProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                {soldStats.totalProfit >= 0 ? '+' : ''}₹{Math.round(soldStats.totalProfit).toLocaleString()}
                             </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">after all costs</p>
                         </div>
                     </div>
+
 
 
                     {/* Sold Animals Hierarchical View */}
@@ -2262,33 +2267,7 @@ const Livestock = () => {
                     </form>
                 </Modal>
 
-                {/* EGG SALE MODAL */}
-                <Modal isOpen={isEggModalOpen} onClose={() => setIsEggModalOpen(false)} title="Record Egg Sale">
-                    <form onSubmit={handleEggSaleSubmit} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                            <input required type="date" value={eggSaleForm.date} onChange={e => setEggSaleForm({ ...eggSaleForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity (Trays/Pieces)</label>
-                            <input required type="number" min="1" value={eggSaleForm.quantity} onChange={e => setEggSaleForm({ ...eggSaleForm, quantity: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" placeholder="e.g., 30" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Total Sale Price (₹)</label>
-                            <input required type="number" min="1" value={eggSaleForm.price} onChange={e => setEggSaleForm({ ...eggSaleForm, price: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" placeholder="Total revenue in ₹" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Buyer (Optional)</label>
-                            <input type="text" value={eggSaleForm.buyer} onChange={e => setEggSaleForm({ ...eggSaleForm, buyer: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" placeholder="Name of buyer or shop" />
-                        </div>
-                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button type="button" onClick={() => setIsEggModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button type="submit" disabled={isSaving || !eggSaleForm.quantity || !eggSaleForm.price} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
-                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Confirm Sale'}
-                            </button>
-                        </div>
-                    </form>
-                </Modal>
+
             </div>
         );
     }
@@ -2794,7 +2773,7 @@ const Livestock = () => {
                                         {expandedCard === 'sold' && (
                                             <div className="mt-4 pt-4 border-t border-blue-50 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
                                                 <h5 className="font-bold text-blue-800 text-xs uppercase mb-3 text-center">Recent Sales</h5>
-                                                {soldAnimals.length > 0 || (selectedBatch?.eggSales || []).length > 0 ? (
+                                                {soldAnimals.length > 0 ? (
                                                     <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1 pb-2">
                                                         {(selectedBatch?.type === 'Poultry' || selectedBatch?.type === 'Chicken') ? (
                                                             // Grouped Sold Animals for Poultry/Chicken (Invoice Style)
