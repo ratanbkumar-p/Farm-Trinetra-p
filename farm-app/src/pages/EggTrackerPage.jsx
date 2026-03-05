@@ -80,6 +80,10 @@ export default function EggTrackerPage({ onClose }) {
     const filteredRevenue = filteredLogs.filter(l => l.type === 'Sold').reduce((s, l) => s + (Number(l.revenue) || 0), 0);
 
     const openForm = (type) => {
+        if (type !== 'Collected' && inStock <= 0) {
+            alert('You need to collect eggs first before you can log hatching, spoilage, or sales.');
+            return;
+        }
         setFormType(type);
         setForm({ ...initialForm(), type });
         setShowForm(true);
@@ -87,12 +91,17 @@ export default function EggTrackerPage({ onClose }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        const qty = Number(form.quantity);
+        if (formType !== 'Collected' && qty > inStock) {
+            alert(`Only ${inStock} eggs available in stock. You cannot log more than that.`);
+            return;
+        }
         setSaving(true);
         try {
             await addEggLog({
                 date: form.date,
                 type: formType,
-                quantity: Number(form.quantity),
+                quantity: qty,
                 revenue: formType === 'Sold' ? Number(form.revenue) : 0,
                 buyer: formType === 'Sold' ? form.buyer : '',
                 notes: form.notes,
@@ -192,15 +201,32 @@ export default function EggTrackerPage({ onClose }) {
                     {/* Action Buttons */}
                     {canEdit && (
                         <div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Quick Log</p>
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Quick Log</p>
+                                {inStock > 0 ? (
+                                    <span className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-full font-medium">
+                                        {inStock} available to use
+                                    </span>
+                                ) : (
+                                    <span className="text-xs text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full font-medium">
+                                        ⚠ Collect eggs first
+                                    </span>
+                                )}
+                            </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 {LOG_TYPES.map(lt => {
                                     const Icon = lt.icon;
+                                    const isDisabled = lt.key !== 'Collected' && inStock <= 0;
                                     return (
                                         <button
                                             key={lt.key}
                                             onClick={() => openForm(lt.key)}
-                                            className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm border-2 transition-all hover:shadow-md active:scale-95 ${lt.bgColor} ${lt.textColor} ${lt.borderColor}`}
+                                            disabled={isDisabled}
+                                            title={isDisabled ? 'No eggs in stock. Collect first.' : ''}
+                                            className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm border-2 transition-all ${isDisabled
+                                                    ? 'opacity-40 cursor-not-allowed bg-gray-50 border-gray-200 text-gray-400'
+                                                    : `${lt.bgColor} ${lt.textColor} ${lt.borderColor} hover:shadow-md active:scale-95`
+                                                }`}
                                         >
                                             <Icon className="w-4 h-4" />
                                             + {lt.label}
@@ -237,11 +263,17 @@ export default function EggTrackerPage({ onClose }) {
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">
                                             Quantity {formType === 'Sold' ? '(Trays/Pieces)' : '(Count)'}
+                                            {formType !== 'Collected' && (
+                                                <span className="ml-2 text-[11px] font-normal text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                                                    max: {inStock}
+                                                </span>
+                                            )}
                                         </label>
                                         <input
                                             type="number"
                                             required
                                             min="1"
+                                            max={formType !== 'Collected' ? inStock : undefined}
                                             value={form.quantity}
                                             onChange={e => setForm({ ...form, quantity: e.target.value })}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
@@ -300,9 +332,9 @@ export default function EggTrackerPage({ onClose }) {
                                         type="submit"
                                         disabled={saving}
                                         className={`px-6 py-2 text-white rounded-lg font-semibold flex items-center gap-2 transition-colors disabled:opacity-50 ${formType === 'Sold' ? 'bg-green-600 hover:bg-green-700' :
-                                                formType === 'Hatched' ? 'bg-blue-600 hover:bg-blue-700' :
-                                                    formType === 'Spoiled' ? 'bg-red-500 hover:bg-red-600' :
-                                                        'bg-yellow-500 hover:bg-yellow-600'
+                                            formType === 'Hatched' ? 'bg-blue-600 hover:bg-blue-700' :
+                                                formType === 'Spoiled' ? 'bg-red-500 hover:bg-red-600' :
+                                                    'bg-yellow-500 hover:bg-yellow-600'
                                             }`}
                                     >
                                         {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : `Save ${formType}`}

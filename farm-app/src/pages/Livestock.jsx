@@ -1444,7 +1444,6 @@ const Livestock = () => {
             soldAnimals: soldAnimals.length,
             deceasedAnimals: deceasedAnimals.length,
             soldRevenue,
-            eggRevenue,
             totalRevenue,
             soldProfit,
             deceasedLoss,
