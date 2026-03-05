@@ -120,7 +120,7 @@ const GlobalPdfModal = memo(({
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact, processMonthlyAllocations, getLiveAllocation } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact, processMonthlyAllocations, getLiveAllocation, addEggSale, deleteEggSale } = useData();
     const { canEdit, isSuperAdmin, isAdmin } = useAuth();
     const canEditRecords = isSuperAdmin || isAdmin;
     const [selectedBatchId, setSelectedBatchId] = useState(null);
@@ -193,6 +193,15 @@ const Livestock = () => {
     // Sell Modal State
     const [sellForm, setSellForm] = useState({
         pricePerAnimal: 0
+    });
+
+    // Egg Sale Modal State
+    const [isEggModalOpen, setIsEggModalOpen] = useState(false);
+    const [eggSaleForm, setEggSaleForm] = useState({
+        date: new Date().toISOString().split('T')[0],
+        quantity: '',
+        price: '',
+        buyer: ''
     });
 
     // Weight Edit State
@@ -1222,12 +1231,22 @@ const Livestock = () => {
         setSellForm({
             totalPrice: 0,
             pricePerAnimal: 0,
-            // Select all by default
-            selectedIds: activeAnimals.map(a => a.id)
+            // Empty selection by default
+            selectedIds: []
         });
-        // Also populate selection state
-        setSelectedAnimalsToSell(activeAnimals.map(a => a.id));
+        // Also populate selection state as empty
+        setSelectedAnimalsToSell([]);
         setIsSellModalOpen(true);
+    };
+
+    const openEggSaleModal = () => {
+        setEggSaleForm({
+            date: new Date().toISOString().split('T')[0],
+            quantity: '',
+            price: '',
+            buyer: ''
+        });
+        setIsEggModalOpen(true);
     };
 
     const handleSellSubmit = async (e) => {
@@ -1248,6 +1267,33 @@ const Livestock = () => {
             // Use the selected IDs
             await sellSelectedAnimals(selectedBatch.id, selectedAnimalsToSell, pricePerAnimal);
             setIsSellModalOpen(false);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleEggSaleSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedBatch) return;
+
+        setIsSaving(true);
+        try {
+            await addEggSale(selectedBatch.id, {
+                date: eggSaleForm.date,
+                quantity: Number(eggSaleForm.quantity),
+                price: Number(eggSaleForm.price),
+                buyer: eggSaleForm.buyer
+            });
+            setIsEggModalOpen(false);
+            setEggSaleForm({
+                date: new Date().toISOString().split('T')[0],
+                quantity: '',
+                price: '',
+                buyer: ''
+            });
+        } catch (error) {
+            console.error("Error saving egg sale:", error);
+            alert("Failed to save egg sale: " + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -1420,8 +1466,13 @@ const Livestock = () => {
         const soldRevenue = soldAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
         const deceasedLoss = deceasedAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
 
-        // Profit
-        const soldProfit = soldRevenue - (soldAnimals.length > 0 ? (totalInvested / animals.length) * soldAnimals.length : 0);
+        // Egg Revenue
+        const eggSales = batch.eggSales || [];
+        const eggRevenue = eggSales.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+        const totalRevenue = soldRevenue + eggRevenue;
+
+        // Profit (including egg sales)
+        const soldProfit = totalRevenue - (soldAnimals.length > 0 ? (totalInvested / animals.length) * soldAnimals.length : 0);
 
         // Min Sell Price
         const marginMultiplier = 1 + (Number(settings.marginPercentage) || 20) / 100;
@@ -1444,6 +1495,8 @@ const Livestock = () => {
             soldAnimals: soldAnimals.length,
             deceasedAnimals: deceasedAnimals.length,
             soldRevenue,
+            eggRevenue,
+            totalRevenue,
             soldProfit,
             deceasedLoss,
             // Per Animal Stats
@@ -1661,6 +1714,46 @@ const Livestock = () => {
                                                                         </span>
                                                                     </div>
                                                                 </div>
+
+                                                                {(type === 'Poultry' || type === 'Chicken') && (
+                                                                    <div className="mt-4 pt-3 border-t border-blue-100/50 space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                                        {(() => {
+                                                                            const groups = {};
+                                                                            batchAnimals.forEach(animal => {
+                                                                                const key = `${animal.soldDate}_${animal.soldPrice}`;
+                                                                                if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0 };
+                                                                                groups[key].count += 1;
+                                                                                groups[key].total += (Number(animal.soldPrice) || 0);
+                                                                                groups[key].cost += (Number(animal.trueCost) || Math.round(animal.purchaseCost || 0));
+                                                                            });
+                                                                            const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+                                                                            return bulkSales.map((group, idx) => {
+                                                                                const profit = group.total - group.cost;
+                                                                                return (
+                                                                                    <div key={idx} className="bg-blue-50/50 p-3 rounded-lg text-xs flex justify-between items-center border border-blue-100/50">
+                                                                                        <div>
+                                                                                            <div className="font-bold text-blue-900 mb-1">{group.date || 'Unknown Date'}</div>
+                                                                                            <div className="text-blue-600 font-medium">{group.count} Birds @ ₹{(Number(group.price) || 0).toLocaleString()}</div>
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-6">
+                                                                                            <div className="text-right">
+                                                                                                <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">Total</div>
+                                                                                                <div className="font-bold text-blue-800 text-sm">₹{group.total.toLocaleString()}</div>
+                                                                                            </div>
+                                                                                            <div className="text-right border-l border-blue-200/50 pl-6">
+                                                                                                <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">Profit</div>
+                                                                                                <div className={`font-bold text-sm ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )
+                                                                            });
+                                                                        })()}
+                                                                    </div>
+                                                                )}
 
                                                                 <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end">
                                                                     {isSuperAdmin && (
@@ -2170,6 +2263,34 @@ const Livestock = () => {
                         </div>
                     </form>
                 </Modal>
+
+                {/* EGG SALE MODAL */}
+                <Modal isOpen={isEggModalOpen} onClose={() => setIsEggModalOpen(false)} title="Record Egg Sale">
+                    <form onSubmit={handleEggSaleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                            <input required type="date" value={eggSaleForm.date} onChange={e => setEggSaleForm({ ...eggSaleForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity (Trays/Pieces)</label>
+                            <input required type="number" min="1" value={eggSaleForm.quantity} onChange={e => setEggSaleForm({ ...eggSaleForm, quantity: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" placeholder="e.g., 30" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Total Sale Price (₹)</label>
+                            <input required type="number" min="1" value={eggSaleForm.price} onChange={e => setEggSaleForm({ ...eggSaleForm, price: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" placeholder="Total revenue in ₹" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Buyer (Optional)</label>
+                            <input type="text" value={eggSaleForm.buyer} onChange={e => setEggSaleForm({ ...eggSaleForm, buyer: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none" placeholder="Name of buyer or shop" />
+                        </div>
+                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onClick={() => setIsEggModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                            <button type="submit" disabled={isSaving || !eggSaleForm.quantity || !eggSaleForm.price} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Confirm Sale'}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
             </div>
         );
     }
@@ -2657,7 +2778,7 @@ const Livestock = () => {
                                                 <IndianRupee className="w-6 h-6" />
                                             </div>
                                         </div>
-                                        <div className="mb-3">
+                                        <div className="mb-3 space-y-2">
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -2667,6 +2788,19 @@ const Livestock = () => {
                                             >
                                                 <Plus className="w-4 h-4" /> Record Sale
                                             </button>
+
+                                            {/* Sell Eggs Button for Poultry/Chicken */}
+                                            {(selectedBatch?.type === 'Poultry' || selectedBatch?.type === 'Chicken') && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openEggSaleModal();
+                                                    }}
+                                                    className="w-full py-2 px-3 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-sm font-medium hover:bg-yellow-100 transition-colors flex items-center justify-center gap-2"
+                                                >
+                                                    <Plus className="w-4 h-4" /> Sell Eggs
+                                                </button>
+                                            )}
                                         </div>
                                         <div className="flex justify-center">
                                             {expandedCard === 'sold' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
@@ -2675,25 +2809,112 @@ const Livestock = () => {
                                         {expandedCard === 'sold' && (
                                             <div className="mt-4 pt-4 border-t border-blue-50 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
                                                 <h5 className="font-bold text-blue-800 text-xs uppercase mb-3 text-center">Recent Sales</h5>
-                                                {soldAnimals.length > 0 ? (
-                                                    <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                                                        {soldAnimals.map((animal, i) => (
-                                                            <div key={animal.id} className="text-xs text-blue-700 bg-blue-50 p-2 rounded-lg flex justify-between items-center group">
+                                                {soldAnimals.length > 0 || (selectedBatch?.eggSales || []).length > 0 ? (
+                                                    <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1 pb-2">
+                                                        {(selectedBatch?.type === 'Poultry' || selectedBatch?.type === 'Chicken') ? (
+                                                            // Grouped Sold Animals for Poultry/Chicken (Invoice Style)
+                                                            (() => {
+                                                                if (soldAnimals.length === 0) return null;
+                                                                const groups = {};
+                                                                soldAnimals.forEach(animal => {
+                                                                    const key = `${animal.soldDate}_${animal.soldPrice}`;
+                                                                    if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0, ids: [] };
+                                                                    groups[key].count += 1;
+                                                                    groups[key].total += (Number(animal.soldPrice) || 0);
+                                                                    groups[key].cost += calculateAnimalBreakEven(animal, selectedBatch).trueCost;
+                                                                    groups[key].ids.push(animal.id);
+                                                                });
+                                                                const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+                                                                return (
+                                                                    <div className="space-y-2">
+                                                                        {bulkSales.map((group, idx) => {
+                                                                            const profit = group.total - group.cost;
+                                                                            return (
+                                                                                <div key={`bulk-${idx}`} className="text-xs text-blue-800 bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col gap-2">
+                                                                                    <div className="flex justify-between items-center border-b border-blue-200/50 pb-2">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <span className="text-blue-600 font-medium bg-blue-100/50 px-2 py-0.5 rounded-md">{group.date || 'Unknown Date'}</span>
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-6">
+                                                                                            <div className="text-right">
+                                                                                                <div className="text-[10px] text-blue-400 uppercase tracking-wider font-bold mb-0.5">Total</div>
+                                                                                                <div className="font-bold text-blue-800 text-sm">₹{group.total.toLocaleString()}</div>
+                                                                                            </div>
+                                                                                            <div className="text-right">
+                                                                                                <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-0.5">Profit</div>
+                                                                                                <div className={`font-bold text-sm ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between items-center text-blue-600 pt-1">
+                                                                                        <span className="font-bold">{group.count} Birds @ ₹{(Number(group.price) || 0).toLocaleString()}</span>
+                                                                                        {isSuperAdmin && (
+                                                                                            <button
+                                                                                                onClick={() => {
+                                                                                                    if (window.confirm(`Undo sale for all ${group.count} birds on this date?`)) {
+                                                                                                        group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
+                                                                                                    }
+                                                                                                }}
+                                                                                                className="p-1 px-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-md transition-all border border-transparent hover:border-red-200"
+                                                                                            >
+                                                                                                Undo Bulk Sale
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )
+                                                                        })}
+                                                                    </div>
+                                                                );
+                                                            })()
+                                                        ) : (
+                                                            // Individual Animals for Goat/Sheep
+                                                            <div className="space-y-2">
+                                                                {soldAnimals.map((animal, i) => (
+                                                                    <div key={`animal-${animal.id}`} className="text-xs text-blue-700 bg-blue-50 p-2 rounded-lg flex justify-between items-center group">
+                                                                        <div>
+                                                                            <div className="font-bold">{animal.id}</div>
+                                                                            <div className="text-blue-500 font-medium">₹{(animal.soldPrice || 0).toLocaleString()} • {animal.soldDate || 'Unknown Date'}</div>
+                                                                        </div>
+                                                                        {isSuperAdmin && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    if (window.confirm(`Undo sale for ${animal.id}? This will move the animal back to Inventory.`)) {
+                                                                                        revertSoldAnimal(selectedBatch.id, animal.id);
+                                                                                    }
+                                                                                }}
+                                                                                className="p-1.5 text-blue-400 hover:text-red-500 hover:bg-white rounded-md transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                                                                                title="Undo Sale"
+                                                                            >
+                                                                                <RotateCcw className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Render Egg Sales */}
+                                                        {(selectedBatch?.eggSales || []).map((sale, i) => (
+                                                            <div key={`egg-${sale.id}`} className="text-xs text-yellow-800 bg-yellow-50 p-2 rounded-lg flex justify-between items-center group border border-yellow-100">
                                                                 <div>
-                                                                    <div className="font-bold">{animal.id}</div>
-                                                                    <div className="text-blue-500 font-medium">₹{(animal.soldPrice || 0).toLocaleString()} • {animal.soldDate || 'Unknown Date'}</div>
+                                                                    <div className="font-bold">Egg Sale ({sale.quantity} trays/pcs)</div>
+                                                                    <div className="text-yellow-600 font-medium">₹{(sale.price || 0).toLocaleString()} • {sale.buyer || 'Direct Sale'} • {sale.date}</div>
                                                                 </div>
                                                                 {isSuperAdmin && (
                                                                     <button
                                                                         onClick={() => {
-                                                                            if (window.confirm(`Undo sale for ${animal.id}? This will move the animal back to Inventory.`)) {
-                                                                                revertSoldAnimal(selectedBatch.id, animal.id);
+                                                                            if (window.confirm('Delete this egg sale record?')) {
+                                                                                deleteEggSale(selectedBatch.id, sale.id);
                                                                             }
                                                                         }}
-                                                                        className="p-1.5 text-blue-400 hover:text-red-500 hover:bg-white rounded-md transition-all shadow-sm opacity-0 group-hover:opacity-100"
-                                                                        title="Undo Sale"
+                                                                        className="p-1.5 text-yellow-500 hover:text-red-500 hover:bg-white rounded-md transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                                                                        title="Delete Sale"
                                                                     >
-                                                                        <RotateCcw className="w-3.5 h-3.5" />
+                                                                        <Trash2 className="w-3.5 h-3.5" />
                                                                     </button>
                                                                 )}
                                                             </div>

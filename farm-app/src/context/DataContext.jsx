@@ -543,6 +543,29 @@ export const DataProvider = ({ children }) => {
         }
     };
 
+    // Egg Sales Support
+    const addEggSale = async (batchId, eggSale) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const newSale = {
+                id: generateId('EGG'),
+                ...eggSale,
+                createdAt: new Date().toISOString()
+            };
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), {
+                eggSales: [...(batch.eggSales || []), newSale]
+            });
+        }
+    };
+
+    const deleteEggSale = async (batchId, saleId) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (batch) {
+            const updatedEggSales = (batch.eggSales || []).filter(s => s.id !== saleId);
+            await updateDoc(doc(db, getCollectionName('batches'), batchId), { eggSales: updatedEggSales });
+        }
+    };
+
     const revertSoldAnimal = async (batchId, animalId) => {
         const batch = data.batches.find(b => b.id === batchId);
         if (batch) {
@@ -1166,6 +1189,8 @@ export const DataProvider = ({ children }) => {
             updateExpense,
             updateBatchExpense,
             deleteBatchExpense,
+            addEggSale,
+            deleteEggSale,
             updateEmployee,
             deleteEmployee,
             addEmployeePayment,
