@@ -3423,7 +3423,146 @@ const Livestock = () => {
                         </div>
                     </div>
 
+                    {/* Poultry / Chicken: Grouped Sales Table */}
+                    {(selectedBatch.type === 'Poultry' || selectedBatch.type === 'Chicken') && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
+                            <div className="px-5 py-4 border-b border-blue-50 flex items-center justify-between">
+                                <h4 className="font-bold text-gray-800">Sales History</h4>
+                                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full font-medium">{soldAnimals.length} birds sold</span>
+                            </div>
+                            {soldAnimals.length > 0 ? (() => {
+                                const groups = {};
+                                soldAnimals.forEach(animal => {
+                                    const key = `${animal.soldDate}_${animal.soldPrice}`;
+                                    if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0, ids: [] };
+                                    groups[key].count += 1;
+                                    groups[key].total += (Number(animal.soldPrice) || 0);
+                                    groups[key].cost += calculateAnimalBreakEven(animal, selectedBatch).trueCost;
+                                    groups[key].ids.push(animal.id);
+                                });
+                                const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+                                return (
+                                    <>
+                                        {/* Desktop Table */}
+                                        <div className="hidden md:block overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="bg-blue-50 text-blue-700 text-xs uppercase tracking-wider">
+                                                    <tr>
+                                                        <th className="px-5 py-3 font-semibold">Date</th>
+                                                        <th className="px-5 py-3 font-semibold text-right">Qty (Birds)</th>
+                                                        <th className="px-5 py-3 font-semibold text-right">Price/Bird</th>
+                                                        <th className="px-5 py-3 font-semibold text-right">Revenue</th>
+                                                        <th className="px-5 py-3 font-semibold text-right">True Cost</th>
+                                                        <th className="px-5 py-3 font-semibold text-right">Actual Profit</th>
+                                                        {isSuperAdmin && <th className="px-5 py-3 font-semibold text-center">Action</th>}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {bulkSales.map((group, idx) => {
+                                                        const profit = group.total - group.cost;
+                                                        return (
+                                                            <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                                                <td className="px-5 py-4 font-medium text-blue-800 whitespace-nowrap">{group.date || 'Unknown Date'}</td>
+                                                                <td className="px-5 py-4 text-right text-gray-700 font-semibold">{group.count}</td>
+                                                                <td className="px-5 py-4 text-right text-gray-700">₹{(Number(group.price) || 0).toLocaleString()}</td>
+                                                                <td className="px-5 py-4 text-right font-bold text-blue-600">₹{Math.round(group.total).toLocaleString()}</td>
+                                                                <td className="px-5 py-4 text-right font-medium text-red-500">₹{Math.round(group.cost).toLocaleString()}</td>
+                                                                <td className={`px-5 py-4 text-right font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
+                                                                </td>
+                                                                {isSuperAdmin && (
+                                                                    <td className="px-5 py-4 text-center">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (window.confirm(`Undo sale for all ${group.count} birds on ${group.date}?`)) {
+                                                                                    group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
+                                                                                }
+                                                                            }}
+                                                                            className="text-[10px] px-2 py-1 uppercase tracking-wider font-bold text-red-500 hover:bg-red-50 hover:text-red-600 rounded-md border border-transparent hover:border-red-200 whitespace-nowrap"
+                                                                        >
+                                                                            Undo
+                                                                        </button>
+                                                                    </td>
+                                                                )}
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="bg-blue-50/60 border-t-2 border-blue-100 text-xs font-bold">
+                                                    <tr>
+                                                        <td className="px-5 py-3 text-blue-900">Total</td>
+                                                        <td className="px-5 py-3 text-right text-blue-900">{bulkSales.reduce((s, g) => s + g.count, 0)}</td>
+                                                        <td className="px-5 py-3"></td>
+                                                        <td className="px-5 py-3 text-right text-blue-700">₹{Math.round(bulkSales.reduce((s, g) => s + g.total, 0)).toLocaleString()}</td>
+                                                        <td className="px-5 py-3 text-right text-red-500">₹{Math.round(bulkSales.reduce((s, g) => s + g.cost, 0)).toLocaleString()}</td>
+                                                        <td className={`px-5 py-3 text-right ${bulkSales.reduce((s, g) => s + (g.total - g.cost), 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                                            {bulkSales.reduce((s, g) => s + (g.total - g.cost), 0) >= 0 ? '+' : ''}₹{Math.round(bulkSales.reduce((s, g) => s + (g.total - g.cost), 0)).toLocaleString()}
+                                                        </td>
+                                                        {isSuperAdmin && <td></td>}
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+
+                                        {/* Mobile Cards */}
+                                        <div className="md:hidden divide-y divide-gray-50">
+                                            {bulkSales.map((group, idx) => {
+                                                const profit = group.total - group.cost;
+                                                return (
+                                                    <div key={idx} className="p-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="font-bold text-blue-800 text-sm">{group.date || 'Unknown'}</span>
+                                                            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{group.count} birds</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2 text-xs">
+                                                            <div className="bg-blue-50 rounded-lg p-2 text-center">
+                                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Revenue</p>
+                                                                <p className="font-bold text-blue-700">₹{Math.round(group.total).toLocaleString()}</p>
+                                                            </div>
+                                                            <div className="bg-red-50 rounded-lg p-2 text-center">
+                                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Cost</p>
+                                                                <p className="font-bold text-red-500">₹{Math.round(group.cost).toLocaleString()}</p>
+                                                            </div>
+                                                            <div className={`rounded-lg p-2 text-center ${profit >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Profit</p>
+                                                                <p className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        {isSuperAdmin && (
+                                                            <div className="flex justify-end mt-2">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        if (window.confirm(`Undo sale for all ${group.count} birds on ${group.date}?`)) {
+                                                                            group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] px-2 py-1 uppercase font-bold text-red-500 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200"
+                                                                >
+                                                                    Undo Sale
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                );
+                            })() : (
+                                <div className="p-12 text-center text-gray-400">
+                                    <p className="font-medium">No sales recorded yet.</p>
+                                    <p className="text-sm mt-1">Use the Sell Animals button to record a sale.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Non-Poultry: Individual animal list */}
                     {selectedBatch.type !== 'Poultry' && selectedBatch.type !== 'Chicken' && (
+
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
                             {soldAnimals.length > 0 ? (
                                 soldAnimals.map(animal => (
