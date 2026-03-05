@@ -7,15 +7,12 @@ import Table from '../components/ui/Table';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 
-// ── Company constants ──────────────────────────────────────────────────────────
 const COMPANY = {
     name: 'TRINETRA FARMS',
-    tagline: 'Fresh from the Farm, Straight to You',
     village: 'Muktapur Village',
     mandal: 'Nirmal Mandal',
     district: 'Nirmal District',
     state: 'Telangana, India',
-    address: 'Muktapur Village, Nirmal Mandal, Nirmal District',
 };
 
 const Invoices = () => {
@@ -35,131 +32,148 @@ const Invoices = () => {
     });
 
     const addLineItem = () => setNewInvoice({ ...newInvoice, items: [...newInvoice.items, { description: '', quantity: 1, rate: 0 }] });
-
     const updateLineItem = (index, field, value) => {
         const updated = [...newInvoice.items];
         updated[index] = { ...updated[index], [field]: value };
         setNewInvoice({ ...newInvoice, items: updated });
     };
-
     const removeLineItem = (index) => {
         if (newInvoice.items.length > 1)
             setNewInvoice({ ...newInvoice, items: newInvoice.items.filter((_, i) => i !== index) });
     };
-
     const calculateSubtotal = (items) => items.reduce((sum, item) => sum + (item.quantity * item.rate), 0);
 
-    // ─── Professional PDF Generator ────────────────────────────────────────────
+    // ─── PDF Generator ─────────────────────────────────────────────────────────
     const generatePDF = async (invoice) => {
         const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-        const pw = doc.internal.pageSize.getWidth();   // 210mm
-        const ph = doc.internal.pageSize.getHeight();  // 297mm
+        const pw = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
 
-        // Colour palette
-        const GREEN = [27, 94, 32];
-        const LIGHT_GREEN = [232, 245, 233];
-        const GRAY_TEXT = [90, 90, 90];
-        const DARK_TEXT = [20, 20, 20];
+        // ── Colour palette (minimal / pastel) ──
+        const SLATE = [40, 44, 52];       // header text / heading
+        const PASTEL_BG = [241, 245, 249];    // light slate-blue pastel
+        const PASTEL_GRN = [232, 245, 233];    // light pastel green
+        const PASTEL_GRN_BORDER = [187, 222, 190];
+        const MID_GRAY = [120, 130, 140];
+        const DARK = [30, 30, 30];
+        const ACCENT = [71, 130, 80];      // muted forest green - only for accents
+        const WHITE = [255, 255, 255];
+        const BORDER = [220, 225, 230];
 
-        /* ── Header background ── */
-        doc.setFillColor(...GREEN);
-        doc.rect(0, 0, pw, 44, 'F');
+        /* ── 1. White full background ── */
+        doc.setFillColor(...WHITE);
+        doc.rect(0, 0, pw, ph, 'F');
 
-        /* ── Logo ── */
-        let logoLoaded = false;
+        /* ── 2. Minimal pastel header strip ── */
+        doc.setFillColor(...PASTEL_BG);
+        doc.rect(0, 0, pw, 46, 'F');
+
+        // thin accent top line
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, 0, pw, 2, 'F');
+
+        /* ── 3. Logo with white rounded background ── */
+        const logoSize = 28;
+        const logoPad = 3;
+        // white rounded rect behind logo
+        doc.setFillColor(...WHITE);
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(10, 8, logoSize + logoPad * 2, logoSize + logoPad * 2, 3, 3, 'FD');
+
         try {
             const response = await fetch('/logo.png');
             if (response.ok) {
                 const blob = await response.blob();
                 const reader = new FileReader();
                 await new Promise(resolve => { reader.onload = resolve; reader.readAsDataURL(blob); });
-                doc.addImage(reader.result, 'PNG', 7, 4, 36, 36);
-                logoLoaded = true;
+                doc.addImage(reader.result, 'PNG', 10 + logoPad, 8 + logoPad, logoSize, logoSize);
             }
-        } catch (_) { }
-
-        if (!logoLoaded) {
-            // fallback circle
-            doc.setFillColor(255, 255, 255);
-            doc.circle(25, 22, 18, 'F');
-            doc.setFontSize(22); doc.setFont('helvetica', 'bold');
-            doc.setTextColor(...GREEN);
-            doc.text('TF', 18, 27);
+        } catch (_) {
+            // fallback text logo
+            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...ACCENT);
+            doc.text('TF', 19, 27);
         }
 
-        /* ── Company name & tagline in header ── */
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(21); doc.setFont('helvetica', 'bold');
-        doc.text(COMPANY.name, 48, 17);
-
-        doc.setFontSize(8); doc.setFont('helvetica', 'italic');
-        doc.setTextColor(190, 230, 190);
-        doc.text(COMPANY.tagline, 48, 24);
+        /* ── 4. Company name beside logo ── */
+        doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...SLATE);
+        doc.text(COMPANY.name, 48, 22);
 
         doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(180, 220, 180);
-        doc.text(`${COMPANY.village}, ${COMPANY.mandal}, ${COMPANY.district}`, 48, 30);
-        doc.text(COMPANY.state, 48, 36);
+        doc.setTextColor(...MID_GRAY);
+        doc.text(`${COMPANY.village}, ${COMPANY.mandal}, ${COMPANY.district}`, 48, 29);
+        doc.text(COMPANY.state, 48, 35);
 
-        /* ── "INVOICE" label top-right ── */
-        doc.setTextColor(255, 215, 100);
-        doc.setFontSize(28); doc.setFont('helvetica', 'bold');
-        doc.text('INVOICE', pw - 14, 20, { align: 'right' });
-
-        doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(200, 230, 200);
-        doc.text(`# ${invoice.invoiceNumber}`, pw - 14, 28, { align: 'right' });
-
-        /* ── Invoice meta box (right) ── */
-        const metaX = pw - 78; const metaY = 50;
-        doc.setFillColor(...LIGHT_GREEN);
-        doc.roundedRect(metaX, metaY, 64, 28, 3, 3, 'F');
-
-        doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...GREEN);
-        doc.text('INVOICE DETAILS', metaX + 4, metaY + 7);
-
-        doc.setFont('helvetica', 'normal'); doc.setTextColor(...DARK_TEXT);
-        doc.text('Invoice No:', metaX + 4, metaY + 14);
-        doc.setFont('helvetica', 'bold');
-        doc.text(invoice.invoiceNumber, metaX + 26, metaY + 14);
-
-        doc.setFont('helvetica', 'normal');
-        doc.text('Date:', metaX + 4, metaY + 20);
-        doc.setFont('helvetica', 'bold');
-        doc.text(invoice.date, metaX + 18, metaY + 20);
-
-        doc.setFont('helvetica', 'normal');
-        doc.text('Status:', metaX + 4, metaY + 26);
-        doc.setFillColor(39, 120, 39);
-        doc.roundedRect(metaX + 20, metaY + 22, 16, 6, 2, 2, 'F');
-        doc.setFontSize(6.5); doc.setTextColor(255, 255, 255);
-        doc.text('PAID', metaX + 24.5, metaY + 26.5);
-
-        /* ── Bill To (left) ── */
-        doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...GREEN);
-        doc.text('BILL TO', 14, metaY + 7);
-        doc.setDrawColor(...GREEN); doc.setLineWidth(0.5);
-        doc.line(14, metaY + 9, 70, metaY + 9);
-
-        doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...DARK_TEXT);
-        doc.text(invoice.customerName || '-', 14, metaY + 17);
+        /* ── 5. "INVOICE" label – top right ── */
+        doc.setFontSize(26); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...SLATE);
+        doc.text('INVOICE', pw - 14, 22, { align: 'right' });
 
         doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...GRAY_TEXT);
-        let billY = metaY + 23;
+        doc.setTextColor(...MID_GRAY);
+        doc.text(`# ${invoice.invoiceNumber}`, pw - 14, 29, { align: 'right' });
+        doc.text(invoice.date, pw - 14, 36, { align: 'right' });
+
+        /* ── 6. Divider ── */
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.4);
+        doc.line(14, 50, pw - 14, 50);
+
+        /* ── 7. Invoice Details card (right) ── */
+        const cardRX = pw - 72; const cardRY = 56;
+        doc.setFillColor(...PASTEL_GRN);
+        doc.setDrawColor(...PASTEL_GRN_BORDER);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(cardRX, cardRY, 58, 30, 3, 3, 'FD');
+
+        doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...ACCENT);
+        doc.text('INVOICE DETAILS', cardRX + 4, cardRY + 7);
+
+        const row = (label, value, y) => {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MID_GRAY);
+            doc.text(label, cardRX + 4, y);
+            doc.setFont('helvetica', 'bold'); doc.setTextColor(...DARK);
+            doc.text(value, cardRX + 54, y, { align: 'right' });
+        };
+        row('Invoice No:', invoice.invoiceNumber, cardRY + 14);
+        row('Date:', invoice.date, cardRY + 21);
+
+        // Status pill
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(...MID_GRAY);
+        doc.text('Status:', cardRX + 4, cardRY + 28);
+        doc.setFillColor(209, 236, 209);
+        doc.roundedRect(cardRX + 22, cardRY + 23.5, 14, 6, 2, 2, 'F');
+        doc.setTextColor(39, 110, 39); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+        doc.text('PAID', cardRX + 25.5, cardRY + 27.8);
+
+        /* ── 8. Bill To (left) ── */
+        doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...ACCENT);
+        doc.text('BILL TO', 14, cardRY + 7);
+        doc.setDrawColor(...PASTEL_GRN_BORDER); doc.setLineWidth(0.4);
+        doc.line(14, cardRY + 9, 55, cardRY + 9);
+
+        doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...DARK);
+        doc.text(invoice.customerName || '-', 14, cardRY + 17);
+
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MID_GRAY);
+        let billY = cardRY + 23;
         if (invoice.customerAddress) {
-            const lines = doc.splitTextToSize(invoice.customerAddress, 72);
+            const lines = doc.splitTextToSize(invoice.customerAddress, 68);
             lines.forEach(l => { doc.text(l, 14, billY); billY += 5; });
         }
         if (invoice.customerPhone) {
             doc.text(`Tel: ${invoice.customerPhone}`, 14, billY); billY += 5;
         }
 
-        /* ── Items table ── */
-        const tableY = Math.max(metaY + 36, billY + 6);
+        /* ── 9. Items table ── */
+        const tableY = Math.max(cardRY + 38, billY + 6);
 
         autoTable(doc, {
             startY: tableY,
@@ -174,98 +188,95 @@ const Invoices = () => {
                 (item.quantity * item.rate).toLocaleString('en-IN'),
             ]),
             headStyles: {
-                fillColor: GREEN,
-                textColor: [255, 255, 255],
+                fillColor: PASTEL_BG,
+                textColor: SLATE,
                 fontStyle: 'bold',
-                fontSize: 9,
+                fontSize: 8.5,
                 cellPadding: { top: 4, bottom: 4, left: 5, right: 5 },
+                lineColor: BORDER,
+                lineWidth: 0.3,
             },
             bodyStyles: {
-                textColor: DARK_TEXT,
-                fontSize: 9,
+                textColor: DARK,
+                fontSize: 8.5,
                 cellPadding: { top: 3.5, bottom: 3.5, left: 5, right: 5 },
             },
-            alternateRowStyles: { fillColor: [248, 252, 248] },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' },
+                0: { cellWidth: 10, halign: 'center', textColor: MID_GRAY },
                 1: { cellWidth: 'auto' },
                 2: { cellWidth: 18, halign: 'center' },
                 3: { cellWidth: 28, halign: 'right' },
                 4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
             },
+            tableLineColor: BORDER,
+            tableLineWidth: 0.3,
         });
 
-        /* ── Totals box ── */
+        /* ── 10. Totals box — fixed width to prevent overflow ── */
         const finalY = doc.lastAutoTable.finalY + 6;
         const total = invoice.total || 0;
+        const totalStr = `Rs. ${total.toLocaleString('en-IN')}`;
 
-        doc.setFillColor(...LIGHT_GREEN);
-        doc.roundedRect(pw - 80, finalY, 66, 22, 3, 3, 'F');
+        // Measure text width and size box accordingly
+        const boxW = 70;
+        const boxX = pw - 14 - boxW;
 
-        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...GRAY_TEXT);
-        doc.text('Subtotal:', pw - 76, finalY + 8);
-        doc.setFont('helvetica', 'bold'); doc.setTextColor(...DARK_TEXT);
-        doc.text(`₹${total.toLocaleString('en-IN')}`, pw - 17, finalY + 8, { align: 'right' });
+        doc.setFillColor(...PASTEL_GRN);
+        doc.setDrawColor(...PASTEL_GRN_BORDER);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(boxX, finalY, boxW, 24, 3, 3, 'FD');
 
-        doc.setDrawColor(...GREEN); doc.setLineWidth(0.4);
-        doc.line(pw - 76, finalY + 11, pw - 17, finalY + 11);
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MID_GRAY);
+        doc.text('TOTAL AMOUNT', boxX + 5, finalY + 9);
+
+        doc.setDrawColor(...PASTEL_GRN_BORDER); doc.setLineWidth(0.3);
+        doc.line(boxX + 5, finalY + 12, boxX + boxW - 5, finalY + 12);
 
         doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...GREEN);
-        doc.text('TOTAL:', pw - 76, finalY + 19);
-        doc.setFontSize(14);
-        doc.text(`₹${total.toLocaleString('en-IN')}`, pw - 17, finalY + 19, { align: 'right' });
+        doc.setTextColor(...ACCENT);
+        doc.text(totalStr, boxX + boxW - 5, finalY + 21, { align: 'right' });
 
-        /* ── Notes ── */
-        let notesEndY = finalY + 30;
+        /* ── 11. Notes ── */
         if (invoice.notes) {
-            doc.setFillColor(250, 250, 250); doc.setDrawColor(220, 220, 220);
-            doc.roundedRect(14, finalY + 28, pw - 28, 22, 2, 2, 'FD');
-            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
-            doc.setTextColor(...GREEN);
-            doc.text('Notes:', 18, finalY + 36);
-            doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRAY_TEXT);
-            const noteLines = doc.splitTextToSize(invoice.notes, pw - 40);
-            doc.text(noteLines, 18, finalY + 43);
-            notesEndY = finalY + 52;
+            const notesY = finalY + 32;
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(...BORDER);
+            doc.roundedRect(14, notesY, pw - 28, 20, 2, 2, 'FD');
+            doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...ACCENT);
+            doc.text('NOTES', 18, notesY + 7);
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+            doc.setTextColor(...MID_GRAY);
+            const noteLines = doc.splitTextToSize(invoice.notes, pw - 42);
+            doc.text(noteLines, 18, notesY + 14);
         }
 
-        /* ── Footer ── */
-        const footerY = ph - 22;
-        doc.setFillColor(...GREEN);
-        doc.rect(0, footerY, pw, 22, 'F');
+        /* ── 12. Footer ── */
+        const footerY = ph - 18;
+        doc.setFillColor(...PASTEL_BG);
+        doc.rect(0, footerY, pw, 18, 'F');
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, footerY, pw, 1, 'F');
 
-        // Left: company
-        doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-        doc.setTextColor(255, 215, 100);
-        doc.text(COMPANY.name, 14, footerY + 9);
-        doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(190, 230, 190);
-        doc.text(`${COMPANY.village}, ${COMPANY.mandal}`, 14, footerY + 15);
-        doc.text(`${COMPANY.district}, ${COMPANY.state}`, 14, footerY + 20);
-
-        // Centre: tagline
-        doc.setFontSize(8); doc.setFont('helvetica', 'italic');
-        doc.setTextColor(200, 235, 200);
-        doc.text(COMPANY.tagline, pw / 2, footerY + 12, { align: 'center' });
-
-        // Right: thank you
+        // Company on left
         doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-        doc.setTextColor(255, 255, 255);
-        doc.text('Thank you for your business!', pw - 14, footerY + 9, { align: 'right' });
-        doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(190, 230, 190);
-        doc.text('Quality farm products, trusted delivery.', pw - 14, footerY + 15, { align: 'right' });
+        doc.setTextColor(...SLATE);
+        doc.text(COMPANY.name, 14, footerY + 8);
+        doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MID_GRAY);
+        doc.text(`${COMPANY.village}, ${COMPANY.mandal}, ${COMPANY.district}, ${COMPANY.state}`, 14, footerY + 14);
 
-        // Page #
-        doc.setFontSize(7); doc.setTextColor(160, 200, 160);
-        doc.text('Page 1 of 1', pw / 2, footerY + 20, { align: 'center' });
+        // Thank you on right
+        doc.setFontSize(8); doc.setFont('helvetica', 'italic');
+        doc.setTextColor(...ACCENT);
+        doc.text('Thank you for your business!', pw - 14, footerY + 11, { align: 'right' });
 
         doc.save(`Trinetra_Farms_Invoice_${invoice.invoiceNumber}.pdf`);
     };
 
-    // ─── Form submit ────────────────────────────────────────────────────────────
+    // ─── Form handlers ──────────────────────────────────────────────────────────
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSaving(true);
@@ -299,7 +310,6 @@ const Invoices = () => {
 
     return (
         <div className="space-y-6">
-            {/* Page header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Invoices</h1>
@@ -315,14 +325,14 @@ const Invoices = () => {
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-green-50 rounded-xl text-green-700"><FileText className="w-6 h-6" /></div>
+                    <div className="p-3 bg-slate-50 rounded-xl text-slate-600"><FileText className="w-6 h-6" /></div>
                     <div>
                         <p className="text-sm text-gray-500">Total Invoices</p>
                         <h3 className="text-xl font-bold text-gray-800">{invoices.length}</h3>
                     </div>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><Download className="w-6 h-6" /></div>
+                    <div className="p-3 bg-green-50 rounded-xl text-green-700"><Download className="w-6 h-6" /></div>
                     <div>
                         <p className="text-sm text-gray-500">Total Revenue</p>
                         <h3 className="text-xl font-bold text-gray-800">₹{invoices.reduce((s, inv) => s + (inv.total || 0), 0).toLocaleString('en-IN')}</h3>
@@ -337,7 +347,7 @@ const Invoices = () => {
                     data={invoices}
                     renderRow={(invoice) => (
                         <>
-                            <td className="px-6 py-4 font-mono font-semibold text-green-700">{invoice.invoiceNumber}</td>
+                            <td className="px-6 py-4 font-mono font-semibold text-slate-700">{invoice.invoiceNumber}</td>
                             <td className="px-6 py-4 text-gray-600">{invoice.date}</td>
                             <td className="px-6 py-4 font-medium text-gray-900">{invoice.customerName}</td>
                             <td className="px-6 py-4 text-gray-500">{invoice.items?.length || 0} items</td>
@@ -364,21 +374,19 @@ const Invoices = () => {
                 </div>
             )}
 
-            {/* ── Create Modal ──────────────────────────────────────────────── */}
+            {/* ── Create Modal ────────────────────────────────────────────── */}
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create Invoice">
                 <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                    {/* Customer */}
                     <div className="space-y-3">
-                        <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-wider">Customer Details</h3>
+                        <h3 className="font-semibold text-gray-600 text-xs uppercase tracking-wider">Customer Details</h3>
                         <input type="text" required placeholder="Customer Name *" value={newInvoice.customerName} onChange={(e) => setNewInvoice({ ...newInvoice, customerName: e.target.value })} className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-400" />
                         <textarea placeholder="Address (optional)" value={newInvoice.customerAddress} onChange={(e) => setNewInvoice({ ...newInvoice, customerAddress: e.target.value })} className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-green-500/20 resize-none" rows={2} />
                         <input type="tel" placeholder="Phone (optional)" value={newInvoice.customerPhone} onChange={(e) => setNewInvoice({ ...newInvoice, customerPhone: e.target.value })} className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-400" />
                     </div>
 
-                    {/* Items */}
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                            <h3 className="font-semibold text-gray-700 text-xs uppercase tracking-wider">Items</h3>
+                            <h3 className="font-semibold text-gray-600 text-xs uppercase tracking-wider">Items</h3>
                             <button type="button" onClick={addLineItem} className="text-sm text-green-700 hover:text-green-800 font-semibold">+ Add Item</button>
                         </div>
                         {newInvoice.items.map((item, index) => (
@@ -408,54 +416,68 @@ const Invoices = () => {
                 </form>
             </Modal>
 
-            {/* ── Preview Modal ─────────────────────────────────────────────── */}
+            {/* ── Preview Modal ───────────────────────────────────────────── */}
             <Modal isOpen={!!previewInvoice} onClose={() => setPreviewInvoice(null)} title="">
                 {previewInvoice && (
                     <div className="font-sans space-y-4">
-                        {/* Invoice header */}
-                        <div className="bg-green-800 text-white rounded-2xl p-5 flex items-start justify-between gap-4">
-                            <div>
-                                <p className="text-yellow-300 text-xl font-black tracking-widest leading-tight">TRINETRA FARMS</p>
-                                <p className="text-green-200 text-[11px] italic mt-0.5">{COMPANY.tagline}</p>
-                                <p className="text-green-300 text-[10px] mt-1.5">{COMPANY.village}, {COMPANY.mandal}</p>
-                                <p className="text-green-300 text-[10px]">{COMPANY.district}, {COMPANY.state}</p>
+                        {/* Header: pastel slate bg */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                {/* Logo with white bg */}
+                                <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm">
+                                    <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                                </div>
+                                <div>
+                                    <p className="font-black text-slate-800 text-lg tracking-wide leading-tight">TRINETRA FARMS</p>
+                                    <p className="text-slate-500 text-[10px] mt-0.5">{COMPANY.village}, {COMPANY.mandal}</p>
+                                    <p className="text-slate-400 text-[10px]">{COMPANY.district}, {COMPANY.state}</p>
+                                </div>
                             </div>
                             <div className="text-right flex-shrink-0">
-                                <p className="text-yellow-300 text-2xl font-black">INVOICE</p>
-                                <p className="text-green-200 text-xs font-mono mt-0.5">{previewInvoice.invoiceNumber}</p>
-                                <p className="text-green-300 text-[10px] mt-1">{previewInvoice.date}</p>
-                                <span className="inline-block mt-1.5 bg-green-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider">PAID</span>
+                                <p className="text-slate-800 text-2xl font-black tracking-wider">INVOICE</p>
+                                <p className="text-slate-500 text-xs font-mono mt-0.5">{previewInvoice.invoiceNumber}</p>
+                                <p className="text-slate-400 text-[10px] mt-1">{previewInvoice.date}</p>
+                                <span className="inline-block mt-1.5 bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider border border-green-200">PAID</span>
                             </div>
                         </div>
 
-                        {/* Bill To */}
-                        <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-                            <p className="text-[10px] uppercase font-bold text-green-700 mb-1 tracking-widest">Bill To</p>
-                            <p className="font-bold text-gray-800 text-base">{previewInvoice.customerName}</p>
-                            {previewInvoice.customerAddress && <p className="text-sm text-gray-500 mt-0.5">{previewInvoice.customerAddress}</p>}
-                            {previewInvoice.customerPhone && <p className="text-sm text-gray-500 mt-0.5">📞 {previewInvoice.customerPhone}</p>}
+                        {/* Bill To & Invoice Details */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                <p className="text-[10px] uppercase font-bold text-green-700 mb-2 tracking-widest">Bill To</p>
+                                <p className="font-bold text-gray-800">{previewInvoice.customerName}</p>
+                                {previewInvoice.customerAddress && <p className="text-xs text-gray-500 mt-0.5">{previewInvoice.customerAddress}</p>}
+                                {previewInvoice.customerPhone && <p className="text-xs text-gray-500 mt-0.5">📞 {previewInvoice.customerPhone}</p>}
+                            </div>
+                            <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+                                <p className="text-[10px] uppercase font-bold text-green-700 mb-2 tracking-widest">Invoice Details</p>
+                                <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between"><span className="text-gray-500">Invoice No</span><span className="font-semibold text-gray-800 font-mono">{previewInvoice.invoiceNumber}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="font-semibold text-gray-800">{previewInvoice.date}</span></div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Items Table */}
-                        <div className="rounded-xl border border-gray-100 overflow-hidden">
+                        <div className="rounded-xl border border-gray-200 overflow-hidden">
                             <table className="w-full text-sm">
-                                <thead className="bg-green-800 text-white">
+                                <thead className="bg-slate-100 text-slate-600">
                                     <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold tracking-wider">#</th>
-                                        <th className="px-4 py-3 text-left text-xs font-semibold tracking-wider">Description</th>
-                                        <th className="px-4 py-3 text-center text-xs font-semibold tracking-wider">Qty</th>
-                                        <th className="px-4 py-3 text-right text-xs font-semibold tracking-wider">Rate</th>
-                                        <th className="px-4 py-3 text-right text-xs font-semibold tracking-wider">Amount</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold">#</th>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold">Description</th>
+                                        <th className="px-4 py-2.5 text-center text-xs font-semibold">Qty</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold">Rate</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold">Amount</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-50">
+                                <tbody className="divide-y divide-gray-100">
                                     {previewInvoice.items?.map((item, i) => (
-                                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-green-50/30'}>
-                                            <td className="px-4 py-3 text-gray-400 text-center font-mono text-xs">{i + 1}</td>
+                                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
+                                            <td className="px-4 py-3 text-gray-400 text-center text-xs font-mono">{i + 1}</td>
                                             <td className="px-4 py-3 text-gray-800 font-medium">{item.description}</td>
                                             <td className="px-4 py-3 text-center text-gray-600">{item.quantity}</td>
                                             <td className="px-4 py-3 text-right text-gray-600">₹{Number(item.rate).toLocaleString('en-IN')}</td>
-                                            <td className="px-4 py-3 text-right font-bold text-green-700">₹{(item.quantity * item.rate).toLocaleString('en-IN')}</td>
+                                            <td className="px-4 py-3 text-right font-bold text-slate-700">₹{(item.quantity * item.rate).toLocaleString('en-IN')}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -464,9 +486,9 @@ const Invoices = () => {
 
                         {/* Total */}
                         <div className="flex justify-end">
-                            <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-4 text-right min-w-[180px]">
-                                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1">Total Amount</p>
-                                <p className="text-2xl font-black text-green-700">₹{(previewInvoice.total || 0).toLocaleString('en-IN')}</p>
+                            <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4 text-right min-w-[180px]">
+                                <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mb-1">Total Amount</p>
+                                <p className="text-xl font-black text-green-700 break-all">₹{(previewInvoice.total || 0).toLocaleString('en-IN')}</p>
                             </div>
                         </div>
 
@@ -477,11 +499,13 @@ const Invoices = () => {
                             </div>
                         )}
 
-                        {/* Footer tagline */}
-                        <div className="bg-green-800 rounded-xl py-3 px-5 text-center">
-                            <p className="text-yellow-300 font-bold text-sm tracking-widest">TRINETRA FARMS</p>
-                            <p className="text-green-200 text-xs italic mt-0.5">{COMPANY.tagline}</p>
-                            <p className="text-green-300 text-[10px] mt-0.5">{COMPANY.village}, {COMPANY.mandal}, {COMPANY.district}, {COMPANY.state}</p>
+                        {/* Footer */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl py-3 px-5 flex items-center justify-between">
+                            <div>
+                                <p className="font-bold text-slate-700 text-sm">TRINETRA FARMS</p>
+                                <p className="text-slate-400 text-[10px]">{COMPANY.village}, {COMPANY.mandal}, {COMPANY.district}</p>
+                            </div>
+                            <p className="text-green-600 text-xs font-medium italic">Thank you for your business!</p>
                         </div>
 
                         <button
@@ -489,7 +513,7 @@ const Invoices = () => {
                             className="w-full flex items-center justify-center gap-2 bg-green-700 text-white py-3 rounded-xl font-bold hover:bg-green-800 transition-colors"
                         >
                             <Download className="w-5 h-5" />
-                            Download Professional PDF
+                            Download PDF
                         </button>
                     </div>
                 )}
