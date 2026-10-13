@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PageHeader from '../components/ui/PageHeader';
 import { Plus, Download, Trash2, FileText, Eye, Loader2, CheckCircle } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -286,28 +287,25 @@ const Invoices = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Invoices</h1>
-                    <p className="text-gray-500 mt-1">Professional invoices for Trinetra Farms.</p>
-                </div>
-                {isAdmin && (
-                    <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-medium">
-                        <Plus className="w-5 h-5" /> Create Invoice
+            <PageHeader
+                section="invoices"
+                actions={isAdmin && (
+                    <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-forest hover:bg-green-900 text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]">
+                        <Plus className="w-5 h-5" /> Create invoice
                     </button>
                 )}
-            </div>
+            />
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                     <div className="p-3 bg-slate-50 rounded-xl text-slate-600"><FileText className="w-6 h-6" /></div>
                     <div>
                         <p className="text-sm text-gray-500">Total Invoices</p>
                         <h3 className="text-xl font-bold text-gray-800">{invoices.length}</h3>
                     </div>
                 </div>
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                     <div className="p-3 bg-green-50 rounded-xl text-green-700"><Download className="w-6 h-6" /></div>
                     <div>
                         <p className="text-sm text-gray-500">Total Revenue</p>

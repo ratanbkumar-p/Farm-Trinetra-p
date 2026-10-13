@@ -3,8 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Phone, MapPin, Stethoscope, Syringe, X, Edit2, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import PageHeader from '../components/ui/PageHeader';
+import EmptyState from '../components/ui/EmptyState';
+import ContactCard from '../components/contacts/ContactCard';
 
-const Contacts = () => {
+const Contacts = ({ embedded = false }) => {
     const { data, addContact, deleteContact, updateContact } = useData();
     const { contacts } = data;
     const { user, userRole, isAdmin, isSuperAdmin, canEdit: authCanEdit } = useAuth();
@@ -58,29 +61,24 @@ const Contacts = () => {
     };
 
     return (
-        <div className="max-w-[1920px] mx-auto p-4 md:p-6 space-y-6">
+        <div className="space-y-6">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 rounded-xl text-blue-600">
-                            <Stethoscope className="w-8 h-8" />
-                        </div>
-                        Veterinary Contacts
-                    </h1>
-                    <p className="text-gray-500 mt-1">Manage and access your farm's medical support directory.</p>
-                </div>
-
-                {(isSuperAdmin || canEdit) && !isAdding && (
+            <PageHeader
+                actionsOnly={embedded}
+                emoji="🩺"
+                title="Vet contacts"
+                subtitle="Doctors and assistants you can call when an animal is unwell."
+                section="contacts"
+                actions={(isSuperAdmin || canEdit) && !isAdding && (
                     <button
                         onClick={() => setIsAdding(true)}
-                        className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition shadow-lg shadow-green-200"
+                        className="flex items-center justify-center gap-2 px-5 py-3 bg-forest text-white rounded-2xl font-bold hover:bg-green-900 shadow-[0_3px_0_#0b2416]"
                     >
                         <Plus className="w-5 h-5" />
-                        Add New Contact
+                        Add vet contact
                     </button>
                 )}
-            </div>
+            />
 
             {/* Main Content Area */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -94,7 +92,7 @@ const Contacts = () => {
                             exit={{ opacity: 0, x: -20 }}
                             className="lg:col-span-4"
                         >
-                            <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm sticky top-24">
+                            <div className="bg-white p-6 rounded-3xl ring-1 ring-green-200 shadow-md sticky top-24">
                                 <div className="flex justify-between items-center mb-6">
                                     <h2 className="text-xl font-bold text-gray-900">{editingContactId ? 'Edit Contact' : 'New Contact'}</h2>
                                     <button onClick={() => { setIsAdding(false); setEditingContactId(null); }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
@@ -109,7 +107,7 @@ const Contacts = () => {
                                             required
                                             value={contactForm.name}
                                             onChange={(e) => setContactForm(prev => ({ ...prev, name: e.target.value }))}
-                                            className="w-full h-12 rounded-xl border-gray-200 focus:border-green-500 focus:ring-green-500 transition-all"
+                                            className="w-full h-12 px-4 rounded-2xl border border-gray-300 bg-white"
                                             placeholder="e.g. Dr. Ramesh"
                                         />
                                     </div>
@@ -121,7 +119,7 @@ const Contacts = () => {
                                             type="tel"
                                             value={contactForm.phone}
                                             onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
-                                            className="w-full h-12 rounded-xl border-gray-200 focus:border-green-500 focus:ring-green-500 transition-all"
+                                            className="w-full h-12 px-4 rounded-2xl border border-gray-300 bg-white"
                                             placeholder="9876543210"
                                         />
                                     </div>
@@ -131,7 +129,7 @@ const Contacts = () => {
                                         <input
                                             value={contactForm.location}
                                             onChange={(e) => setContactForm(prev => ({ ...prev, location: e.target.value }))}
-                                            className="w-full h-12 rounded-xl border-gray-200 focus:border-green-500 focus:ring-green-500 transition-all"
+                                            className="w-full h-12 px-4 rounded-2xl border border-gray-300 bg-white"
                                             placeholder="e.g. Village Name / Town"
                                         />
                                     </div>
@@ -158,7 +156,7 @@ const Contacts = () => {
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="w-full h-14 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="w-full h-14 bg-forest text-white font-bold rounded-2xl shadow-[0_3px_0_#0b2416] flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {isSaving ? (
                                             <>
@@ -181,84 +179,32 @@ const Contacts = () => {
                 {/* Contacts Grid */}
                 <div className={`${isAdding ? 'lg:col-span-8' : 'lg:col-span-12'}`}>
                     {(!contacts || contacts.length === 0) ? (
-                        <div className="bg-white rounded-3xl border border-dashed border-gray-200 p-20 flex flex-col items-center justify-center text-center">
-                            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mb-6">
-                                <Stethoscope className="w-12 h-12 text-gray-300" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-gray-900">No Contacts Found</h3>
-                            <p className="text-gray-500 mt-2 max-w-sm">You haven't added any veterinary contacts yet. Start by adding your first doctor or assistant.</p>
-                            {!isAdding && (isSuperAdmin || canEdit) && (
-                                <button
-                                    onClick={() => setIsAdding(true)}
-                                    className="mt-8 px-8 py-3 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition shadow-lg"
-                                >
-                                    Add Your First Contact
+                        <EmptyState
+                            emoji="🩺"
+                            title="No vets saved yet"
+                            message="Add the doctors and assistants you call when an animal is unwell — then it’s one tap to call or WhatsApp."
+                            action={!isAdding && (isSuperAdmin || canEdit) && (
+                                <button onClick={() => setIsAdding(true)} className="px-5 py-3 bg-forest text-white font-bold rounded-2xl shadow-[0_3px_0_#0b2416]">
+                                    Add your first vet
                                 </button>
                             )}
-                        </div>
+                        />
                     ) : (
-                        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-x-6 gap-y-10 pt-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                             {contacts.map((contact, idx) => (
-                                <motion.div
-                                    layout
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: idx * 0.05 }}
+                                <ContactCard
                                     key={contact.id}
-                                    className="bg-white px-4 pb-4 pt-12 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-green-500/5 transition-all group relative flex flex-col items-center text-center"
-                                >
-                                    {(isSuperAdmin || canEdit) && (
-                                        <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
-                                            <button
-                                                onClick={() => handleEdit(contact)}
-                                                className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
-                                                title="Edit Contact"
-                                            >
-                                                <Edit2 className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(contact.id)}
-                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
-                                                title="Delete Contact"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {/* Avatar Circle */}
-                                    <div className={`absolute -top-6 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full flex items-center justify-center shadow-lg border-4 border-white shrink-0 transition-transform group-hover:scale-110 ${contact.type === 'Doctor' ? 'bg-blue-500 text-white' : 'bg-amber-500 text-white'}`}>
-                                        {contact.type === 'Doctor' ? <Stethoscope className="w-7 h-7" /> : <Syringe className="w-7 h-7" />}
-                                    </div>
-
-                                    <div className="mb-4 w-full overflow-hidden">
-                                        <h3 className="font-black text-gray-900 truncate mb-1">{contact.name}</h3>
-                                        <div className="flex flex-col items-center gap-1">
-                                            <span className={`text-[9px] uppercase font-black px-2 py-0.5 rounded-full tracking-widest ${contact.type === 'Doctor' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
-                                                {contact.type}
-                                            </span>
-                                            {contact.location && (
-                                                <span className="text-[11px] text-gray-400 font-medium flex items-center gap-1 truncate max-w-full justify-center">
-                                                    <MapPin className="w-3 h-3" />
-                                                    {contact.location}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="w-full mt-auto space-y-2">
-                                        <a
-                                            href={`tel:${contact.phone}`}
-                                            className="flex items-center justify-center gap-2 w-max mx-auto px-4 py-1.5 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition-all shadow-md active:scale-95"
-                                        >
-                                            <Phone className="w-3.5 h-3.5 fill-current" />
-                                            Call Now
-                                        </a>
-                                        <p className="text-[11px] text-gray-300 font-bold tracking-tighter">
-                                            {contact.phone}
-                                        </p>
-                                    </div>
-                                </motion.div>
+                                    index={idx}
+                                    name={contact.name}
+                                    phone={contact.phone}
+                                    emoji={contact.type === 'Doctor' ? '🩺' : '💉'}
+                                    tag={contact.type === 'Doctor' ? 'Vet doctor' : 'Vet assistant'}
+                                    tone={contact.type === 'Doctor' ? 'blue' : 'amber'}
+                                    location={contact.location}
+                                    canEdit={isSuperAdmin || canEdit}
+                                    onEdit={() => handleEdit(contact)}
+                                    onDelete={() => handleDelete(contact.id)}
+                                />
                             ))}
                         </div>
                     )}

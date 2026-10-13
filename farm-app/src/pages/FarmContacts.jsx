@@ -3,9 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Phone, Edit2, X, Users, FolderPlus, ChevronDown, ChevronUp, Search, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import PageHeader from '../components/ui/PageHeader';
+import EmptyState from '../components/ui/EmptyState';
+import ContactCard from '../components/contacts/ContactCard';
 import Modal from '../components/ui/Modal';
 
-const FarmContacts = () => {
+const FarmContacts = ({ embedded = false }) => {
     const {
         data,
         addContactGroup, updateContactGroup, deleteContactGroup,
@@ -22,7 +25,6 @@ const FarmContacts = () => {
     const [editingGroup, setEditingGroup] = useState(null);
     const [editingContact, setEditingContact] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [expandedContactId, setExpandedContactId] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
     // Forms
@@ -120,38 +122,31 @@ const FarmContacts = () => {
     const getGroupForContact = (groupId) => contactGroups.find(g => g.id === groupId);
 
     return (
-        <div className="max-w-4xl mx-auto p-4 space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-100 rounded-xl text-indigo-600">
-                        <Users className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-900">Farm Contacts</h1>
-                        <p className="text-xs text-gray-500">{farmContacts.length} contacts</p>
-                    </div>
-                </div>
-
-                {canEdit && (
-                    <div className="flex gap-2">
+        <div className={`${embedded ? '' : 'max-w-4xl mx-auto'} space-y-4`}>
+            <PageHeader
+                actionsOnly={embedded}
+                section="contacts"
+                subtitle={`${farmContacts.length} people — labourers, buyers and suppliers, one tap away.`}
+                actions={canEdit && (
+                    <>
                         <button
                             onClick={() => { setEditingGroup(null); setGroupForm({ name: '', emoji: '👷' }); setIsGroupModalOpen(true); }}
-                            className="p-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition"
+                            className="flex items-center gap-2 bg-white ring-1 ring-gray-200 text-gray-700 hover:ring-gray-300 px-4 py-3 rounded-2xl font-bold shadow-sm"
                             title="Add Group"
                         >
                             <FolderPlus className="w-5 h-5" />
+                            Group
                         </button>
                         <button
                             onClick={() => { setEditingContact(null); setContactForm({ name: '', phone: '', notes: '', rate: '', groupId: selectedGroupId === 'all' ? '' : selectedGroupId }); setIsContactModalOpen(true); }}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition"
+                            className="flex items-center gap-2 px-5 py-3 bg-forest text-white rounded-2xl font-bold hover:bg-green-900 shadow-[0_3px_0_#0b2416]"
                         >
                             <Plus className="w-5 h-5" />
-                            <span className="hidden sm:inline">Add</span>
+                            Add contact
                         </button>
-                    </div>
+                    </>
                 )}
-            </div>
+            />
 
             {/* Search */}
             <div className="relative">
@@ -161,7 +156,7 @@ const FarmContacts = () => {
                     placeholder="Search name or phone..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+                    className="w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-200 bg-white shadow-sm"
                 />
             </div>
 
@@ -170,8 +165,8 @@ const FarmContacts = () => {
                 <button
                     onClick={() => setSelectedGroupId('all')}
                     className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition whitespace-nowrap ${selectedGroupId === 'all'
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-600'
+                        ? 'bg-forest text-white shadow-md'
+                        : 'bg-white ring-1 ring-gray-200 text-gray-600'
                         }`}
                 >
                     All ({farmContacts.length})
@@ -183,8 +178,8 @@ const FarmContacts = () => {
                             key={group.id}
                             onClick={() => setSelectedGroupId(group.id)}
                             className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition flex items-center gap-1.5 whitespace-nowrap ${selectedGroupId === group.id
-                                ? 'bg-indigo-600 text-white shadow-md'
-                                : 'bg-gray-100 text-gray-600'
+                                ? 'bg-forest text-white shadow-md'
+                                : 'bg-white ring-1 ring-gray-200 text-gray-600'
                                 }`}
                         >
                             <span>{group.emoji || '📁'}</span>
@@ -206,111 +201,31 @@ const FarmContacts = () => {
 
             {/* Contacts List */}
             {filteredContacts.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 flex flex-col items-center justify-center text-center">
-                    <Users className="w-12 h-12 text-gray-300 mb-3" />
-                    <h3 className="text-lg font-bold text-gray-900">No Contacts</h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {contactGroups.length === 0
-                            ? 'Create a group first, then add contacts.'
-                            : 'Add contacts to this group.'}
-                    </p>
-                </div>
+                <EmptyState
+                    emoji="📇"
+                    title={contactGroups.length === 0 ? 'Start with a group' : 'Nobody here yet'}
+                    message={contactGroups.length === 0
+                        ? 'Make groups like “Labour”, “Buyers” or “Feed suppliers”, then add people to them.'
+                        : 'Add people to this group so they’re one tap away.'}
+                />
             ) : (
-                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden divide-y divide-gray-100">
-                    {filteredContacts.map((contact) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredContacts.map((contact, idx) => {
                         const group = getGroupForContact(contact.groupId);
-                        const isExpanded = expandedContactId === contact.id;
-
                         return (
-                            <motion.div
+                            <ContactCard
                                 key={contact.id}
-                                layout
-                                className="relative"
-                            >
-                                {/* Main Row */}
-                                <div
-                                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
-                                    onClick={() => setExpandedContactId(isExpanded ? null : contact.id)}
-                                >
-                                    {/* Emoji Avatar */}
-                                    <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
-                                        {group?.emoji || '👤'}
-                                    </div>
-
-                                    {/* Name & Group */}
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-gray-900 truncate">{contact.name}</h3>
-                                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                                            {group && <span>{group.name}</span>}
-                                            {contact.rate && <span>• {contact.rate}</span>}
-                                        </div>
-                                    </div>
-
-                                    {/* Phone & Actions */}
-                                    <div className="flex items-center gap-2">
-                                        <a
-                                            href={`tel:${contact.phone}`}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="flex items-center gap-2 px-3 py-2 bg-green-500 text-white rounded-xl text-sm font-bold hover:bg-green-600 transition active:scale-95"
-                                        >
-                                            <Phone className="w-4 h-4" />
-                                            <span className="hidden sm:inline">{contact.phone}</span>
-                                        </a>
-                                        <button className="p-2 text-gray-300">
-                                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Expanded Details */}
-                                <AnimatePresence>
-                                    {isExpanded && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            className="overflow-hidden bg-gray-50 border-t border-gray-100"
-                                        >
-                                            <div className="px-4 py-3 space-y-2">
-                                                <div className="flex items-center gap-4 text-sm">
-                                                    <span className="text-gray-500">📞 Phone:</span>
-                                                    <span className="font-medium">{contact.phone}</span>
-                                                </div>
-                                                {contact.rate && (
-                                                    <div className="flex items-center gap-4 text-sm">
-                                                        <span className="text-gray-500">💰 Rate:</span>
-                                                        <span className="font-medium">{contact.rate}</span>
-                                                    </div>
-                                                )}
-                                                {contact.notes && (
-                                                    <div className="text-sm">
-                                                        <span className="text-gray-500">📝 Notes:</span>
-                                                        <p className="text-gray-700 mt-1">{contact.notes}</p>
-                                                    </div>
-                                                )}
-
-                                                {canEdit && (
-                                                    <div className="flex gap-2 pt-2 border-t border-gray-200 mt-3">
-                                                        <button
-                                                            onClick={() => openEditContact(contact)}
-                                                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-100 transition"
-                                                        >
-                                                            <Edit2 className="w-4 h-4" />
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteContact(contact.id)}
-                                                            className="flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-xl text-sm font-medium hover:bg-red-100 transition"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </motion.div>
+                                index={idx}
+                                name={contact.name}
+                                phone={contact.phone}
+                                emoji={group?.emoji || '👤'}
+                                tag={group?.name}
+                                details={[contact.rate ? `💰 ${contact.rate}` : null]}
+                                notes={contact.notes}
+                                canEdit={canEdit}
+                                onEdit={() => openEditContact(contact)}
+                                onDelete={() => handleDeleteContact(contact.id)}
+                            />
                         );
                     })}
                 </div>

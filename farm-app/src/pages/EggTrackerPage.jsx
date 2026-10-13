@@ -131,7 +131,7 @@ export default function EggTrackerPage({ onClose }) {
     const cfg = typeConfig(formType);
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
+        <div className="fixed inset-0 z-[90] flex flex-col bg-cream">
             {/* Header */}
             <div className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
@@ -257,7 +257,7 @@ export default function EggTrackerPage({ onClose }) {
                                             required
                                             value={form.date}
                                             onChange={e => setForm({ ...form, date: e.target.value })}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
+                                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
                                         />
                                     </div>
                                     <div>
@@ -276,7 +276,7 @@ export default function EggTrackerPage({ onClose }) {
                                             max={formType !== 'Collected' ? inStock : undefined}
                                             value={form.quantity}
                                             onChange={e => setForm({ ...form, quantity: e.target.value })}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
+                                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
                                             placeholder={formType === 'Sold' ? 'e.g. 30 trays' : 'How many?'}
                                         />
                                     </div>
@@ -302,7 +302,7 @@ export default function EggTrackerPage({ onClose }) {
                                                 type="text"
                                                 value={form.buyer}
                                                 onChange={e => setForm({ ...form, buyer: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
+                                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
                                                 placeholder="e.g. local market"
                                             />
                                         </div>
@@ -315,7 +315,7 @@ export default function EggTrackerPage({ onClose }) {
                                         type="text"
                                         value={form.notes}
                                         onChange={e => setForm({ ...form, notes: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
+                                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white bg-white outline-none focus:ring-2 focus:ring-yellow-500/20"
                                         placeholder="Any additional details..."
                                     />
                                 </div>
@@ -345,7 +345,7 @@ export default function EggTrackerPage({ onClose }) {
                     )}
 
                     {/* Period Filter + Log Table */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-3xl ring-1 ring-gray-200 shadow-sm overflow-hidden">
                         <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <h2 className="font-bold text-gray-800">Activity Log</h2>
                             <div className="flex bg-gray-100 p-1 rounded-lg gap-0.5 flex-wrap">

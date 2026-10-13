@@ -1,49 +1,392 @@
 @import "tailwindcss";
-/**
- * Since we are using Tailwind 4 (from user install), we might need the new directive:
- * @import "tailwindcss";
- * BUT the user command installed tailwindcss@latest which is v4?
- * Wait, wait. package.json usually gives v3 unless specified.
- * Let me check package.json version line again.
- * "tailwindcss": "^4.1.18" -> YES IT IS VERSION 4!
- * 
- * In v4, we don't need tailwind.config.js or postcss.config.js usually if using the vite plugin.
- * But we are using the standard Setup.
- * For v4, the CSS file should just be `@import "tailwindcss";`.
- * And the config is often auto-detected or merged.
- * 
- * CAUTION: create-vite might not have set up the v4 PostCSS plugin.
- * The safe bet is to use the v4 CSS import.
+
+/*
+ * Trinetra Farms design system ("Golden Hour Farm").
+ * Tailwind v4 reads tokens from @theme, so remapping the gray/green scales here
+ * re-skins every page at once: warm soil neutrals instead of cold grays, and a
+ * fresher leaf green. Brand colours (cream, sun, barn, soil, forest, sky) are
+ * available as utilities, e.g. bg-cream, text-forest, bg-sun/20.
  */
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Fredoka", "Plus Jakarta Sans", ui-rounded, system-ui, sans-serif;
 
-@import "tailwindcss";
+  --color-gray-50: #faf8f3;
+  --color-gray-100: #f3efe6;
+  --color-gray-200: #e7e1d4;
+  --color-gray-300: #d4ccbb;
+  --color-gray-400: #a69d8a;
+  --color-gray-500: #7b7364;
+  --color-gray-600: #5d564a;
+  --color-gray-700: #47413a;
+  --color-gray-800: #2f2b25;
+  --color-gray-900: #1f1c18;
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  
-  /* Material Elevation Shadows */
-  --shadow-1: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --color-green-50: #effbf1;
+  --color-green-100: #d9f5de;
+  --color-green-200: #b4eabf;
+  --color-green-300: #82d896;
+  --color-green-400: #4fbf6b;
+  --color-green-500: #2ea44f;
+  --color-green-600: #23883f;
+  --color-green-700: #1f6b35;
+  --color-green-800: #1c552e;
+  --color-green-900: #174627;
+
+  --color-cream: #fbf7ee;
+  --color-straw: #f6ecd3;
+  --color-sun: #ffc23c;
+  --color-sun-deep: #f29e0c;
+  --color-barn: #e4572e;
+  --color-soil: #8b5e3c;
+  --color-forest: #163d27;
+  --color-meadow: #2ea44f;
+  --color-sky: #4da3ff;
+  --color-lilac: #9b7bff;
+
+  --radius-lg: 0.75rem;
+  --radius-xl: 0.95rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  --shadow-sm: 0 1px 2px rgb(63 45 20 / 0.05), 0 2px 6px -2px rgb(63 45 20 / 0.06);
+  --shadow-md: 0 4px 10px -2px rgb(63 45 20 / 0.08), 0 10px 24px -12px rgb(63 45 20 / 0.12);
+  --shadow-lg: 0 10px 30px -10px rgb(63 45 20 / 0.18), 0 4px 10px -4px rgb(63 45 20 / 0.08);
+  --shadow-xl: 0 24px 60px -20px rgb(31 28 24 / 0.28), 0 8px 18px -8px rgb(31 28 24 / 0.12);
+
+  --ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --animate-float: tf-float 3.2s ease-in-out infinite;
+  --animate-wiggle: tf-wiggle 2.8s ease-in-out infinite;
+  --animate-sway: tf-sway 3.6s ease-in-out infinite;
+  --animate-drift: tf-drift 38s linear infinite;
+  --animate-shimmer: tf-shimmer 1.6s linear infinite;
+  --animate-pop: tf-pop 0.45s var(--ease-spring) backwards;
+  --animate-rise: tf-rise 0.55s var(--ease-out-soft) backwards;
 }
 
 @layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
   body {
-    @apply min-w-[320px] min-h-screen m-0 bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200;
+    min-width: 320px;
+    min-height: 100dvh;
+    margin: 0;
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-gray-900);
+    background-color: var(--color-cream);
+    background-image:
+      radial-gradient(1200px 500px at 100% -10%, rgb(255 194 60 / 0.16), transparent 60%),
+      radial-gradient(900px 480px at -10% 0%, rgb(46 164 79 / 0.10), transparent 55%),
+      radial-gradient(rgb(139 94 60 / 0.07) 1px, transparent 1px);
+    background-size: auto, auto, 22px 22px;
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-weight: 700;
+  }
+
+  ::selection {
+    background: rgb(255 194 60 / 0.45);
+    color: var(--color-forest);
+  }
+
+  input,
+  select,
+  textarea {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    accent-color: var(--color-meadow);
+    font-variant-numeric: tabular-nums;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: var(--color-green-500);
+    box-shadow: 0 0 0 4px rgb(46 164 79 / 0.16);
+    outline: none;
+  }
+
+  button,
+  [role="button"],
+  a {
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale, translate;
+    transition-duration: 160ms;
+    transition-timing-function: var(--ease-out-soft);
+  }
+
+  /* Tactile press on every button, composed with (not replacing) framer transforms */
+  button:not(:disabled):active,
+  [role="button"]:active {
+    scale: 0.96;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 3px solid rgb(46 164 79 / 0.45);
+    outline-offset: 2px;
   }
 }
 
-/* Scrollbar styling for that 'premium' feel */
-::-webkit-scrollbar {
-  width: 8px;
+/* --- Entrance choreography ------------------------------------------------
+ * Grid children (stat cards, batch cards, crop cards…) rise in with a stagger
+ * whenever they mount. Only `translate`/`opacity` are animated with
+ * fill-mode `backwards`, so framer-motion hover transforms keep working.
+ */
+main .grid > * {
+  animation: tf-rise 0.5s var(--ease-out-soft) backwards;
 }
+
+main .grid > *:nth-child(2) { animation-delay: 40ms; }
+main .grid > *:nth-child(3) { animation-delay: 80ms; }
+main .grid > *:nth-child(4) { animation-delay: 120ms; }
+main .grid > *:nth-child(5) { animation-delay: 160ms; }
+main .grid > *:nth-child(6) { animation-delay: 200ms; }
+main .grid > *:nth-child(7) { animation-delay: 240ms; }
+main .grid > *:nth-child(8) { animation-delay: 280ms; }
+main .grid > *:nth-child(n + 9) { animation-delay: 320ms; }
+
+/* Pages use tailwindcss-animate style classes for expanding rows; give them life */
+.animate-in {
+  animation: tf-enter 0.32s var(--ease-out-soft) backwards;
+}
+
+.no-entrance,
+.no-entrance > * {
+  animation: none !important;
+}
+
+/* Cards in main lift gently on hover when they are clickable */
+main .cursor-pointer.rounded-xl,
+main .cursor-pointer.rounded-2xl {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, translate 0.25s var(--ease-spring);
+}
+
+@media (hover: hover) {
+  main .cursor-pointer.rounded-xl:hover,
+  main .cursor-pointer.rounded-2xl:hover {
+    translate: 0 -2px;
+  }
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Skeleton shimmer */
+.tf-skeleton {
+  background: linear-gradient(90deg, var(--color-gray-100) 0%, var(--color-gray-50) 50%, var(--color-gray-100) 100%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* Emoji burst used by celebrate() */
+.tf-burst {
+  position: fixed;
+  pointer-events: none;
+  z-index: 200;
+  font-size: 1.6rem;
+  animation: tf-burst 1.1s var(--ease-out-soft) forwards;
+}
+
+@keyframes tf-rise {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+}
+
+@keyframes tf-enter {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+@keyframes tf-pop {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+@keyframes tf-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -5px; }
+}
+
+@keyframes tf-wiggle {
+  0%, 100% { rotate: 0deg; }
+  20% { rotate: -9deg; }
+  40% { rotate: 7deg; }
+  60% { rotate: -3deg; }
+  80% { rotate: 0deg; }
+}
+
+@keyframes tf-sway {
+  0%, 100% { rotate: -3deg; }
+  50% { rotate: 3deg; }
+}
+
+@keyframes tf-drift {
+  from { translate: -20% 0; }
+  to { translate: 120vw 0; }
+}
+
+@keyframes tf-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes tf-burst {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+    scale: 0.4;
+  }
+  15% {
+    opacity: 1;
+    scale: 1.15;
+  }
+  100% {
+    opacity: 0;
+    translate: var(--tx, 0) var(--ty, -120px);
+    scale: 0.9;
+    rotate: var(--rot, 20deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Warm scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #BDBDBD;
-  border-radius: 4px;
+  background: var(--color-gray-300);
+  border-radius: 999px;
+  border: 2px solid var(--color-cream);
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #9E9E9E;
+  background: var(--color-gray-400);
+}
+
+/* --- Legacy polish -----------------------------------------------------------
+ * Older screens still use a few class combos from the first version of the app.
+ * These unlayered rules (which win over Tailwind utilities) give them the same
+ * chunky, playful finish as the new components without rewriting every line.
+ */
+button[class*="bg-green-600"],
+button[class*="bg-green-700"],
+button[class*="bg-blue-600"],
+button[class*="bg-red-600"],
+button[class*="bg-orange-600"],
+button[class*="bg-indigo-600"],
+button[class*="bg-purple-600"] {
+  border-radius: 1rem;
+  font-weight: 700;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 0.22);
+}
+
+button[class*="bg-green-600"]:not(:disabled):active,
+button[class*="bg-blue-600"]:not(:disabled):active,
+button[class*="bg-red-600"]:not(:disabled):active,
+button[class*="bg-orange-600"]:not(:disabled):active {
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.22);
+  translate: 0 2px;
+}
+
+main thead[class*="bg-gray-50"],
+main thead[class*="bg-blue-50"],
+main thead[class*="bg-orange-50"],
+main thead[class*="bg-green-50"] {
+  background: rgb(246 236 211 / 0.65);
+  color: var(--color-gray-700);
+}
+
+main tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+main tbody tr:hover {
+  background-color: rgb(255 194 60 / 0.08);
+}
+
+/* Old underline tabs become soft pills */
+main button[class*="border-b-2"] {
+  border-bottom-width: 0 !important;
+  border-radius: 0.9rem;
+  padding-inline: 1rem;
+}
+
+main button[class*="border-b-2"][class*="border-green-600"],
+main button[class*="border-b-2"][class*="border-blue-600"],
+main button[class*="border-b-2"][class*="border-red-600"],
+main button[class*="border-b-2"][class*="border-orange-600"],
+main button[class*="border-b-2"][class*="border-purple-600"],
+main button[class*="border-b-2"][class*="border-gray-600"] {
+  background: rgb(255 194 60 / 0.3);
+  color: var(--color-forest);
+  box-shadow: inset 0 0 0 1px rgb(242 158 12 / 0.35);
+}
+
+/* Inputs anywhere (including modals, which render outside <main>) */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="month"],
+input[type="tel"],
+input[type="email"],
+input[type="search"],
+select,
+textarea {
+  background-color: #fff;
+}
+
+input.rounded-lg,
+select.rounded-lg,
+textarea.rounded-lg {
+  border-radius: 0.9rem;
 }

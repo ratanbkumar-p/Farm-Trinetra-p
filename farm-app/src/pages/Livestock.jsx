@@ -1,17 +1,30 @@
-import React, { useState, useMemo, memo } from 'react';
-import { Plus, ArrowLeft, Trash2, Calendar, Edit2, Save, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, Phone, MapPin, RotateCcw, Users, ArrowRight, Loader2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect, memo } from 'react';
+import { Plus, ArrowLeft, Trash2, Edit2, X, IndianRupee, TrendingUp, Scale, Check, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Stethoscope, Syringe, RotateCcw, Users, ArrowRight, Loader2, HeartCrack, FileDown, CalendarDays } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useSettings } from '../context/SettingsContext';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getCurrentMonthKey, getMonthsBetween, ALLOCATION_ELIGIBLE_TYPES } from '../lib/allocationUtils';
+import { batchOwnCosts, animalCostBreakdown, useCosting } from '../lib/costing';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { useLocation } from 'react-router-dom';
+import { useUI } from '../context/UIContext';
+import PageHeader from '../components/ui/PageHeader';
+import SegmentedTabs from '../components/ui/SegmentedTabs';
+import EmptyState from '../components/ui/EmptyState';
+import RecordDeathModal from '../components/livestock/RecordDeathModal';
+import DeathDetailsModal from '../components/livestock/DeathDetailsModal';
+import DeceasedView from '../components/livestock/DeceasedView';
+import BatchMortalityPanel from '../components/livestock/BatchMortalityPanel';
+import SharedCostsCard from '../components/livestock/SharedCostsCard';
+import SoldView from '../components/livestock/SoldView';
+import PoultryFlockOverview from '../components/livestock/PoultryFlockOverview';
+import { DEATH_REASONS, groupDeaths, isPoultryType, todayISO, formatDate, relativeDay } from '../components/livestock/livestockUtils';
+import { ANIMAL_EMOJI } from '../lib/navigation';
+import { notify, celebrate } from '../lib/notify';
 
 // Helper for Age Formatting
 const formatAge = (y, m, d) => {
@@ -20,16 +33,6 @@ const formatAge = (y, m, d) => {
     if (m > 0) parts.push(`${m} ${m === 1 ? 'Month' : 'Months'}`);
     if (d > 0) parts.push(`${d} ${d === 1 ? 'Day' : 'Days'}`);
     return parts.length > 0 ? parts.join(' ') : '0 Days';
-};
-
-// Helper for Weight Formatting (Chicken specific)
-const formatWeight = (kg) => {
-    if (!kg) return '0g';
-    const grams = Math.round(kg * 1000);
-    if (grams < 1000) return `${grams}g`;
-    const k = Math.floor(grams / 1000);
-    const g = grams % 1000;
-    return g > 0 ? `${k}kg ${g}g` : `${k}kg`;
 };
 
 // --- PERFORMANCE OPTIMIZED MODAL ---
@@ -70,7 +73,7 @@ const GlobalPdfModal = memo(({
                     <select
                         value={globalPdfBatchId}
                         onChange={e => setGlobalPdfBatchId(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
                     >
                         <option value="">All Batches</option>
                         {dataBatches.map(b => (
@@ -87,7 +90,7 @@ const GlobalPdfModal = memo(({
                             type="date"
                             value={globalPdfStartDate}
                             onChange={e => setGlobalPdfStartDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
                         />
                     </div>
                     <div>
@@ -96,7 +99,7 @@ const GlobalPdfModal = memo(({
                             type="date"
                             value={globalPdfEndDate}
                             onChange={e => setGlobalPdfEndDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
                         />
                     </div>
                 </div>
@@ -120,8 +123,10 @@ const GlobalPdfModal = memo(({
 const Livestock = () => {
     const location = useLocation();
     const { settings } = useSettings();
-    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addWeightRecord, updateWeightRecord, sellSelectedAnimals, addExpense, updateExpense, deleteExpense, revertSoldAnimal, addContact, deleteContact, processMonthlyAllocations, getLiveAllocation } = useData();
+    const { data, addBatch, updateBatch, deleteAnimalFromBatch, deleteBatch, addExpense, updateExpense, deleteExpense, revertSoldAnimal, recordDeaths, updateDeathDetails, reviveAnimals } = useData();
     const { canEdit, isSuperAdmin, isAdmin } = useAuth();
+    const costing = useCosting();
+    const { openSell } = useUI();
     const canEditRecords = isSuperAdmin || isAdmin;
     const [selectedBatchId, setSelectedBatchId] = useState(null);
 
@@ -131,26 +136,19 @@ const Livestock = () => {
 
     // Batch Detail Tab: 'animals' | 'expenses' | 'weight' | 'sold'
     const [batchTab, setBatchTab] = useState('animals');
-    const [batchSoldFilter, setBatchSoldFilter] = useState('1M');
 
     // Modals State
     const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
     const [isAnimalModalOpen, setIsAnimalModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-    const [isSellModalOpen, setIsSellModalOpen] = useState(false);
 
     // Hierarchical View States
-    const [expandedDeceasedType, setExpandedDeceasedType] = useState(null);
-    const [expandedSoldType, setExpandedSoldType] = useState(null);
     const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
-    const [isContactModalOpen, setIsContactModalOpen] = useState(false); // New Contact Modal
 
     // Animal Edit State
     const [editingAnimalId, setEditingAnimalId] = useState(null);
     const [editingAnimalBatchId, setEditingAnimalBatchId] = useState(null);
 
-    // Selective Sell State
-    const [selectedAnimalsToSell, setSelectedAnimalsToSell] = useState([]);
 
     // Weight tracking state
     const [selectedAnimalForWeight, setSelectedAnimalForWeight] = useState(null);
@@ -169,7 +167,9 @@ const Livestock = () => {
         ageMonths: '',
         ageDays: '',
         category: 'Kid',
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toISOString().split('T')[0],
+        deceasedDate: '',
+        deathReason: 'Sickness'
     });
 
     const [expenseForm, setExpenseForm] = useState({
@@ -181,20 +181,17 @@ const Livestock = () => {
 
     const [editingBatchExpense, setEditingBatchExpense] = useState(null);
 
-    // Navigation Handler
-    /* 
-    // Disabled due to crash
+    // Navigation Handler: Quick Jump / dashboard links open a batch directly
     useEffect(() => {
-        if (location.state && location.state.selectBatchId) {
+        if (location.state?.selectBatchId) {
             setSelectedBatchId(location.state.selectBatchId);
+            setBatchTab('animals');
+        } else if (location.state?.tab) {
+            setSelectedBatchId(null);
+            setMainTab(location.state.tab);
         }
-    }, [location.state]); 
-    */
+    }, [location.state]);
 
-    // Sell Modal State
-    const [sellForm, setSellForm] = useState({
-        pricePerAnimal: 0
-    });
 
     // Weight Edit State
     const [editingWeightRecord, setEditingWeightRecord] = useState(null);
@@ -231,11 +228,12 @@ const Livestock = () => {
 
 
     // Flock Management State (Chicken/Poultry)
-    const [isBulkDeceasedOpen, setIsBulkDeceasedOpen] = useState(false);
+    // Mortality: record-death modal (batchId + optional preselected animals) and edit/fix-date modal
+    const [deathModal, setDeathModal] = useState({ open: false, batchId: null, presetIds: [] });
+    const [deathEditRecord, setDeathEditRecord] = useState(null);
     const [isBulkSaleOpen, setIsBulkSaleOpen] = useState(false);
     const [isFlockEditOpen, setIsFlockEditOpen] = useState(false);
 
-    const [bulkDeceasedForm, setBulkDeceasedForm] = useState({ count: '', reason: 'Sickness', notes: '' });
     const [bulkSaleForm, setBulkSaleForm] = useState({ count: '', pricePerAnimal: '', soldDate: new Date().toISOString().split('T')[0] });
     const [flockEditForm, setFlockEditForm] = useState({ avgWeight: '', avgCost: '', status: 'Healthy', notes: '', boughtDate: '', targetGroup: 'Healthy' });
 
@@ -244,11 +242,8 @@ const Livestock = () => {
     const [isSickTransitionOpen, setIsSickTransitionOpen] = useState(false);
     const [sickTransitionForm, setSickTransitionForm] = useState({ count: '', fromStatus: '', toStatus: '', notes: '' });
 
-    // Contact Form State
-    const [contactForm, setContactForm] = useState({ name: '', phone: '', location: '', type: 'Doctor' }); // Default Doctor
 
     // Dashboard Expansion State
-    const [expandedCard, setExpandedCard] = useState(null); // 'active', 'sick', 'mortality', 'sold'
 
     // Global PDF Modal State
     const [isGlobalPdfModalOpen, setIsGlobalPdfModalOpen] = useState(false);
@@ -258,44 +253,47 @@ const Livestock = () => {
     const [globalPdfBatchId, setGlobalPdfBatchId] = useState('');
 
     // --- HANDLERS FOR FLOCK ---
-    const handleBulkDeceased = async (e) => {
-        e.preventDefault();
-        const count = parseInt(bulkDeceasedForm.count);
-        if (isNaN(count) || count <= 0) return alert("Invalid count");
+    const openRecordDeath = (batchId, presetIds = []) => {
+        setDeathModal({ open: true, batchId, presetIds });
+    };
 
-        setIsSaving(true);
+    const handleRecordDeaths = async ({ animalIds, date, reason, notes }) => {
         try {
-            // Get sorted active active animals
-            const active = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+            await recordDeaths(deathModal.batchId, animalIds, { date, reason, notes });
+            setDeathModal({ open: false, batchId: null, presetIds: [] });
+            notify.success(`${animalIds.length} death${animalIds.length === 1 ? '' : 's'} recorded for ${formatDate(date)}.`, { title: 'Saved with date' });
+        } catch (err) {
+            console.error('Error recording death:', err);
+            notify.error('Could not save. Check your connection and try again.');
+        }
+    };
 
-            // Sort by ID to take "next sequence" (approximate by ID string or numeric parts)
-            // IDs: P1-1, P1-2... 
-            // We want to remove lowest numbers first? Or generally just "any N". 
-            // User said "it takes from 1 to 20". So we should sort by ID.
-            active.sort((a, b) => {
-                const numA = parseInt(a.id.split('-').pop());
-                const numB = parseInt(b.id.split('-').pop());
-                return numA - numB;
-            });
+    const handleUpdateDeath = async (details) => {
+        if (!deathEditRecord) return;
+        try {
+            await updateDeathDetails(deathEditRecord.batchId, deathEditRecord.ids, details);
+            setDeathEditRecord(null);
+            notify.success('Death record updated.');
+        } catch (err) {
+            console.error('Error updating death record:', err);
+            notify.error('Could not update this record.');
+        }
+    };
 
-            if (count > active.length) {
-                setIsSaving(false);
-                return alert(`Only ${active.length} active animals available.`);
-            }
+    const handleUndoSale = async (animal) => {
+        if (!window.confirm(`Undo the sale of ${animal.id}? It goes back to ${animal.batchName} as alive.`)) return;
+        await revertSoldAnimal(animal.batchId, animal.id);
+        notify.info(`${animal.id} is back in ${animal.batchName}.`, { title: 'Sale undone' });
+    };
 
-            const toUpdate = active.slice(0, count);
-            const updatedAnimals = (selectedBatch?.animals || []).map(a => {
-                if (toUpdate.find(u => u.id === a.id)) {
-                    return { ...a, status: 'Deceased', deathReason: bulkDeceasedForm.reason, notes: bulkDeceasedForm.notes };
-                }
-                return a;
-            });
-
-            await updateBatch(selectedBatch.id, { animals: updatedAnimals });
-            setIsBulkDeceasedOpen(false);
-            setBulkDeceasedForm({ count: '', reason: 'Sickness', notes: '' });
-        } finally {
-            setIsSaving(false);
+    const handleReviveRecord = async (record) => {
+        if (!window.confirm(`Undo this death record for ${record.label}? ${record.count === 1 ? 'The animal' : 'They'} will go back to the batch as alive.`)) return;
+        try {
+            await reviveAnimals(record.batchId, record.ids);
+            notify.info(`${record.label} moved back to the batch.`, { title: 'Death record removed' });
+        } catch (err) {
+            console.error('Error undoing death:', err);
+            notify.error('Could not undo this record.');
         }
     };
 
@@ -511,53 +509,6 @@ const Livestock = () => {
 
     // --- DERIVED DATA MOVED BELOW ---
 
-    // Calculate total active value (purchase cost) across all batches for expense allocation
-    const totalActiveValue = useMemo(() => {
-        return data.batches.reduce((sum, batch) => {
-            const batchValue = (batch.animals || [])
-                .filter(a => a.status !== 'Sold' && a.status !== 'Deceased')
-                .reduce((bSum, a) => bSum + (Number(a.purchaseCost) || 0), 0);
-            return sum + batchValue;
-        }, 0);
-    }, [data.batches]);
-
-    // Calculate monthly general expenses (non-batch-linked expenses + yearly split)
-    const monthlyGeneralExpenses = useMemo(() => {
-        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-
-        // Regular expenses not linked to any batch/crop/fruit AND matching current month
-        const regularUnlinked = (data.expenses || [])
-            .filter(e => !e.batchId && !e.cropId && !e.fruitId && e.date && e.date.startsWith(currentMonth))
-            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-        // Yearly expenses split by 12
-        const yearlyMonthly = (data.yearlyExpenses || [])
-            .reduce((sum, e) => sum + (Number(e.monthlyAmount) || Math.round(Number(e.amount) / 12) || 0), 0);
-
-        return regularUnlinked + yearlyMonthly;
-    }, [data.expenses, data.yearlyExpenses]);
-
-    // Expense per Rupee of Asset Value (Allocation Ratio)
-    // If total active value is 0, we fallback to HEADCOUNT allocation to avoid showing 0 expenses.
-    // This handles cases where user hasn't entered purchase costs yet.
-
-    const fallbackToHeadcount = totalActiveValue === 0;
-
-    // Calculate total active animals for fallback
-    const totalActiveAnimals = useMemo(() => {
-        return data.batches.reduce((sum, batch) => {
-            const active = (batch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').length;
-            return sum + active;
-        }, 0);
-    }, [data.batches]);
-
-
-    // If using value: Ratio = Expense / Value
-    // If using headcount: Rate = Expense / Count
-    const expenseAllocationRatio = !fallbackToHeadcount
-        ? (totalActiveValue > 0 ? monthlyGeneralExpenses / totalActiveValue : 0)
-        : (totalActiveAnimals > 0 ? monthlyGeneralExpenses / totalActiveAnimals : 0);
-
     // --- HANDLERS ---
     const handleBatchSubmit = async (e) => {
         e.preventDefault();
@@ -710,7 +661,7 @@ const Livestock = () => {
                                 }
                             }
 
-                            return {
+                            const updated = {
                                 ...a,
                                 gender: animalForm.gender,
                                 weight: animalForm.weight,
@@ -721,6 +672,22 @@ const Livestock = () => {
                                 boughtDate: animalForm.date,
                                 id: newId // Update ID
                             };
+                            if (animalForm.status === 'Deceased') {
+                                // Never save a death without a date
+                                updated.deceasedDate = animalForm.deceasedDate || a.deceasedDate || todayISO();
+                                updated.deathReason = animalForm.deathReason || a.deathReason || 'Unknown';
+                                if (a.status !== 'Deceased') {
+                                    updated.statusBeforeDeath = a.status || 'Healthy';
+                                    updated.deathRecordedAt = new Date().toISOString();
+                                }
+                            } else if (a.status === 'Deceased') {
+                                delete updated.deceasedDate;
+                                delete updated.deathReason;
+                                delete updated.deathNotes;
+                                delete updated.deathRecordedAt;
+                                delete updated.statusBeforeDeath;
+                            }
+                            return updated;
                         }
                         return a;
                     });
@@ -876,7 +843,12 @@ const Livestock = () => {
                             weightHistory: [{
                                 date: entryDate,
                                 weight: Number(animalForm.weight)
-                            }]
+                            }],
+                            ...(animalForm.status === 'Deceased' ? {
+                                deceasedDate: animalForm.deceasedDate || todayISO(),
+                                deathReason: animalForm.deathReason || 'Unknown',
+                                deathRecordedAt: new Date().toISOString()
+                            } : {})
                         };
                     });
 
@@ -886,8 +858,11 @@ const Livestock = () => {
             }
 
             setIsAnimalModalOpen(false);
-            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', ageYears: '', ageMonths: '', ageDays: '', category: 'Kid', date: new Date().toISOString().split('T')[0] });
+            notify.success(editingAnimalId ? 'Animal updated.' : `${animalForm.count} animal${Number(animalForm.count) === 1 ? '' : 's'} added to the batch.`);
+            if (!editingAnimalId) celebrate(['🐣', '✨', ANIMAL_EMOJI[targetBatch?.type] || '🐾']);
+            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', ageYears: '', ageMonths: '', ageDays: '', category: 'Kid', date: new Date().toISOString().split('T')[0], deceasedDate: '', deathReason: 'Sickness' });
         } catch (error) {
+            notify.error('Could not save the animals. Please try again.');
             console.error('Error adding animals:', error);
         } finally {
             setIsSaving(false);
@@ -1040,7 +1015,7 @@ const Livestock = () => {
     const handleDeleteMedicalRecord = (recordId) => {
         if (!selectedBatch || !window.confirm("Delete this medical record?")) return;
         const updatedMedical = (selectedBatch.medical || []).filter(r => r.id !== recordId);
-        updateBatch(selectedBatch.id, { ...selectedBatch, medical: updatedMedical });
+        updateBatch(selectedBatch.id, { medical: updatedMedical });
     };
 
     const handleDeleteAnimal = (animalId) => {
@@ -1096,30 +1071,6 @@ const Livestock = () => {
         }
     };
 
-    const handleContactSubmit = async (e) => {
-        e.preventDefault();
-        console.log("Submitting contact:", contactForm);
-        setIsSaving(true);
-        try {
-            await addContact(contactForm);
-            alert("Contact Added Successfully!");
-            setIsContactModalOpen(false);
-            setContactForm({ name: '', phone: '', location: '', type: 'Doctor' }); // Reset
-        } catch (error) {
-            console.error("Error adding contact:", error);
-            alert("Failed to add contact: " + error.message);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleDeleteContact = (id) => {
-        if (!isSuperAdmin && !canEdit) return; // SuperAdmin or Admin
-        if (window.confirm("Delete this contact?")) {
-            deleteContact(id);
-        }
-    };
-
     const openEditBatchExpenseModal = (exp) => {
         setEditingBatchExpense(exp);
         setExpenseForm({
@@ -1162,105 +1113,15 @@ const Livestock = () => {
         if (window.confirm('Delete this expense?')) {
             // Update Batch State First
             const updatedExpenses = (selectedBatch.expenses || []).filter(e => e.id !== expenseId);
-            await updateBatch(selectedBatch.id, { ...selectedBatch, expenses: updatedExpenses });
+            await updateBatch(selectedBatch.id, { expenses: updatedExpenses });
 
             // Delete global expense document
             await deleteExpense(expenseId);
         }
     };
 
-    console.log("LIVESTOCK RENDER: isContactModalOpen =", isContactModalOpen);
-
-    // Helper to identify if animal is a Kid (< 1 Year)
-    const isKid = (animal) => {
-        if (!animal.age) return true; // Assume kid if no age
-        const matchY = animal.age.match(/(\d+)\s*Year/i);
-        if (matchY && parseInt(matchY[1]) > 0) return false; // Is Adult
-        return true;
-    };
-
-    const handleQuickSelect = (type) => {
-        const active = (selectedBatch.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
-        let groupIds = [];
-
-        if (type === 'Kids') {
-            groupIds = active.filter(a => isKid(a)).map(a => a.id);
-        } else if (type === 'Adults') {
-            groupIds = active.filter(a => !isKid(a)).map(a => a.id);
-        } else {
-            // Both / All
-            groupIds = active.map(a => a.id);
-        }
-
-        const allSelected = groupIds.length > 0 && groupIds.every(id => selectedAnimalsToSell.includes(id));
-
-        if (allSelected) {
-            setSelectedAnimalsToSell(prev => prev.filter(id => !groupIds.includes(id)));
-        } else {
-            setSelectedAnimalsToSell(prev => {
-                const newSelection = [...prev];
-                groupIds.forEach(id => {
-                    if (!newSelection.includes(id)) newSelection.push(id);
-                });
-                return newSelection;
-            });
-        }
-    };
-
-    // Selective Sell Handler
-    const openSellModal = () => {
-        // Calculate suggested price
-        const financials = calculateBatchFinancials(selectedBatch);
-        const activeAnimals = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
-
-        if (activeAnimals.length === 0) {
-            alert('No active animals to sell!');
-            return;
-        }
-
-        // Default to "Total Price" based on minSellPrice
-        // Default to 0 based on user request
-        setSellForm({
-            totalPrice: 0,
-            pricePerAnimal: 0,
-            // Empty selection by default
-            selectedIds: []
-        });
-        // Also populate selection state as empty
-        setSelectedAnimalsToSell([]);
-        setIsSellModalOpen(true);
-    };
-
-    const handleSellSubmit = async (e) => {
-        e.preventDefault();
-        if (!selectedBatch) return;
-
-        const count = selectedAnimalsToSell.length;
-        if (count === 0) {
-            alert("Please select at least one animal.");
-            return;
-        }
-
-        const total = Number(sellForm.totalPrice);
-        const pricePerAnimal = count > 0 ? Math.round(total / count) : 0;
-
-        setIsSaving(true);
-        try {
-            // Use the selected IDs
-            await sellSelectedAnimals(selectedBatch.id, selectedAnimalsToSell, pricePerAnimal);
-            setIsSellModalOpen(false);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const toggleAnimalSelection = (id) => {
-        if (selectedAnimalsToSell.includes(id)) {
-            setSelectedAnimalsToSell(prev => prev.filter(aid => aid !== id));
-        } else {
-            setSelectedAnimalsToSell(prev => [...prev, id]);
-        }
-    };
+    // Selling uses the app-wide sell flow (also reachable from Home)
+    const openSellModal = () => openSell({ batchId: selectedBatch.id });
 
     const handleWeightSubmit = async (e) => {
         e.preventDefault();
@@ -1361,140 +1222,75 @@ const Livestock = () => {
                 ageYears: y,
                 ageMonths: m,
                 category: animal.category,
-                date: animal.boughtDate || ''
+                date: animal.boughtDate || '',
+                deceasedDate: animal.deceasedDate || '',
+                deathReason: animal.deathReason || 'Sickness'
             });
         } else {
             setEditingAnimalId(null);
-            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', ageYears: '', ageMonths: '' });
+            setAnimalForm({ count: 1, gender: 'Female', weight: '', cost: '', status: 'Healthy', ageYears: '', ageMonths: '', ageDays: '', category: 'Kid', date: todayISO(), deceasedDate: '', deathReason: 'Sickness' });
         }
         setIsAnimalModalOpen(true);
     };
 
+    // Batch numbers use the batch's OWN costs only (animals + batch-linked expenses).
+    // Shared farm costs (salaries, yearly bills, general expenses) are reported separately
+    // via costing.sharedFor() and never folded into these figures.
     const calculateBatchFinancials = (batch) => {
         if (!batch) return {};
 
-        const animals = batch.animals || [];
-        const expenses = batch.expenses || [];
+        const { animals, totalAnimalCost, batchExpenses, totalInvested } = batchOwnCosts(batch);
         const activeAnimals = animals.filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
         const soldAnimals = animals.filter(a => a.status === 'Sold');
         const deceasedAnimals = animals.filter(a => a.status === 'Deceased');
+        const shared = costing.sharedFor(batch.id);
 
         // Days active
-        const startDate = new Date(batch.date || Date.now());
+        const startDate = new Date(batch.startDate || batch.date || batch.createdAt || Date.now());
         const daysActive = Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) || 1;
 
-        // Costs
-        const totalAnimalCost = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-        const totalSpecificExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-        // Feed Cost - NOW REMOVED AUTOMATIC CALCULATION as per user request
-        // Only explicit expenses are counted
-        const totalFeedCost = 0;
-
-        // Allocated Expense (Global Expenses + Salaries / Total Value * Batch Active Value)
-
-        // Calculate Batch Active Value for allocation (fallback calculation)
-        const batchActiveValue = activeAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-
-        // Use stored monthlyAllocations as source of truth if available
-        const storedAllocationsTotal = (batch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
-
-        // Fallback to old calculation if no stored allocations
-        const calculatedAllocatedExpense = !fallbackToHeadcount
-            ? batchActiveValue * expenseAllocationRatio
-            : activeAnimals.length * expenseAllocationRatio;
-
-        // Use stored allocations if available, otherwise use calculated
-        const allocatedExpense = storedAllocationsTotal > 0 ? storedAllocationsTotal : calculatedAllocatedExpense;
-
-        // Allocation Share Percentage
-        // If fallback, it's (Batch Count / Total Count) * 100
-        // If value, it's (Batch Value / Total Value) * 100
-        const allocationPercentage = !fallbackToHeadcount
-            ? (totalActiveValue > 0 ? (batchActiveValue / totalActiveValue) * 100 : 0)
-            : (totalActiveAnimals > 0 ? (activeAnimals.length / totalActiveAnimals) * 100 : 0);
-
-        // Total Investment
-        const totalInvested = totalAnimalCost + totalSpecificExpenses + totalFeedCost + allocatedExpense;
-
-        // Revenue
         const soldRevenue = soldAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
-        const deceasedLoss = deceasedAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0); const totalRevenue = soldRevenue;
+        const deceasedLoss = deceasedAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
 
-        // Profit
-        const soldProfit = totalRevenue - (soldAnimals.length > 0 ? (totalInvested / animals.length) * soldAnimals.length : 0);
-
-        // Min Sell Price
-        const marginMultiplier = 1 + (Number(settings.marginPercentage) || 20) / 100;
-        const totalPerAnimalCost = animals.length > 0 ? totalInvested / animals.length : 0;
+        const marginMultiplier = 1 + costing.margin / 100;
+        const perAnimal = (n) => (animals.length > 0 ? n / animals.length : 0);
+        const totalPerAnimalCost = perAnimal(totalInvested);
         const minSellPrice = totalPerAnimalCost * marginMultiplier;
-
-        // Detailed breakdowns for UI
-        const specificExpensePerAnimal = animals.length > 0 ? totalSpecificExpenses / animals.length : 0;
-        const purchaseCostPerAnimal = animals.length > 0 ? totalAnimalCost / animals.length : 0;
-        const allocatedPerAnimal = animals.length > 0 ? allocatedExpense / animals.length : 0;
 
         return {
             totalInvested,
             totalAnimalCost,
-            operationalCost: totalSpecificExpenses, // Only specific expenses now
-            allocatedExpense,
+            operationalCost: batchExpenses,
+            sharedTotal: shared.total,
+            sharedThisMonth: shared.thisMonth,
+            sharedPercent: shared.percentNow,
             minSellPrice,
+            minSellPriceWithShared: perAnimal(totalInvested + shared.total) * marginMultiplier,
             daysActive,
             activeAnimals: activeAnimals.length,
             soldAnimals: soldAnimals.length,
             deceasedAnimals: deceasedAnimals.length,
             soldRevenue,
-            totalRevenue,
-            soldProfit,
+            totalRevenue: soldRevenue,
             deceasedLoss,
             // Per Animal Stats
             totalPerAnimalCost,
-            specificExpensePerAnimal,
-            purchaseCostPerAnimal,
-            allocatedPerAnimal
+            specificExpensePerAnimal: perAnimal(batchExpenses),
+            purchaseCostPerAnimal: perAnimal(totalAnimalCost),
+            sharedPerAnimal: perAnimal(shared.total)
         };
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'Healthy': return 'bg-green-100 text-green-700';
-            case 'Sick': return 'bg-orange-100 text-orange-700';
-            case 'Sold': return 'bg-blue-100 text-blue-700';
-            case 'Deceased': return 'bg-gray-100 text-gray-500';
-            default: return 'bg-green-100 text-green-700';
-        }
-    };
 
-    // Per-animal break-even price:
-    // Each animal absorbs expenses proportional to its purchase cost
-    // Break-Even = purchaseCost + (purchaseCost / totalPurchaseCost) * totalExpenses
+    // Per-animal break-even (own costs only): purchase price + its share of batch expenses,
+    // weighted by purchase price. Shared farm costs are excluded on purpose.
     const calculateAnimalBreakEven = (animal, batch) => {
-        if (!batch || !animal) return 0;
-        const animals = batch.animals || [];
-        const purchaseCost = Number(animal.purchaseCost) || 0;
-        const totalAnimalCost = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-        const expenses = batch.expenses || [];
-        const totalSpecificExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-        const storedAllocationsTotal = (batch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
-        const activeAnimals = animals.filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
-        const batchActiveValue = activeAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-        const calculatedAllocatedExpense = !fallbackToHeadcount
-            ? batchActiveValue * expenseAllocationRatio
-            : activeAnimals.length * expenseAllocationRatio;
-        const allocatedExpense = storedAllocationsTotal > 0 ? storedAllocationsTotal : calculatedAllocatedExpense;
-        const totalExpenses = totalSpecificExpenses + allocatedExpense;
-
-        let expenseShare = 0;
-        if (totalAnimalCost > 0) {
-            expenseShare = (purchaseCost / totalAnimalCost) * totalExpenses;
-        } else if (animals.length > 0) {
-            expenseShare = totalExpenses / animals.length;
-        }
+        if (!batch || !animal) return { originalPrice: 0, expenses: 0, trueCost: 0 };
+        const c = animalCostBreakdown(animal, batch);
         return {
-            originalPrice: purchaseCost,
-            expenses: Math.round(expenseShare),
-            trueCost: Math.round(purchaseCost + expenseShare)
+            originalPrice: c.purchase,
+            expenses: Math.round(c.batchShare),
+            trueCost: Math.round(c.base)
         };
     };
 
@@ -1503,630 +1299,267 @@ const Livestock = () => {
             .filter(a => a.status === 'Sold')
             .map(a => {
                 const costs = calculateAnimalBreakEven(a, b);
-                return { ...a, batchId: b.id, batchName: b.name, batchType: b.type, originalPrice: costs.originalPrice, expenses: costs.expenses, trueCost: costs.trueCost };
+                return { ...a, batchId: b.id, batchName: b.name, batchType: b.type, batchColor: b.color, originalPrice: costs.originalPrice, expenses: costs.expenses, trueCost: costs.trueCost };
             })
         ).sort((a, b) => new Date(b.soldDate || 0) - new Date(a.soldDate || 0));
-    }, [data.batches, fallbackToHeadcount, expenseAllocationRatio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data.batches]);
 
-    const soldStats = useMemo(() => {
-        return allSoldAnimals.reduce((acc, a) => {
-            const rev = Number(a.soldPrice) || 0;
-            const cost = a.trueCost || 0;
-            acc.totalRevenue += rev;
-            acc.totalCost += cost;
-            acc.totalProfit += (rev - cost);
-            return acc;
-        }, { totalRevenue: 0, totalCost: 0, totalProfit: 0 });
-    }, [allSoldAnimals]);
 
     const allDeceasedAnimals = useMemo(() => {
         return data.batches.flatMap(b => (b.animals || [])
             .filter(a => a.status === 'Deceased')
             .map(a => {
                 const costs = calculateAnimalBreakEven(a, b);
-                return { ...a, batchId: b.id, batchName: b.name, batchType: b.type, originalPrice: costs.originalPrice, expenses: costs.expenses, trueCost: costs.trueCost };
+                return { ...a, batchId: b.id, batchName: b.name, batchType: b.type, batchColor: b.color, originalPrice: costs.originalPrice, expenses: costs.expenses, trueCost: costs.trueCost };
             })
         ).sort((a, b) => new Date(b.deceasedDate || 0) - new Date(a.deceasedDate || 0));
-    }, [data.batches, fallbackToHeadcount, expenseAllocationRatio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data.batches]);
 
-    const deceasedStats = useMemo(() => {
-        const totalLoss = allDeceasedAnimals.reduce((sum, a) => sum + (a.trueCost || 0), 0);
-        return {
-            totalLoss,
-            avgLoss: allDeceasedAnimals.length > 0 ? Math.round(totalLoss / allDeceasedAnimals.length) : 0
-        };
-    }, [allDeceasedAnimals]);
+
+    // --- SHARED UI (used by every view below) ---
+    const liveBatchCount = data.batches.filter(b => b.status !== 'Completed').length;
+    const completedBatchCount = data.batches.filter(b => b.status === 'Completed').length;
+
+    const mainTabsBar = (
+        <SegmentedTabs
+            layoutId="livestock-main-tab"
+            value={mainTab}
+            onChange={setMainTab}
+            tabs={[
+                { id: 'active', label: 'Batches', emoji: '🐐', count: liveBatchCount },
+                { id: 'sold', label: 'Sold', emoji: '💰', count: allSoldAnimals.length },
+                { id: 'deceased', label: 'Deceased', emoji: '🕊️', count: allDeceasedAnimals.length },
+                { id: 'completed', label: 'Completed', emoji: '🏆', count: completedBatchCount }
+            ]}
+        />
+    );
+
+    const deathModalBatch = data.batches.find(b => b.id === deathModal.batchId);
+
+    const sharedModals = (
+        <>
+            <RecordDeathModal
+                isOpen={deathModal.open}
+                onClose={() => setDeathModal({ open: false, batchId: null, presetIds: [] })}
+                batch={deathModalBatch}
+                presetAnimalIds={deathModal.presetIds}
+                lossFor={(a) => calculateAnimalBreakEven(a, deathModalBatch).trueCost || 0}
+                onSubmit={handleRecordDeaths}
+            />
+            <DeathDetailsModal
+                isOpen={!!deathEditRecord}
+                onClose={() => setDeathEditRecord(null)}
+                record={deathEditRecord}
+                onSubmit={handleUpdateDeath}
+            />
+        </>
+    );
+
+    const openBatchFromList = (batchId) => {
+        setSelectedBatchId(batchId);
+        setBatchTab('animals');
+        setMainTab('active');
+    };
 
     // --- RENDER: MAIN LIST ---
     if (!selectedBatch) {
         if (mainTab === 'sold') {
             return (
-                <div className="space-y-6 mb-20">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Sold Animals</h1>
-                            <p className="text-gray-500">Track all sold animals across batches</p>
-                        </div>
-                        <button onClick={() => setIsGlobalPdfModalOpen(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
-                            Download PDF
-                        </button>
-                    </div>
-
-                    {/* Tab Navigation */}
-                    <div className="flex gap-2 border-b border-gray-200">
-                        <button onClick={() => setMainTab('active')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'active' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>🐐 Active Batches</button>
-                        <button onClick={() => setMainTab('sold')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>💰 Sold Animals</button>
-                        <button onClick={() => setMainTab('deceased')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'deceased' ? 'text-gray-600 border-b-2 border-gray-600' : 'text-gray-500 hover:text-gray-800'}`}>⚰️ Deceased</button>
-                        <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed</button>
-                    </div>
+                <div className="space-y-6">
+                    <PageHeader
+                        section="livestock"
+                        title="Sold animals"
+                        subtitle="Every sale across all batches — tap one to see each animal in it."
+                        actions={
+                            <button onClick={() => setIsGlobalPdfModalOpen(true)} className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2.5 rounded-2xl font-bold shadow-[0_3px_0_#075985]">
+                                <FileDown className="w-4 h-4" /> Download PDF
+                            </button>
+                        }
+                    />
+                    {mainTabsBar}
+                    {sharedModals}
 
 
 
-                    {/* Summary Stats */}
-                    {/* Summary Stats - Hide for Vets */}
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Total Sold</p>
-                            <p className="text-2xl font-bold text-blue-600">{allSoldAnimals.length}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">animals</p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Revenue</p>
-                            <p className="text-2xl font-bold text-green-600">₹{Math.round(soldStats.totalRevenue).toLocaleString()}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">total sale amount</p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-50 border">
-                            <p className="text-xs text-gray-500 uppercase font-semibold">True Cost</p>
-                            <p className="text-2xl font-bold text-red-600">₹{Math.round(soldStats.totalCost).toLocaleString()}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">purchase + expenses</p>
-                        </div>
-                        <div className={`p-4 rounded-xl shadow-sm border ${soldStats.totalProfit >= 0 ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Actual Profit</p>
-                            <p className={`text-2xl font-bold ${soldStats.totalProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                {soldStats.totalProfit >= 0 ? '+' : ''}₹{Math.round(soldStats.totalProfit).toLocaleString()}
-                            </p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">after all costs</p>
-                        </div>
-                    </div>
-
-
-
-                    {/* Sold Animals Hierarchical View */}
-                    <div className="space-y-4">
-                        {allSoldAnimals.length > 0 ? (
-                            Object.entries(allSoldAnimals.reduce((acc, animal) => {
-                                const type = animal.batchType || 'Unknown';
-                                if (!acc[type]) acc[type] = [];
-                                acc[type].push(animal);
-                                return acc;
-                            }, {})).map(([type, animals]) => {
-                                const typeRevenue = animals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
-                                const typeCost = animals.reduce((sum, a) => sum + (Number(a.trueCost) || 0), 0);
-                                const typeProfit = typeRevenue - typeCost;
-                                const isExpanded = expandedSoldType === type;
-
-                                // Group by Batch
-                                const batches = animals.reduce((acc, animal) => {
-                                    const batchName = animal.batchName || 'Unknown Batch';
-                                    if (!acc[batchName]) acc[batchName] = [];
-                                    acc[batchName].push(animal);
-                                    return acc;
-                                }, {});
-
-                                return (
-                                    <div key={type} className={`bg-white rounded-xl shadow-sm border transition-all ${isExpanded ? 'border-blue-300 ring-4 ring-blue-50' : 'border-gray-100 hover:border-blue-200'}`}>
-                                        <div
-                                            onClick={() => setExpandedSoldType(isExpanded ? null : type)}
-                                            className="p-5 flex justify-between items-center cursor-pointer"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl bg-blue-50 text-blue-600`}>
-                                                    {type === 'Goat' ? '🐐' : type === 'Sheep' ? '🐑' : type === 'Chicken' ? '🐔' : type === 'Poultry' ? '🐣' : '💰'}
-                                                </div>
-                                                <div>
-                                                    <h3 className="font-bold text-gray-800 text-lg">{type}</h3>
-                                                    <p className="text-sm text-gray-500">{animals.length} animals sold</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right flex items-center gap-6">
-                                                <div>
-                                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Revenue</p>
-                                                    <p className="font-bold text-blue-600 text-lg">₹ {typeRevenue.toLocaleString()}</p>
-                                                </div>
-                                                <div className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                                                    <ChevronDown className="w-6 h-6 text-gray-400" />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Expanded: Batches */}
-                                        {isExpanded && (
-                                            <div className="bg-blue-50/50 p-6 border-t border-blue-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                                {Object.entries(batches).map(([batchName, batchAnimals]) => {
-                                                    const batchRevenue = batchAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
-                                                    const batchCost = batchAnimals.reduce((sum, a) => sum + (Number(a.trueCost) || 0), 0);
-                                                    const batchProfit = batchRevenue - batchCost;
-
-                                                    return (
-                                                        <div key={batchName} className="bg-white p-4 rounded-xl border border-blue-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                                                            <div>
-                                                                <div className="flex justify-between items-start mb-2">
-                                                                    <h4 className="font-bold text-gray-700 truncate" title={batchName}>{batchName}</h4>
-                                                                    <span className="bg-green-50 text-green-700 text-xs px-2 py-1 rounded-full font-bold">{batchAnimals.length}</span>
-                                                                </div>
-
-                                                                <div className="space-y-1 mt-4">
-                                                                    <div className="flex justify-between text-sm">
-                                                                        <span className="text-gray-500">Revenue</span>
-                                                                        <span className="font-bold text-gray-800">₹{Math.round(batchRevenue).toLocaleString()}</span>
-                                                                    </div>
-                                                                    <div className="flex justify-between text-sm">
-                                                                        <span className="text-gray-500">True Cost</span>
-                                                                        <span className="font-medium text-red-500">₹{Math.round(batchCost).toLocaleString()}</span>
-                                                                    </div>
-                                                                    <div className="flex justify-between text-sm border-t border-gray-100 pt-1 mt-1">
-                                                                        <span className="text-gray-600 font-semibold">Actual Profit</span>
-                                                                        <span className={`font-bold ${batchProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                            {batchProfit >= 0 ? '+' : ''}₹{Math.round(batchProfit).toLocaleString()}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-
-                                                                {(type === 'Poultry' || type === 'Chicken') && (
-                                                                    <div className="mt-4 pt-3 border-t border-blue-100/50 space-y-2 max-h-48 overflow-y-auto pr-1">
-                                                                        {(() => {
-                                                                            const groups = {};
-                                                                            batchAnimals.forEach(animal => {
-                                                                                const key = `${animal.soldDate}_${animal.soldPrice}`;
-                                                                                if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0 };
-                                                                                groups[key].count += 1;
-                                                                                groups[key].total += (Number(animal.soldPrice) || 0);
-                                                                                groups[key].cost += (Number(animal.trueCost) || Math.round(animal.purchaseCost || 0));
-                                                                            });
-                                                                            const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-                                                                            return (
-                                                                                <div className="space-y-4">
-                                                                                    {/* Desktop Table View */}
-                                                                                    <div className="hidden md:block overflow-x-auto">
-                                                                                        <table className="w-full text-left text-xs bg-white rounded-xl border border-blue-100 overflow-hidden">
-                                                                                            <thead className="bg-blue-50 text-blue-700 uppercase tracking-wider text-[10px]">
-                                                                                                <tr>
-                                                                                                    <th className="px-4 py-3 font-semibold rounded-tl-xl">Date</th>
-                                                                                                    <th className="px-4 py-3 font-semibold text-right">Quantity</th>
-                                                                                                    <th className="px-4 py-3 font-semibold text-right">Price/Bird</th>
-                                                                                                    <th className="px-4 py-3 font-semibold text-right">Revenue</th>
-                                                                                                    <th className="px-4 py-3 font-semibold text-right rounded-tr-xl">Profit</th>
-                                                                                                </tr>
-                                                                                            </thead>
-                                                                                            <tbody className="divide-y divide-blue-50">
-                                                                                                {bulkSales.map((group, idx) => {
-                                                                                                    const profit = group.total - group.cost;
-                                                                                                    return (
-                                                                                                        <tr key={`bulk-md-${idx}`} className="hover:bg-blue-50/30 transition-colors">
-                                                                                                            <td className="px-4 py-3 font-medium text-blue-800 whitespace-nowrap">{group.date || 'Unknown Date'}</td>
-                                                                                                            <td className="px-4 py-3 text-right text-gray-700">{group.count}</td>
-                                                                                                            <td className="px-4 py-3 text-right text-gray-700">₹{(Number(group.price) || 0).toLocaleString()}</td>
-                                                                                                            <td className="px-4 py-3 text-right font-bold text-blue-600">₹{group.total.toLocaleString()}</td>
-                                                                                                            <td className={`px-4 py-3 text-right font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                                                                                {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
-                                                                                                            </td>
-                                                                                                        </tr>
-                                                                                                    );
-                                                                                                })}
-                                                                                            </tbody>
-                                                                                            <tfoot className="bg-blue-50/60 border-t border-blue-100 text-[11px] font-bold">
-                                                                                                <tr>
-                                                                                                    <td className="px-4 py-3 text-blue-900 rounded-bl-xl">Total</td>
-                                                                                                    <td className="px-4 py-3 text-right text-blue-900">{bulkSales.reduce((s, g) => s + g.count, 0)}</td>
-                                                                                                    <td className="px-4 py-3 text-right text-transparent">-</td>
-                                                                                                    <td className="px-4 py-3 text-right text-blue-700 text-xs">₹{bulkSales.reduce((s, g) => s + g.total, 0).toLocaleString()}</td>
-                                                                                                    <td className={`px-4 py-3 text-right text-xs rounded-br-xl ${bulkSales.reduce((s, g) => s + (g.total - g.cost), 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                                                                                        ₹{Math.round(bulkSales.reduce((s, g) => s + (g.total - g.cost), 0)).toLocaleString()}
-                                                                                                    </td>
-                                                                                                </tr>
-                                                                                            </tfoot>
-                                                                                        </table>
-                                                                                    </div>
-
-                                                                                    {/* Mobile Card View */}
-                                                                                    <div className="md:hidden space-y-2">
-                                                                                        {bulkSales.map((group, idx) => {
-                                                                                            const profit = group.total - group.cost;
-                                                                                            return (
-                                                                                                <div key={idx} className="bg-blue-50/50 p-3 rounded-lg text-xs flex justify-between items-center border border-blue-100/50">
-                                                                                                    <div>
-                                                                                                        <div className="font-bold text-blue-900 mb-1">{group.date || 'Unknown Date'}</div>
-                                                                                                        <div className="text-blue-600 font-medium">{group.count} Birds @ ₹{(Number(group.price) || 0).toLocaleString()}</div>
-                                                                                                    </div>
-                                                                                                    <div className="flex items-center gap-6">
-                                                                                                        <div className="text-right">
-                                                                                                            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">Total</div>
-                                                                                                            <div className="font-bold text-blue-800 text-sm">₹{group.total.toLocaleString()}</div>
-                                                                                                        </div>
-                                                                                                        <div className="text-right border-l border-blue-200/50 pl-6">
-                                                                                                            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">Profit</div>
-                                                                                                            <div className={`font-bold text-sm ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                                                                {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            )
-                                                                                        })}
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        })()}
-                                                                    </div>
-                                                                )}
-
-                                                                <div className="mt-4 pt-3 border-t border-gray-50 flex justify-end">
-                                                                    {isSuperAdmin && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                const batchId = batchAnimals[0].batchId;
-                                                                                setSelectedBatchId(batchId);
-                                                                                setMainTab('active');
-                                                                            }}
-                                                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                                                                        >
-                                                                            View Batch <ArrowRight className="w-3 h-3" />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-100">
-                                <p className="text-gray-400 text-lg">No sold animals recorded yet</p>
-                                <p className="text-gray-300 text-sm mt-1">Start selling to see data here!</p>
-                            </div>
-                        )}
-                    </div>
+                    <SoldView
+                        animals={allSoldAnimals}
+                        canUndo={isSuperAdmin}
+                        onUndo={handleUndoSale}
+                        onOpenBatch={openBatchFromList}
+                    />
                 </div>
             );
         }
 
         if (mainTab === 'deceased') {
             return (
-                <div className="space-y-6 mb-20">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Deceased Animals</h1>
-                            <p className="text-gray-500">Track losses from deceased animals</p>
-                        </div>
-                    </div>
-
-                    {/* Tab Navigation */}
-                    <div className="flex gap-2 border-b border-gray-200">
-                        <button onClick={() => setMainTab('active')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'active' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>🐐 Active Batches</button>
-                        <button onClick={() => setMainTab('sold')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>💰 Sold Animals</button>
-                        <button onClick={() => setMainTab('deceased')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'deceased' ? 'text-gray-600 border-b-2 border-gray-600' : 'text-gray-500 hover:text-gray-800'}`}>⚰️ Deceased</button>
-                        <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed</button>
-                    </div>
-
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Total Deceased</p>
-                            <p className="text-2xl font-bold text-gray-600">{allDeceasedAnimals.length}</p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Total Loss</p>
-                            <p className="text-2xl font-bold text-red-600">₹ {deceasedStats.totalLoss.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Avg Loss / Animal</p>
-                            <p className="text-2xl font-bold text-red-600">
-                                ₹ {deceasedStats.avgLoss.toLocaleString()}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Deceased Animals Hierarchical View */}
-                    <div className="space-y-4">
-                        {allDeceasedAnimals.length > 0 ? (
-                            Object.entries(allDeceasedAnimals.reduce((acc, animal) => {
-                                const type = animal.batchType || 'Unknown';
-                                if (!acc[type]) acc[type] = [];
-                                acc[type].push(animal);
-                                return acc;
-                            }, {})).map(([type, animals]) => {
-                                const typeLoss = animals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-                                const isExpanded = expandedDeceasedType === type;
-
-                                // Group by Batch
-                                const batches = animals.reduce((acc, animal) => {
-                                    const batchName = animal.batchName || 'Unknown Batch';
-                                    if (!acc[batchName]) acc[batchName] = [];
-                                    acc[batchName].push(animal);
-                                    return acc;
-                                }, {});
-
-                                return (
-                                    <div key={type} className={`bg-white rounded-xl shadow-sm border transition-all ${isExpanded ? 'border-gray-300 ring-4 ring-gray-100' : 'border-gray-100 hover:border-gray-300'}`}>
-                                        <div
-                                            onClick={() => setExpandedDeceasedType(isExpanded ? null : type)}
-                                            className="p-5 flex justify-between items-center cursor-pointer"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gray-100`}>
-                                                    {type === 'Goat' ? '🐐' : type === 'Sheep' ? '🐑' : type === 'Chicken' ? '🐔' : type === 'Poultry' ? '🐣' : '🐾'}
-                                                </div>
-                                                <div>
-                                                    <h3 className="font-bold text-gray-800 text-lg">{type}</h3>
-                                                    <p className="text-sm text-gray-500">{animals.length} animals lost</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-right flex items-center gap-6">
-                                                <div>
-                                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Loss</p>
-                                                    <p className="font-bold text-red-600 text-lg">₹ {typeLoss.toLocaleString()}</p>
-                                                </div>
-                                                <div className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                                                    <ChevronDown className="w-6 h-6 text-gray-400" />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Expanded: Batches */}
-                                        {isExpanded && (
-                                            <div className="bg-gray-50 p-6 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                                {Object.entries(batches).map(([batchName, batchAnimals]) => {
-                                                    const batchLoss = batchAnimals.reduce((sum, a) => sum + (Number(a.purchaseCost) || 0), 0);
-                                                    return (
-                                                        <div key={batchName} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                                                            <div>
-                                                                <div className="flex justify-between items-start mb-2">
-                                                                    <h4 className="font-bold text-gray-700 truncate" title={batchName}>{batchName}</h4>
-                                                                    <span className="bg-red-50 text-red-700 text-xs px-2 py-1 rounded-full font-bold">{batchAnimals.length}</span>
-                                                                </div>
-                                                                <div className="flex justify-between items-end mt-4">
-                                                                    <div>
-                                                                        <p className="text-xs text-gray-400 uppercase">Loss</p>
-                                                                        <p className="font-bold text-red-600">₹ {batchLoss.toLocaleString()}</p>
-                                                                    </div>
-                                                                    {isSuperAdmin && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                // Just alert for now as reverting batch requires individual ID. 
-                                                                                // Could show list on another click or just link to batch details.
-                                                                                // For now, let's just let them know they can see details in the batch.
-                                                                                const batchId = batchAnimals[0].batchId;
-                                                                                setSelectedBatchId(batchId);
-                                                                                setMainTab('active');
-                                                                            }}
-                                                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                                                                        >
-                                                                            View Batch <ArrowRight className="w-3 h-3" />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-100">
-                                <p className="text-gray-400 text-lg">No deceased animals recorded 🎉</p>
-                                <p className="text-gray-300 text-sm mt-1">Keep up the good work!</p>
-                            </div>
-                        )}
-                    </div>
+                <div className="space-y-6">
+                    <PageHeader
+                        section="livestock"
+                        emoji="🕊️"
+                        title="Deceased animals"
+                        subtitle="Every loss with its date and cause, so you can spot problems early."
+                        tips={[
+                            'Record deaths from inside a batch with “Record death” — the date and reason are saved.',
+                            'Old records with no date are flagged in yellow. Tap “Fix dates” to add them.',
+                            'Entered one by mistake? The undo arrow puts the animal back in its batch.'
+                        ]}
+                    />
+                    {mainTabsBar}
+                    {sharedModals}
+                    <DeceasedView
+                        animals={allDeceasedAnimals}
+                        canEdit={canEdit}
+                        canUndo={isSuperAdmin}
+                        onEditRecord={setDeathEditRecord}
+                        onReviveRecord={handleReviveRecord}
+                        onOpenBatch={openBatchFromList}
+                    />
                 </div>
             );
         }
 
         // Active Batches View
+        const visibleBatches = data.batches.filter(batch => {
+            if (mainTab === 'completed') return batch.status === 'Completed';
+            // Default to active/raising view (show everything NOT completed)
+            return batch.status !== 'Completed';
+        });
+
         return (
-            <div className="space-y-6 mb-20">
-                {/* Contact Modal - Raw Implementation */}
-                {isContactModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        {/* Backdrop */}
-                        <div
-                            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-                            onClick={() => setIsContactModalOpen(false)}
-                        />
-
-                        {/* Modal Content */}
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden relative z-10">
-                            <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-900">Add Veterinary Contact</h3>
-                                <button
-                                    onClick={() => setIsContactModalOpen(false)}
-                                    className="p-1 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-                            <div className="p-6 max-h-[80vh] overflow-y-auto">
-                                <form onSubmit={handleContactSubmit} className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={contactForm.name}
-                                            onChange={(e) => setContactForm(prev => ({ ...prev, name: e.target.value }))}
-                                            className="w-full rounded-xl border-gray-300 focus:border-green-500 focus:ring-green-500"
-                                            placeholder="e.g. Dr. Ramesh"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                                        <input
-                                            type="tel"
-                                            required
-                                            value={contactForm.phone}
-                                            onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
-                                            className="w-full rounded-xl border-gray-300 focus:border-green-500 focus:ring-green-500"
-                                            placeholder="e.g. 9876543210"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Location (Village/City)</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={contactForm.location}
-                                            onChange={(e) => setContactForm(prev => ({ ...prev, location: e.target.value }))}
-                                            className="w-full rounded-xl border-gray-300 focus:border-green-500 focus:ring-green-500"
-                                            placeholder="e.g. Indiranagar"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {['Doctor', 'Assistant'].map(type => (
-                                                <button
-                                                    key={type}
-                                                    type="button"
-                                                    onClick={() => setContactForm(prev => ({ ...prev, type }))}
-                                                    className={`py-3 px-4 rounded-xl border text-sm font-medium transition-all ${contactForm.type === type
-                                                        ? 'bg-green-50 border-green-200 text-green-700 ring-1 ring-green-500'
-                                                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                                                        }`}
-                                                >
-                                                    {type}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex gap-3 pt-4">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsContactModalOpen(false)}
-                                            className="flex-1 py-3 text-gray-700 font-medium hover:bg-gray-50 rounded-xl transition-colors"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
-                                        >
-                                            Save Contact
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Livestock Batches</h1>
-                        <p className="text-gray-500">Manage your farm by batches.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-
+            <div className="space-y-6">
+                <PageHeader
+                    section="livestock"
+                    title={mainTab === 'completed' ? 'Completed batches' : 'Livestock batches'}
+                    actions={
                         <button
                             onClick={() => openBatchModal()}
-                            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-medium"
+                            className="flex items-center gap-2 bg-forest hover:bg-green-900 text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]"
                         >
                             <Plus className="w-5 h-5" />
-                            New Batch
+                            New batch
                         </button>
-                    </div>
-                </div>
+                    }
+                />
 
-                {/* Tab Navigation */}
-                <div className="flex gap-2 border-b border-gray-200">
-                    <button onClick={() => setMainTab('active')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'active' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>🐐 Active Batches</button>
-                    <button onClick={() => setMainTab('sold')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>💰 Sold Animals ({allSoldAnimals.length})</button>
-                    <button onClick={() => setMainTab('deceased')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'deceased' ? 'text-gray-600 border-b-2 border-gray-600' : 'text-gray-500 hover:text-gray-800'}`}>⚰️ Deceased ({allDeceasedAnimals.length})</button>
-                    <button onClick={() => setMainTab('completed')} className={`px-4 py-2 font-medium transition-colors ${mainTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-800'}`}>🏆 Completed ({data.batches.filter(b => b.status === 'Completed').length})</button>
-                </div>
+                {mainTabsBar}
+                {sharedModals}
 
-                {/* Grid View */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                    {data.batches
-                        .filter(batch => {
-                            if (mainTab === 'completed') return batch.status === 'Completed';
-                            // Default to active/raising view (show everything NOT completed)
-                            return batch.status !== 'Completed';
-                        })
-                        .map(batch => {
+                {visibleBatches.length === 0 ? (
+                    <EmptyState
+                        emoji={mainTab === 'completed' ? '🏆' : '🐣'}
+                        title={mainTab === 'completed' ? 'No completed batches yet' : 'Start your first batch'}
+                        message={mainTab === 'completed'
+                            ? 'When every animal in a batch is sold or accounted for, mark it Completed from the batch’s edit screen.'
+                            : 'A batch is a group of animals you bought or raised together — like “Diwali goats 2026”. Create one, then add animals to it.'}
+                        action={mainTab !== 'completed' && (
+                            <button onClick={() => openBatchModal()} className="flex items-center gap-2 bg-forest text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]">
+                                <Plus className="w-5 h-5" /> Create a batch
+                            </button>
+                        )}
+                    />
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
+                        {visibleBatches.map(batch => {
                             const f = calculateBatchFinancials(batch);
+                            const animals = batch.animals || [];
+                            const total = animals.length || 1;
+                            const sickCount = animals.filter(a => a.status === 'Sick').length;
+                            const healthyCount = f.activeAnimals - sickCount;
+                            const segments = [
+                                { n: healthyCount, cls: 'bg-green-500', label: 'healthy' },
+                                { n: sickCount, cls: 'bg-orange-400', label: 'sick' },
+                                { n: f.soldAnimals, cls: 'bg-sky-400', label: 'sold' },
+                                { n: f.deceasedAnimals, cls: 'bg-red-400', label: 'lost' }
+                            ];
+                            const accent = batch.color || '#2ea44f';
                             return (
-                                <motion.div
-                                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                                <motion.button
+                                    type="button"
+                                    whileHover={{ y: -4 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                                     key={batch.id}
-                                    onClick={() => setSelectedBatchId(batch.id)}
-                                    className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md h-fit"
+                                    onClick={() => openBatchFromList(batch.id)}
+                                    className="group relative text-left bg-white rounded-3xl shadow-sm hover:shadow-lg ring-1 ring-gray-200 overflow-hidden"
                                 >
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div>
-                                            <h3 className="text-base font-bold flex items-center gap-1.5" style={{ color: batch.color || '#1F2937' }}>
-                                                {batch.name}
-                                                {batch.shortId && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs rounded border border-gray-200">#{batch.shortId}</span>}
-                                            </h3>
-                                            <span className="text-xs text-gray-500 font-medium">{batch.type} Batch</span>
+                                    <div className="absolute inset-x-0 top-0 h-20 opacity-[0.14]" style={{ background: `linear-gradient(135deg, ${accent}, transparent 75%)` }} />
+                                    <div className="relative p-4 pb-3">
+                                        <div className="flex items-start gap-3">
+                                            <span className="grid place-items-center w-12 h-12 rounded-2xl bg-white shadow-md ring-1 ring-black/5 text-2xl shrink-0 group-hover:animate-wiggle">
+                                                {ANIMAL_EMOJI[batch.type] || '🐾'}
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="font-semibold text-lg leading-tight truncate" style={{ color: accent }}>{batch.name}</h3>
+                                                <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                                                    {batch.type}{batch.shortId && <> · <span className="font-mono">#{batch.shortId}</span></>} · day {f.daysActive}
+                                                </p>
+                                            </div>
+                                            <span className="shrink-0 rounded-full bg-green-100 text-green-800 px-2.5 py-1 text-xs font-bold">{f.activeAnimals} alive</span>
                                         </div>
-                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-md text-xs font-bold">{f.activeAnimals} Active</span>
+
+                                        {/* Health bar */}
+                                        <div className="mt-4 flex h-2.5 rounded-full overflow-hidden bg-gray-100" title={segments.map(sg => `${sg.n} ${sg.label}`).join(' · ')}>
+                                            {segments.map(sg => sg.n > 0 && (
+                                                <motion.span
+                                                    key={sg.label}
+                                                    className={sg.cls}
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${(sg.n / total) * 100}%` }}
+                                                    transition={{ type: 'spring', stiffness: 90, damping: 18, delay: 0.15 }}
+                                                />
+                                            ))}
+                                        </div>
+                                        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-gray-500">
+                                            {sickCount > 0 && <span className="text-orange-600">● {sickCount} sick</span>}
+                                            {f.soldAnimals > 0 && <span className="text-sky-600">● {f.soldAnimals} sold</span>}
+                                            {f.deceasedAnimals > 0 && <span className="text-red-600">● {f.deceasedAnimals} lost</span>}
+                                            {sickCount + f.soldAnimals + f.deceasedAnimals === 0 && <span className="text-green-700">● all healthy</span>}
+                                        </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs border-t border-gray-100 pt-2">
-                                        <div>
-                                            <p className="text-gray-400 text-xs">Bought Cost</p>
-                                            <p className="font-bold text-gray-700 text-sm">₹{Math.round(f.totalAnimalCost).toLocaleString()}</p>
+                                    <div className="relative grid grid-cols-2 gap-px bg-gray-100 border-t border-gray-100 no-entrance">
+                                        <div className="bg-white px-4 py-2.5">
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Invested</p>
+                                            <p className="font-bold text-gray-800">₹{Math.round(f.totalInvested).toLocaleString('en-IN')}</p>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-gray-400 text-xs">Total Invested</p>
-                                            <p className="font-bold text-gray-700 text-sm">₹{Math.round(f.totalInvested).toLocaleString()}</p>
+                                        <div className="bg-white px-4 py-2.5 text-right">
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cost / animal</p>
+                                            <p className="font-bold text-gray-800">₹{Math.round(f.totalPerAnimalCost).toLocaleString('en-IN')}</p>
                                         </div>
-
-                                        <div>
-                                            <p className="text-gray-400 text-xs">Allocated</p>
-                                            <p className="font-medium text-amber-600 text-sm">₹{(f.allocatedExpense || 0).toLocaleString()}</p>
+                                        <div className="bg-white px-4 py-2.5">
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sold revenue</p>
+                                            <p className="font-bold text-sky-700">₹{Math.round(f.soldRevenue || 0).toLocaleString('en-IN')}</p>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-gray-400 text-xs">Cost/Animal</p>
-                                            <p className="font-bold text-gray-700 text-sm">₹{Math.round(f.totalPerAnimalCost).toLocaleString()}</p>
-                                        </div>
-
-                                        <div>
-                                            <p className="text-gray-400 text-xs">Sold Rev</p>
-                                            <p className="font-medium text-blue-600 text-sm">₹{f.soldRevenue?.toLocaleString() || 0}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-gray-400 text-xs">Min. Sell Price</p>
-                                            <p className="font-bold text-green-600 text-sm">₹{Math.round(f.minSellPrice).toLocaleString()}</p>
+                                        <div className="bg-white px-4 py-2.5 text-right">
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Min. sell price</p>
+                                            <p className="font-bold text-green-700">₹{Math.round(f.minSellPrice).toLocaleString('en-IN')}</p>
                                         </div>
                                     </div>
-                                </motion.div>
+                                    {(f.sharedTotal || 0) > 0 && (
+                                        <p className="relative px-4 py-2 text-[11px] text-amber-800 bg-amber-50/70 font-semibold">
+                                            + ₹{Math.round(f.sharedTotal).toLocaleString('en-IN')} shared farm costs · not included above
+                                        </p>
+                                    )}
+                                </motion.button>
                             );
                         })}
-                </div>
+                    </div>
+                )}
 
 
                 {/* Modals for List View */}
-                <Modal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} title="Create New Batch">
+                <Modal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} title="Create a new batch" subtitle="A group of animals you raise together" emoji="🐣">
                     <form onSubmit={handleBatchSubmit} className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Batch Name</label>
-                            <input required type="text" value={batchForm.name} onChange={e => setBatchForm({ ...batchForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none" placeholder="e.g., Spring 2024 Goats" />
+                            <input required type="text" value={batchForm.name} onChange={e => setBatchForm({ ...batchForm, name: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-green-500/20 outline-none" placeholder="e.g., Spring 2024 Goats" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Livestock Type</label>
-                            <select value={batchForm.type} onChange={e => setBatchForm({ ...batchForm, type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none">
+                            <select value={batchForm.type} onChange={e => setBatchForm({ ...batchForm, type: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-green-500/20 outline-none">
                                 <option value="Goat">Goat</option>
                                 <option value="Sheep">Sheep</option>
                                 <option value="Poultry">Poultry</option>
@@ -2135,7 +1568,7 @@ const Livestock = () => {
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                            <input required type="date" value={batchForm.startDate} onChange={e => setBatchForm({ ...batchForm, startDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none" />
+                            <input required type="date" value={batchForm.startDate} onChange={e => setBatchForm({ ...batchForm, startDate: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-green-500/20 outline-none" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Batch Color</label>
@@ -2169,107 +1602,6 @@ const Livestock = () => {
                     </form>
                 </Modal>
 
-                {/* SELL MODAL - UPGRADED */}
-                <Modal isOpen={isSellModalOpen} onClose={() => setIsSellModalOpen(false)} title="Sell Animals">
-                    <form onSubmit={handleSellSubmit} className="space-y-6">
-                        {/* Financial breakdown for the deal */}
-                        {selectedBatch && (
-                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm space-y-2">
-                                <h4 className="font-bold text-blue-800 border-b border-blue-200 pb-2 mb-2">Cost Breakdown per Animal</h4>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Purchase Cost:</span>
-                                    <span>₹ {Math.round(calculateBatchFinancials(selectedBatch).purchaseCostPerAnimal).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Batch Expenses:</span>
-                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).specificExpensePerAnimal).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Allocated (Staff/General):</span>
-                                    <span>+ ₹ {Math.round(calculateBatchFinancials(selectedBatch).allocatedPerAnimal).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between pt-2 border-t border-blue-200 font-bold">
-                                    <span className="text-blue-800">Total Cost Basis:</span>
-                                    <span>₹ {Math.round(calculateBatchFinancials(selectedBatch).totalPerAnimalCost).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between pt-1 font-bold">
-                                    <span className="text-green-700">Suggested Price (+{settings.marginPercentage}%):</span>
-                                    <span className="text-green-700">₹ {Math.round(calculateBatchFinancials(selectedBatch).minSellPrice).toLocaleString()}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price Per Animal (₹)</label>
-
-                            {/* Margin Options */}
-                            <div className="flex gap-2 mb-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(financials.minSellPrice * 1.1) })}
-                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
-                                >
-                                    Min + 10%
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(financials.minSellPrice * 1.2) })}
-                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
-                                >
-                                    Min + 20%
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSellForm({ ...sellForm, pricePerAnimal: Math.round(financials.minSellPrice * 1.3) })}
-                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 text-gray-600"
-                                >
-                                    Min + 30%
-                                </button>
-                            </div>
-
-                            <input
-                                required
-                                type="number"
-                                value={sellForm.pricePerAnimal}
-                                onChange={e => setSellForm({ ...sellForm, pricePerAnimal: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg font-bold text-green-700 outline-none focus:ring-2 focus:ring-green-500/20"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">
-                                {(Number(sellForm.pricePerAnimal) - calculateBatchFinancials(selectedBatch).totalPerAnimalCost) >= 0
-                                    ? <span className="text-green-600">Profit: ₹ {Math.round(Number(sellForm.pricePerAnimal) - calculateBatchFinancials(selectedBatch).totalPerAnimalCost)} per animal</span>
-                                    : <span className="text-red-500">Loss: ₹ {Math.round(Number(sellForm.pricePerAnimal) - calculateBatchFinancials(selectedBatch).totalPerAnimalCost)} per animal</span>
-                                }
-                            </p>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Select Animals to Sell ({selectedAnimalsToSell.length})</label>
-                            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                                {(selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased').map(animal => (
-                                    <label key={animal.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedAnimalsToSell.includes(animal.id)}
-                                            onChange={() => toggleAnimalSelection(animal.id)}
-                                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                        />
-                                        <div className="flex-1 flex justify-between">
-                                            <span className="font-medium text-gray-700">{animal.id}</span>
-                                            <span className="text-sm text-gray-500">{animal.weight}kg • {animal.gender}</span>
-                                        </div>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button type="submit" disabled={isSaving || Number(sellForm.pricePerAnimal) === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
-                                {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing Sale...</> : <>Confirm Sale (₹ {(Number(sellForm.pricePerAnimal) * selectedAnimalsToSell.length).toLocaleString()})</>}
-                            </button>
-                        </div>
-                    </form>
-                </Modal>
 
 
             </div>
@@ -2287,52 +1619,106 @@ const Livestock = () => {
     const soldAnimals = (selectedBatch?.animals || []).filter(a => a.status === 'Sold');
     const soldRevenue = soldAnimals.reduce((sum, a) => sum + (Number(a.soldPrice) || 0), 0);
 
+    // Goats/sheep/cows: show sick animals in the herd list too (they used to disappear from it)
+    const herdAnimals = (selectedBatch?.animals || []).filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
+    const isAdultAnimal = (a) => a.category === 'Adult' || a.category === 'Parent';
+    const batchDeathRecords = groupDeaths(allDeceasedAnimals.filter(a => a.batchId === selectedBatch.id));
+    const lastDeath = batchDeathRecords.find(r => r.date);
+    const isFlock = isPoultryType(selectedBatch.type);
+    const accent = selectedBatch.color || '#2ea44f';
+
     return (
-        <div className="space-y-6 mb-20">
+        <div className="space-y-6">
+            {sharedModals}
             {/* Header & Back */}
-            <button onClick={() => setSelectedBatchId(null)} className="flex items-center text-gray-500 hover:text-gray-800 font-medium">
-                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Batches
+            <button onClick={() => setSelectedBatchId(null)} className="inline-flex items-center gap-2 rounded-full bg-white ring-1 ring-gray-200 shadow-sm px-4 py-2 text-sm font-bold text-gray-600 hover:text-forest">
+                <ArrowLeft className="w-4 h-4" /> All batches
             </button>
 
-            <div className="flex flex-col md:flex-row justify-between gap-6">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-3xl font-bold flex items-center gap-3" style={{ color: selectedBatch.color || '#1F2937' }}>
-                            {selectedBatch.name}
-                            {selectedBatch.shortId && <span className="px-3 py-1 bg-gray-100 text-gray-500 text-sm rounded-lg border border-gray-200 font-mono">#{selectedBatch.shortId}</span>}
-                        </h1>
-                        <button onClick={() => openBatchModal(selectedBatch)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        {/* Sell Button - Now in Header */}
-                        {/* Sell Button - Now in Header */}
-                        {activeAnimals.length > 0 && (
-                            <button onClick={openSellModal} className="p-2 text-green-600 hover:bg-green-50 rounded-full transition-colors flex items-center gap-1" title="Sell Animals">
-                                <IndianRupee className="w-4 h-4" />
-                                <span className="text-sm font-bold">Sell</span>
-                            </button>
-                        )}
-                        {canEdit && (
-                            <button onClick={handleDeleteBatch} className="p-2 text-red-300 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors" title="Delete Batch">
-                                <Trash2 className="w-4 h-4" />
-                            </button>
-                        )}
+            <motion.section
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative overflow-hidden rounded-[2rem] bg-white ring-1 ring-gray-200 shadow-md"
+            >
+                <div className="absolute inset-0 opacity-[0.12]" style={{ background: `radial-gradient(circle at 0% 0%, ${accent}, transparent 60%)` }} />
+                <div className="relative p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center gap-5">
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                        <motion.span
+                            initial={{ scale: 0.4, rotate: -25 }}
+                            animate={{ scale: 1, rotate: 0 }}
+                            transition={{ type: 'spring', stiffness: 420, damping: 14 }}
+                            className="grid place-items-center w-14 h-14 sm:w-20 sm:h-20 rounded-3xl bg-white shadow-lg ring-1 ring-black/5 text-3xl sm:text-5xl shrink-0"
+                        >
+                            <span className="animate-float inline-block">{ANIMAL_EMOJI[selectedBatch.type] || '🐾'}</span>
+                        </motion.span>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h1 className="text-2xl sm:text-4xl leading-tight" style={{ color: accent }}>{selectedBatch.name}</h1>
+                                {selectedBatch.shortId && <span className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg font-mono font-bold">#{selectedBatch.shortId}</span>}
+                                {selectedBatch.status && selectedBatch.status !== 'Raising' && (
+                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-100 text-violet-700">{selectedBatch.status}</span>
+                                )}
+                            </div>
+                            <p className="text-gray-500 font-semibold mt-1">
+                                {selectedBatch.type} · {selectedBatch.animals?.length || 0} animals · day {financials.daysActive}
+                                {(selectedBatch.startDate || selectedBatch.date) && <> · started {formatDate(selectedBatch.startDate || selectedBatch.date)}</>}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="rounded-full bg-green-100 text-green-800 px-3 py-1 text-xs font-bold">🌿 {activeAnimals.length} healthy</span>
+                                <span className="rounded-full bg-orange-100 text-orange-800 px-3 py-1 text-xs font-bold">🤒 {sickAnimals.length} sick</span>
+                                <span className="rounded-full bg-sky-100 text-sky-800 px-3 py-1 text-xs font-bold">💰 {soldAnimals.length} sold</span>
+                                <span className="rounded-full bg-red-100 text-red-700 px-3 py-1 text-xs font-bold">
+                                    🕊️ {deceasedAnimals.length} lost{lastDeath ? ` · last ${relativeDay(lastDeath.date).toLowerCase()}` : ''}
+                                </span>
+                            </div>
+                        </div>
                     </div>
-                    <p className="text-gray-500">{selectedBatch.type} • {selectedBatch.animals?.length || 0} Animals • {financials.daysActive} Days Active</p>
+
+                    <div className="flex flex-col sm:flex-row lg:flex-col gap-3 lg:items-end">
+                        <div className="rounded-2xl bg-green-50 ring-1 ring-green-100 px-4 py-3 lg:text-right">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-green-800/70">Minimum sell price</p>
+                            <p className="font-display text-3xl font-semibold text-green-700">₹{Math.round(financials.minSellPrice).toLocaleString('en-IN')}</p>
+                            <p className="text-xs text-gray-500">Cost basis ₹{Math.round(financials.totalPerAnimalCost).toLocaleString('en-IN')} / animal</p>
+                            {financials.sharedTotal > 0 && (
+                                <p className="text-[11px] font-semibold text-amber-700 mt-0.5">Shared costs not included · +₹{Math.round(financials.sharedPerAnimal).toLocaleString('en-IN')}/animal</p>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-[1fr_1fr_auto_auto] sm:flex sm:flex-wrap gap-2 lg:justify-end">
+                            {herdAnimals.length > 0 && (
+                                <button onClick={openSellModal} className="flex items-center justify-center gap-1.5 rounded-xl bg-forest text-white px-4 py-2.5 text-sm font-bold shadow-[0_3px_0_#0b2416]">
+                                    <IndianRupee className="w-4 h-4" /> Sell
+                                </button>
+                            )}
+                            {canEdit && herdAnimals.length > 0 && (
+                                <button onClick={() => openRecordDeath(selectedBatch.id)} className="flex items-center justify-center gap-1.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 px-3 sm:px-4 py-2.5 text-sm font-bold whitespace-nowrap">
+                                    <HeartCrack className="w-4 h-4" /> <span className="sm:hidden">Death</span><span className="hidden sm:inline">Record death</span>
+                                </button>
+                            )}
+                            <button onClick={() => openBatchModal(selectedBatch)} className="grid place-items-center w-10 h-10 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200" title="Edit batch" aria-label="Edit batch">
+                                <Edit2 className="w-4 h-4" />
+                            </button>
+                            {canEdit && (
+                                <button onClick={handleDeleteBatch} className="grid place-items-center w-10 h-10 rounded-xl bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Delete batch" aria-label="Delete batch">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 </div>
-                {/* Always show Min Sell Price in details too */}
-                <div className="text-right">
-                    <p className="text-sm text-gray-500">Minimum Sell Price</p>
-                    <h2 className="text-3xl font-bold text-green-600">₹ {Math.round(financials.minSellPrice).toLocaleString()}</h2>
-                    <p className="text-xs text-gray-400">Total Cost Basis: ₹ {Math.round(financials.totalPerAnimalCost).toLocaleString()}</p>
-                </div>
-            </div>
+            </motion.section>
 
             {/* Detail Tabs */}
-            <div className="flex gap-2 border-b border-gray-200 overflow-x-auto">
-                <button onClick={() => setBatchTab('animals')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'animals' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Overview</button>
-                <button onClick={() => setBatchTab('weight')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'weight' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>Weight Tracking</button>
-                <button onClick={() => setBatchTab('medical')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'medical' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-gray-500 hover:text-gray-800'}`}>Medical Records</button>
-                <button onClick={() => setBatchTab('sold')} className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${batchTab === 'sold' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>Sold Animals</button>
-            </div>
+            <SegmentedTabs
+                layoutId="batch-detail-tab"
+                value={batchTab}
+                onChange={setBatchTab}
+                tabs={[
+                    { id: 'animals', label: 'Overview', emoji: '🏠' },
+                    { id: 'weight', label: 'Weight', emoji: '⚖️' },
+                    { id: 'medical', label: 'Medical', emoji: '💉', count: (selectedBatch.medical || []).length },
+                    { id: 'sold', label: 'Sold', emoji: '💰', count: soldAnimals.length }
+                ]}
+            />
 
             {/* TAB: OVERVIEW (Animals + Expenses) */}
             {batchTab === 'animals' && (
@@ -2340,15 +1726,15 @@ const Livestock = () => {
                     {/* Left Column: Animal List (Split by Category) */}
                     <div className="lg:col-span-2 space-y-8">
                         {/* Header */}
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-bold text-gray-800 text-xl">Animal Inventory</h3>
-                            <div className="flex gap-2">
-                                <span className="text-sm text-gray-500 self-center">Total {activeAnimals.length} Active</span>
-                                <button onClick={() => openAnimalModal()} className="flex items-center gap-1 text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-100 transition-colors">
-                                    <Plus className="w-4 h-4" /> Add Animals
-                                </button>
+                        {!isFlock && <div className="flex justify-between items-center gap-3">
+                            <div>
+                                <h3 className="font-semibold text-gray-900 text-xl">{isFlock ? 'Flock' : 'Animals'}</h3>
+                                <p className="text-xs text-gray-500">{herdAnimals.length} alive{sickAnimals.length > 0 ? ` · ${sickAnimals.length} sick` : ''}</p>
                             </div>
-                        </div>
+                            <button onClick={() => openAnimalModal()} className="flex items-center gap-1.5 text-sm bg-sun text-forest px-4 py-2 rounded-xl font-bold shadow-[0_3px_0_#d48a06]">
+                                <Plus className="w-4 h-4" /> Add animals
+                            </button>
+                        </div>}
 
                         {/* Adults Section - Only for Non-Chicken */}
                         {selectedBatch?.type !== 'Chicken' && selectedBatch?.type !== 'Poultry' && (
@@ -2363,13 +1749,13 @@ const Livestock = () => {
                                         Adults
                                     </h4>
                                     <span className="text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md border border-gray-100">
-                                        {activeAnimals.filter(a => a.category === 'Adult').length} animals
+                                        {herdAnimals.filter(isAdultAnimal).length} animals
                                     </span>
                                 </div>
                                 {isAdultsOpen && (
                                     <div className="divide-y divide-gray-50">
-                                        {activeAnimals.filter(a => a.category === 'Adult').length > 0 ? (
-                                            activeAnimals.filter(a => a.category === 'Adult').map(animal => (
+                                        {herdAnimals.filter(isAdultAnimal).length > 0 ? (
+                                            herdAnimals.filter(isAdultAnimal).map(animal => (
                                                 <div key={animal.id} className="border-b border-gray-50 last:border-0">
                                                     <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
                                                         <div className="flex items-center gap-4">
@@ -2384,29 +1770,36 @@ const Livestock = () => {
                                                                 </div>
                                                                 <div className="text-xs text-gray-500 flex gap-2 items-center">
                                                                     <span>{animal.weight} kg</span>
-                                                                    <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                                    <span className={`px-1.5 rounded font-semibold ${animal.status === 'Sick' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>{animal.status || 'Healthy'}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             {/* Break-Even Price: before the down arrow */}
-                                                            <div className="text-right block" onClick={e => e.stopPropagation()}>
+                                                            <div className="text-right hidden sm:block" onClick={e => e.stopPropagation()}>
                                                                 <p className="text-xs text-gray-400">Break-Even</p>
                                                                 <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).trueCost.toLocaleString()}</p>
                                                             </div>
                                                             <div className="text-gray-400 group-hover:text-blue-600">
                                                                 {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                                             </div>
-                                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                            <div className="flex items-center gap-0.5 sm:gap-1 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                                                 <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
                                                                     <TrendingUp className="w-4 h-4" />
                                                                 </button>
                                                                 <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                                                                     <Edit2 className="w-4 h-4" />
                                                                 </button>
-                                                                <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
+                                                                {canEdit && (
+                                                                    <button onClick={() => openRecordDeath(selectedBatch.id, [animal.id])} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Record death" aria-label={`Record death of ${animal.id}`}>
+                                                                        <HeartCrack className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                {canEdit && (
+                                                                    <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete (entered by mistake)" aria-label={`Delete ${animal.id}`}>
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2461,24 +1854,6 @@ const Livestock = () => {
                                                                 </div>
                                                             </div>
 
-                                                            {/* Individual Medical History (Legacy Disabled) */}
-                                                            {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
-                                                                <div className="mt-4 pt-4 border-t border-gray-100">
-                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
-                                                                    <div className="space-y-1">
-                                                                        {(selectedBatch.medical || [])
-                                                                            .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                            .map((m, i) => (
-                                                                                <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                                    <span className="text-gray-400 w-20">{m.date}</span>
-                                                                                    <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                                    <span className="font-medium">{m.name}</span>
-                                                                                </div>
-                                                                            ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
@@ -2491,448 +1866,23 @@ const Livestock = () => {
                             </div>
                         )}
 
-                        {/* Chicken 'Flock' Section - Simplified View for Large Numbers */}
-                        {/* Chicken 'Flock' Dashboard - Simplified View for Large Numbers */}
-                        {/* Chicken 'Flock' Dashboard - Enhanced Grid */}
-                        {['chicken', 'poultry'].includes(selectedBatch?.type?.toLowerCase()) && (
-                            <div className="space-y-8">
-                                {/* Dashboard Grid */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Active (Healthy) Card */}
-                                    <div className={`bg-white rounded-2xl p-6 border transition-all cursor-pointer ${expandedCard === 'active' ? 'ring-2 ring-green-500 border-green-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}
-                                        onClick={() => setExpandedCard(expandedCard === 'active' ? null : 'active')}
-                                    >
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Active</div>
-                                                <div className="text-4xl font-bold text-gray-800">{activeAnimals.length}</div>
-                                            </div>
-                                            <div className="p-2 bg-green-50 rounded-xl text-green-600">
-                                                <Check className="w-6 h-6" />
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2 mb-3">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    // Move to Sick Modal
-                                                    setSickTransitionForm({ count: '', fromStatus: 'Healthy', toStatus: 'Sick', notes: '' });
-                                                    setIsSickTransitionOpen(true);
-                                                }}
-                                                className="flex-1 py-2 px-3 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100 transition-colors flex items-center justify-center gap-2"
-                                            >
-                                                <Stethoscope className="w-4 h-4" /> Move to Sick
-                                            </button>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    // Edit Attributes
-                                                    const weights = activeAnimals.map(a => Number(a.weight) || 0).filter(w => w > 0);
-                                                    const currentAvg = weights.length > 0 ? (weights.reduce((a, b) => a + b, 0) / weights.length) : '';
-                                                    setFlockEditForm({
-                                                        avgWeight: currentAvg,
-                                                        status: 'Healthy',
-                                                        notes: '',
-                                                        targetGroup: 'Healthy'
-                                                    });
-                                                    setIsFlockEditOpen(true);
-                                                }}
-                                                className="flex-1 py-2 px-3 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
-                                            >
-                                                <Edit2 className="w-4 h-4" /> Edit Details
-                                            </button>
-                                        </div>
-                                        <div className="flex justify-center">
-                                            {expandedCard === 'active' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                                        </div>
-
-                                        {expandedCard === 'active' && (
-                                            <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Avg Weight History</h5>
-                                                        {(() => {
-                                                            // Calculate Avg Weight History for Active Group
-                                                            const dateMap = new Map();
-                                                            activeAnimals.forEach(a => {
-                                                                (a.weightHistory || []).forEach(rec => {
-                                                                    if (!dateMap.has(rec.date)) dateMap.set(rec.date, { total: 0, count: 0 });
-                                                                    const entry = dateMap.get(rec.date);
-                                                                    entry.total += Number(rec.weight);
-                                                                    entry.count += 1;
-                                                                });
-                                                            });
-                                                            const history = Array.from(dateMap.entries())
-                                                                .map(([date, data]) => ({ date, weight: (data.total / data.count).toFixed(2) }))
-                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                .slice(0, 5);
-
-                                                            return history.length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {history.map((h, i) => (
-                                                                        <div key={i} className="flex justify-between text-xs text-gray-600 bg-gray-50 p-1 rounded">
-                                                                            <span>{h.date}</span>
-                                                                            <span className="font-bold">{h.weight} kg</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : <p className="text-xs text-gray-400 italic">No weight records.</p>;
-                                                        })()}
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical</h5>
-                                                        {(() => {
-                                                            // Filter Medical for Active Group (records that touched 'active' animals)
-                                                            // Logic: If record.animalIds includes majority of active animals?
-                                                            // Or just show latest from 'Active' context
-                                                            const recentMedical = (selectedBatch.medical || [])
-                                                                .filter(m => (m.animalIds || []).some(id => activeAnimals.some(a => a.id === id)))
-                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                .slice(0, 5);
-
-                                                            return recentMedical.length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {recentMedical.map((m, i) => (
-                                                                        <div key={i} className="text-xs text-gray-600 bg-gray-50 p-1 rounded">
-                                                                            <div className="flex justify-between font-medium">
-                                                                                <span>{m.type}</span>
-                                                                                <span>{m.date}</span>
-                                                                            </div>
-                                                                            <div className="truncate text-gray-500">{m.name}</div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : <p className="text-xs text-gray-400 italic">No medical records.</p>;
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Sick Bay Card */}
-                                    <div className={`bg-white rounded-2xl p-6 border transition-all cursor-pointer ${expandedCard === 'sick' ? 'ring-2 ring-red-500 border-red-500 shadow-md' : 'border-red-50 shadow-sm hover:shadow-md'}`}
-                                        onClick={() => setExpandedCard(expandedCard === 'sick' ? null : 'sick')}
-                                    >
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Sick Bay</div>
-                                                <div className="text-4xl font-bold text-red-600">{sickAnimals.length}</div>
-                                            </div>
-                                            <div className="p-2 bg-red-50 rounded-xl text-red-600">
-                                                <Stethoscope className="w-6 h-6" />
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2 mb-3">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    // Recover Modal
-                                                    setSickTransitionForm({ count: '', fromStatus: 'Sick', toStatus: 'Healthy', notes: '' });
-                                                    setIsSickTransitionOpen(true);
-                                                }}
-                                                className="flex-1 py-2 px-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
-                                                disabled={sickAnimals.length === 0}
-                                            >
-                                                <Check className="w-4 h-4" /> Recover
-                                            </button>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    // Treat Sick
-                                                    setFlockEditForm({
-                                                        avgWeight: '',
-                                                        status: 'Sick',
-                                                        notes: '',
-                                                        targetGroup: 'Sick'
-                                                    });
-                                                    setIsFlockEditOpen(true);
-                                                }}
-                                                className="flex-1 py-2 px-3 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
-                                                disabled={sickAnimals.length === 0}
-                                            >
-                                                <Syringe className="w-4 h-4" /> Treat/Edit
-                                            </button>
-                                        </div>
-                                        <div className="flex justify-center">
-                                            {expandedCard === 'sick' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                                        </div>
-
-                                        {expandedCard === 'sick' && (
-                                            <div className="mt-4 pt-4 border-t border-red-100 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <h5 className="font-bold text-red-800 text-xs uppercase mb-2">Recent Weights (Avg)</h5>
-                                                        {(() => {
-                                                            // Calculate Avg Weight History for Sick
-                                                            const dateMap = new Map();
-                                                            sickAnimals.forEach(a => {
-                                                                (a.weightHistory || []).forEach(rec => {
-                                                                    if (!dateMap.has(rec.date)) dateMap.set(rec.date, { total: 0, count: 0 });
-                                                                    const entry = dateMap.get(rec.date);
-                                                                    entry.total += Number(rec.weight);
-                                                                    entry.count += 1;
-                                                                });
-                                                            });
-                                                            const history = Array.from(dateMap.entries())
-                                                                .map(([date, data]) => ({ date, weight: (data.total / data.count).toFixed(2) }))
-                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                .slice(0, 5);
-
-                                                            return history.length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {history.map((h, i) => (
-                                                                        <div key={i} className="flex justify-between text-xs text-red-700 bg-red-50 p-1 rounded">
-                                                                            <span>{h.date}</span>
-                                                                            <span className="font-bold">{h.weight} kg</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : <p className="text-xs text-red-400 italic">No weight records.</p>;
-                                                        })()}
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="font-bold text-red-800 text-xs uppercase mb-2">Recent Treatments</h5>
-                                                        {(() => {
-                                                            // Filter Medical for Sick Group (approx logic: targeted sick animals)
-                                                            // Simplified: Show records where at least one current sick animal was involved
-                                                            const recentMedical = (selectedBatch.medical || [])
-                                                                .filter(m => (m.animalIds || []).some(id => sickAnimals.some(sick => sick.id === id)))
-                                                                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                .slice(0, 5);
-
-                                                            return recentMedical.length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {recentMedical.map((m, i) => (
-                                                                        <div key={i} className="text-xs text-red-700 bg-red-50 p-1 rounded">
-                                                                            <div className="flex justify-between font-medium">
-                                                                                <span>{m.type}</span>
-                                                                                <span>{m.date}</span>
-                                                                            </div>
-                                                                            <div className="truncate text-red-500">{m.name}</div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : <p className="text-xs text-red-400 italic">No medical records.</p>;
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Mortality Card */}
-                                    <div className={`bg-white rounded-2xl p-6 border transition-all ${expandedCard === 'mortality' ? 'ring-2 ring-red-500 border-red-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}>
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Mortality</div>
-                                                <div className="text-4xl font-bold text-gray-800">{deceasedAnimals.length}</div>
-                                            </div>
-                                            <div className="p-2 bg-gray-100 rounded-xl text-gray-600">
-                                                <Trash2 className="w-6 h-6" />
-                                            </div>
-                                        </div>
-                                        <div className="mb-3">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setIsBulkDeceasedOpen(true);
-                                                }}
-                                                className="w-full py-2 px-3 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
-                                            >
-                                                <Plus className="w-4 h-4" /> Record Death
-                                            </button>
-                                        </div>
-                                        {/* No Expansion for Mortality as per request */}
-                                    </div>
-
-                                    {/* Sold Card */}
-                                    <div className={`bg-white rounded-2xl p-6 border transition-all cursor-pointer ${expandedCard === 'sold' ? 'ring-2 ring-blue-500 border-blue-500 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}
-                                        onClick={() => setExpandedCard(expandedCard === 'sold' ? null : 'sold')}>
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <div className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Sold</div>
-                                                <div className="text-4xl font-bold text-gray-800">{soldAnimals.length}</div>
-                                                <div className="text-xs text-blue-600 mt-1 font-medium">Revenue: ₹{Math.round(soldRevenue).toLocaleString()}</div>
-                                            </div>
-                                            <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
-                                                <IndianRupee className="w-6 h-6" />
-                                            </div>
-                                        </div>
-                                        <div className="mb-3 space-y-2">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    openSellModal();
-                                                }}
-                                                className="w-full py-2 px-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
-                                            >
-                                                <Plus className="w-4 h-4" /> Record Sale
-                                            </button>
-                                        </div>
-                                        <div className="flex justify-center">
-                                            {expandedCard === 'sold' ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                                        </div>
-
-                                        {expandedCard === 'sold' && (
-                                            <div className="mt-4 pt-4 border-t border-blue-50 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
-                                                <h5 className="font-bold text-blue-800 text-xs uppercase mb-3 text-center">Recent Sales</h5>
-                                                {soldAnimals.length > 0 ? (
-                                                    <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1 pb-2">
-                                                        {(selectedBatch?.type === 'Poultry' || selectedBatch?.type === 'Chicken') ? (
-                                                            // Grouped Sold Animals for Poultry/Chicken (Invoice Style)
-                                                            (() => {
-                                                                if (soldAnimals.length === 0) return null;
-                                                                const groups = {};
-                                                                soldAnimals.forEach(animal => {
-                                                                    const key = `${animal.soldDate}_${animal.soldPrice}`;
-                                                                    if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0, ids: [] };
-                                                                    groups[key].count += 1;
-                                                                    groups[key].total += (Number(animal.soldPrice) || 0);
-                                                                    groups[key].cost += calculateAnimalBreakEven(animal, selectedBatch).trueCost;
-                                                                    groups[key].ids.push(animal.id);
-                                                                });
-                                                                const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-                                                                return (
-                                                                    <div className="space-y-4">
-                                                                        {/* Desktop Table View */}
-                                                                        <div className="hidden md:block overflow-x-auto">
-                                                                            <table className="w-full text-left text-xs bg-white rounded-xl border border-blue-100 overflow-hidden">
-                                                                                <thead className="bg-blue-50 text-blue-700 uppercase tracking-wider text-[10px]">
-                                                                                    <tr>
-                                                                                        <th className="px-4 py-3 font-semibold rounded-tl-xl">Date</th>
-                                                                                        <th className="px-4 py-3 font-semibold text-right">Quantity</th>
-                                                                                        <th className="px-4 py-3 font-semibold text-right">Price/Bird</th>
-                                                                                        <th className="px-4 py-3 font-semibold text-right">Revenue</th>
-                                                                                        <th className="px-4 py-3 font-semibold text-right">Profit</th>
-                                                                                        {isSuperAdmin && <th className="px-4 py-3 font-semibold text-center rounded-tr-xl">Action</th>}
-                                                                                    </tr>
-                                                                                </thead>
-                                                                                <tbody className="divide-y divide-blue-50">
-                                                                                    {bulkSales.map((group, idx) => {
-                                                                                        const profit = group.total - group.cost;
-                                                                                        return (
-                                                                                            <tr key={`bulk-md-${idx}`} className="hover:bg-blue-50/30 transition-colors">
-                                                                                                <td className="px-4 py-3 font-medium text-blue-800 whitespace-nowrap">{group.date || 'Unknown Date'}</td>
-                                                                                                <td className="px-4 py-3 text-right text-gray-700">{group.count}</td>
-                                                                                                <td className="px-4 py-3 text-right text-gray-700">₹{(Number(group.price) || 0).toLocaleString()}</td>
-                                                                                                <td className="px-4 py-3 text-right font-bold text-blue-600">₹{group.total.toLocaleString()}</td>
-                                                                                                <td className={`px-4 py-3 text-right font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
-                                                                                                </td>
-                                                                                                {isSuperAdmin && (
-                                                                                                    <td className="px-4 py-3 text-center">
-                                                                                                        <button
-                                                                                                            onClick={() => {
-                                                                                                                if (window.confirm(`Undo sale for all ${group.count} birds on this date?`)) {
-                                                                                                                    group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
-                                                                                                                }
-                                                                                                            }}
-                                                                                                            className="p-1 px-2 text-[10px] uppercase tracking-wider font-bold text-red-500 hover:bg-red-50 hover:text-red-600 rounded-md transition-all border border-transparent hover:border-red-200 whitespace-nowrap"
-                                                                                                        >
-                                                                                                            Undo
-                                                                                                        </button>
-                                                                                                    </td>
-                                                                                                )}
-                                                                                            </tr>
-                                                                                        );
-                                                                                    })}
-                                                                                </tbody>
-                                                                                <tfoot className="bg-blue-50/60 border-t border-blue-100 text-[11px] font-bold">
-                                                                                    <tr>
-                                                                                        <td className="px-4 py-3 text-blue-900 rounded-bl-xl">Total</td>
-                                                                                        <td className="px-4 py-3 text-right text-blue-900">{bulkSales.reduce((s, g) => s + g.count, 0)}</td>
-                                                                                        <td className="px-4 py-3 text-right text-transparent">-</td>
-                                                                                        <td className="px-4 py-3 text-right text-blue-700 text-xs">₹{bulkSales.reduce((s, g) => s + g.total, 0).toLocaleString()}</td>
-                                                                                        <td className={`px-4 py-3 text-right text-xs ${bulkSales.reduce((s, g) => s + (g.total - g.cost), 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                                                                            ₹{Math.round(bulkSales.reduce((s, g) => s + (g.total - g.cost), 0)).toLocaleString()}
-                                                                                        </td>
-                                                                                        {isSuperAdmin && <td className="rounded-br-xl"></td>}
-                                                                                    </tr>
-                                                                                </tfoot>
-                                                                            </table>
-                                                                        </div>
-
-                                                                        {/* Mobile Card View */}
-                                                                        <div className="md:hidden space-y-2">
-                                                                            {bulkSales.map((group, idx) => {
-                                                                                const profit = group.total - group.cost;
-                                                                                return (
-                                                                                    <div key={`bulk-${idx}`} className="text-xs text-blue-800 bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col gap-2 shadow-sm">
-                                                                                        <div className="flex justify-between items-center border-b border-blue-200/50 pb-2">
-                                                                                            <div className="flex items-center gap-2">
-                                                                                                <span className="text-blue-600 font-medium bg-blue-100/50 px-2 py-0.5 rounded-md">{group.date || 'Unknown Date'}</span>
-                                                                                            </div>
-                                                                                            <div className="flex items-center gap-4">
-                                                                                                <div className="text-right">
-                                                                                                    <div className="text-[10px] text-blue-400 uppercase tracking-wider font-bold mb-0.5">Total</div>
-                                                                                                    <div className="font-bold text-blue-800 text-sm">₹{group.total.toLocaleString()}</div>
-                                                                                                </div>
-                                                                                                <div className="text-right">
-                                                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-0.5">Profit</div>
-                                                                                                    <div className={`font-bold text-sm ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                                                                        {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                        <div className="flex justify-between items-center text-blue-600 pt-1">
-                                                                                            <span className="font-bold whitespace-nowrap">{group.count} Birds @ ₹{(Number(group.price) || 0).toLocaleString()}</span>
-                                                                                            {isSuperAdmin && (
-                                                                                                <button
-                                                                                                    onClick={() => {
-                                                                                                        if (window.confirm(`Undo sale for all ${group.count} birds on this date?`)) {
-                                                                                                            group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
-                                                                                                        }
-                                                                                                    }}
-                                                                                                    className="p-1 px-2 text-[10px] font-bold uppercase tracking-wide text-red-500 hover:bg-red-50 rounded-md transition-all border border-transparent hover:border-red-200"
-                                                                                                >
-                                                                                                    Undo Sale
-                                                                                                </button>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                )
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })()
-                                                        ) : (
-                                                            // Individual Animals for Goat/Sheep
-                                                            <div className="space-y-2">
-                                                                {soldAnimals.map((animal, i) => (
-                                                                    <div key={`animal-${animal.id}`} className="text-xs text-blue-700 bg-blue-50 p-2 rounded-lg flex justify-between items-center group">
-                                                                        <div>
-                                                                            <div className="font-bold">{animal.id}</div>
-                                                                            <div className="text-blue-500 font-medium">₹{(animal.soldPrice || 0).toLocaleString()} • {animal.soldDate || 'Unknown Date'}</div>
-                                                                        </div>
-                                                                        {isSuperAdmin && (
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    if (window.confirm(`Undo sale for ${animal.id}? This will move the animal back to Inventory.`)) {
-                                                                                        revertSoldAnimal(selectedBatch.id, animal.id);
-                                                                                    }
-                                                                                }}
-                                                                                className="p-1.5 text-blue-400 hover:text-red-500 hover:bg-white rounded-md transition-all shadow-sm opacity-0 group-hover:opacity-100"
-                                                                                title="Undo Sale"
-                                                                            >
-                                                                                <RotateCcw className="w-3.5 h-3.5" />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                    </div>
-                                                ) : <p className="text-xs text-blue-400 italic text-center">No animals sold yet.</p>}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                        {isFlock && (
+                            <PoultryFlockOverview
+                                batch={selectedBatch}
+                                financials={financials}
+                                costPerBird={financials.totalPerAnimalCost}
+                                canEdit={canEdit}
+                                actions={{
+                                    sell: openSellModal,
+                                    death: () => openRecordDeath(selectedBatch.id),
+                                    toSick: () => { setSickTransitionForm({ count: '', fromStatus: 'Healthy', toStatus: 'Sick', notes: '' }); setIsSickTransitionOpen(true); },
+                                    recover: () => { setSickTransitionForm({ count: '', fromStatus: 'Sick', toStatus: 'Healthy', notes: '' }); setIsSickTransitionOpen(true); },
+                                    weigh: () => { setSelectedAnimalForWeight('Active'); setEditingWeightRecord(null); setWeightForm({ weight: '', date: todayISO() }); setIsWeightModalOpen(true); },
+                                    medical: () => { setEditingMedicalRecordId(null); setMedicalTargetMode('ActiveFlock'); setIsMedicalModalOpen(true); },
+                                    add: () => openAnimalModal(),
+                                    expense: () => setIsExpenseModalOpen(true)
+                                }}
+                            />
                         )}
 
                         {/* Kids Section - Only for Non-Chicken */}
@@ -2948,13 +1898,13 @@ const Livestock = () => {
                                         Kids
                                     </h4>
                                     <span className="text-sm font-medium text-gray-500 bg-white px-2 py-1 rounded-md border border-gray-100">
-                                        {activeAnimals.filter(a => a.category !== 'Adult').length} animals
+                                        {herdAnimals.filter(a => !isAdultAnimal(a)).length} animals
                                     </span>
                                 </div>
                                 {isKidsOpen && (
                                     <div className="divide-y divide-gray-50">
-                                        {activeAnimals.filter(a => a.category !== 'Adult').length > 0 ? (
-                                            activeAnimals.filter(a => a.category !== 'Adult').map(animal => (
+                                        {herdAnimals.filter(a => !isAdultAnimal(a)).length > 0 ? (
+                                            herdAnimals.filter(a => !isAdultAnimal(a)).map(animal => (
                                                 <div key={animal.id} className="border-b border-gray-50 last:border-0">
                                                     <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedAnimalId === animal.id ? 'bg-gray-50' : ''}`} onClick={() => toggleAnimalExpand(animal.id)}>
                                                         <div className="flex items-center gap-4">
@@ -2969,29 +1919,36 @@ const Livestock = () => {
                                                                 </div>
                                                                 <div className="text-xs text-gray-500 flex gap-2 items-center">
                                                                     <span>{animal.weight} kg</span>
-                                                                    <span className={`px-1.5 rounded ${animal.status === 'Healthy' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{animal.status}</span>
+                                                                    <span className={`px-1.5 rounded font-semibold ${animal.status === 'Sick' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>{animal.status || 'Healthy'}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             {/* Break-Even Price: before the down arrow */}
-                                                            <div className="text-right block" onClick={e => e.stopPropagation()}>
+                                                            <div className="text-right hidden sm:block" onClick={e => e.stopPropagation()}>
                                                                 <p className="text-xs text-gray-400">Break-Even</p>
                                                                 <p className="text-sm font-bold text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).trueCost.toLocaleString()}</p>
                                                             </div>
                                                             <div className="text-gray-400 group-hover:text-blue-600">
                                                                 {expandedAnimalId === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                                             </div>
-                                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                            <div className="flex items-center gap-0.5 sm:gap-1 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                                                 <button onClick={() => setSelectedAnimalForWeight(animal.id)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View History">
                                                                     <TrendingUp className="w-4 h-4" />
                                                                 </button>
                                                                 <button onClick={() => openAnimalModal(animal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                                                                     <Edit2 className="w-4 h-4" />
                                                                 </button>
-                                                                <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
+                                                                {canEdit && (
+                                                                    <button onClick={() => openRecordDeath(selectedBatch.id, [animal.id])} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Record death" aria-label={`Record death of ${animal.id}`}>
+                                                                        <HeartCrack className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                {canEdit && (
+                                                                    <button onClick={() => handleDeleteAnimal(animal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete (entered by mistake)" aria-label={`Delete ${animal.id}`}>
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -3046,24 +2003,6 @@ const Livestock = () => {
                                                                 </div>
                                                             </div>
 
-                                                            {/* Individual Medical History (Legacy Disabled) */}
-                                                            {false && (selectedBatch.medical || []).some(m => (m.animalIds || []).includes(animal.id)) && (
-                                                                <div className="mt-4 pt-4 border-t border-gray-100">
-                                                                    <h5 className="font-bold text-gray-700 text-xs uppercase mb-2">Recent Medical Events</h5>
-                                                                    <div className="space-y-1">
-                                                                        {(selectedBatch.medical || [])
-                                                                            .filter(m => (m.animalIds || []).includes(animal.id))
-                                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))
-                                                                            .map((m, i) => (
-                                                                                <div key={i} className="flex gap-2 text-xs text-gray-600">
-                                                                                    <span className="text-gray-400 w-20">{m.date}</span>
-                                                                                    <span className={`px-1.5 rounded font-medium ${m.type === 'Vaccination' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{m.type}</span>
-                                                                                    <span className="font-medium">{m.name}</span>
-                                                                                </div>
-                                                                            ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
@@ -3076,41 +2015,32 @@ const Livestock = () => {
                             </div>
                         )}
 
+                        <BatchMortalityPanel
+                            batch={selectedBatch}
+                            records={batchDeathRecords}
+                            canRecord={canEdit && herdAnimals.length > 0}
+                            canEdit={canEdit}
+                            canUndo={isSuperAdmin}
+                            onRecord={() => openRecordDeath(selectedBatch.id)}
+                            onEditRecord={setDeathEditRecord}
+                            onReviveRecord={handleReviveRecord}
+                        />
                     </div>
                     {/* Right Column: Expenses */}
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-bold text-gray-800">Batch Expenses</h3>
-                            <div className="flex gap-2">
-                                {isSuperAdmin && ALLOCATION_ELIGIBLE_TYPES.includes(selectedBatch?.type) && (
-                                    <button
-                                        onClick={async () => {
-                                            // Calculate for all months from batch start to now
-                                            const batchStartDate = selectedBatch.startDate || selectedBatch.date || selectedBatch.createdAt;
-                                            if (!batchStartDate) {
-                                                alert('Batch has no start date!');
-                                                return;
-                                            }
-                                            const months = getMonthsBetween(batchStartDate);
-                                            // Use a cache to track allocations across iterations
-                                            const allocationsCache = new Map();
-                                            for (const monthKey of months) {
-                                                await processMonthlyAllocations(monthKey, settings?.allocationMode || 'fullMonth', allocationsCache);
-                                            }
-                                            alert(`Calculated allocations for ${months.length} month(s): ${months.join(', ')}`);
-                                        }}
-                                        className="text-xs bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-100 flex items-center gap-1 font-medium transition-colors"
-                                    >
-                                        <Users className="w-3 h-3" /> Calculate All Allocations
-                                    </button>
-                                )}
+                        <div className="flex flex-wrap justify-between items-center gap-2">
+                            <div>
+                                <h3 className="font-semibold text-gray-900 text-xl">Expenses</h3>
+                                <p className="text-xs text-gray-500">Spent on this batch</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
                                 <button onClick={() => setIsExpenseModalOpen(true)} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 flex items-center gap-1 font-medium transition-colors">
                                     <Plus className="w-3 h-3" /> Add Expense
                                 </button>
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="bg-white rounded-3xl shadow-sm ring-1 ring-gray-200 overflow-hidden">
                             {(selectedBatch.expenses || []).length > 0 ? (selectedBatch.expenses || []).map((exp, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
                                     <div>
@@ -3118,7 +2048,7 @@ const Livestock = () => {
                                         <p className="text-xs text-gray-500">{exp.description}</p>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <span className="font-bold text-red-500">- ₹{exp.amount}</span>
+                                        <span className="font-bold text-red-500 whitespace-nowrap">−₹{(Number(exp.amount) || 0).toLocaleString('en-IN')}</span>
                                         <div className="flex gap-1">
                                             {canEditRecords && (
                                                 <button onClick={() => openEditBatchExpenseModal(exp)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors"><Edit2 className="w-3 h-3" /></button>
@@ -3132,48 +2062,16 @@ const Livestock = () => {
                             )) : (
                                 <div className="p-8 text-center text-gray-400"><p>No specific expenses recorded.</p></div>
                             )}
-                            <div className="p-4 bg-amber-50 border-t border-amber-100">
-                                {(() => {
-                                    // Calculate total from stored monthlyAllocations
-                                    const storedAllocationsTotal = (selectedBatch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
-                                    const displayAllocation = storedAllocationsTotal > 0 ? storedAllocationsTotal : (financials.allocatedExpense || 0);
-
-                                    return (
-                                        <>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <div><p className="font-medium text-amber-800">Allocated (Staff/General)</p><p className="text-xs text-amber-600">Monthly employee cost allocation</p></div>
-                                                <span className="font-bold text-amber-700">- ₹ {Math.round(displayAllocation).toLocaleString()}</span>
-                                            </div>
-                                            {/* Monthly Allocation History */}
-                                            {ALLOCATION_ELIGIBLE_TYPES.includes(selectedBatch?.type) && (selectedBatch.monthlyAllocations?.length > 0) && (
-                                                <div className="mt-3 pt-3 border-t border-amber-200">
-                                                    <p className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1"><Users className="w-3 h-3" /> Monthly Breakdown</p>
-                                                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                                                        {[...(selectedBatch.monthlyAllocations || [])].sort((a, b) => b.month.localeCompare(a.month)).map(alloc => (
-                                                            <div key={alloc.month} className={`flex justify-between items-center py-1 px-2 rounded text-xs ${alloc.month === getCurrentMonthKey() ? 'bg-amber-100 font-medium' : 'bg-white/50'}`}>
-                                                                <span className="text-amber-800">
-                                                                    {new Date(alloc.month + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
-                                                                    {alloc.month === getCurrentMonthKey() && <span className="ml-1 text-amber-600">(Current)</span>}
-                                                                </span>
-                                                                <span className="text-amber-700">₹ {alloc.amount?.toLocaleString() || 0}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </>
-                                    );
-                                })()}
-                            </div>
                             <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-100">
-                                <div><p className="font-medium text-gray-800">Total Expenses</p></div>
-                                {(() => {
-                                    const storedAllocationsTotal = (selectedBatch.monthlyAllocations || []).reduce((sum, a) => sum + (a.amount || 0), 0);
-                                    const displayAllocation = storedAllocationsTotal > 0 ? storedAllocationsTotal : (financials.allocatedExpense || 0);
-                                    return <span className="font-bold text-red-600">- ₹ {Math.round((financials.operationalCost || 0) + displayAllocation).toLocaleString()}</span>;
-                                })()}
+                                <div>
+                                    <p className="font-semibold text-gray-800">Batch expenses</p>
+                                    <p className="text-[11px] text-gray-500">Counted in this batch’s cost</p>
+                                </div>
+                                <span className="font-bold text-red-600">−₹{Math.round(financials.operationalCost || 0).toLocaleString('en-IN')}</span>
                             </div>
                         </div>
+
+                        <SharedCostsCard batch={selectedBatch} shared={costing.sharedFor(selectedBatch.id)} pool={costing.poolThisMonth} />
                     </div>
                 </div>
             )}
@@ -3181,15 +2079,21 @@ const Livestock = () => {
             {/* TAB: WEIGHT */}
             {batchTab === 'weight' && (
                 <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                        <h3 className="font-bold text-gray-800">Weight Analysis</h3>
-                        <button onClick={() => { setEditingWeightRecord(null); setWeightForm({ weight: '', date: new Date().toISOString().split('T')[0] }); setIsWeightModalOpen(true); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
-                            <Scale className="w-4 h-4" /> Record Weight
+                    <div className="flex flex-wrap gap-3 justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <span className="grid place-items-center w-12 h-12 rounded-2xl bg-white shadow-md text-2xl">⚖️</span>
+                            <div>
+                                <h3 className="font-semibold text-gray-900 text-xl">Weight tracking</h3>
+                                <p className="text-gray-500 text-sm">Pick {isFlock ? 'a group' : 'an animal'} to see how it is growing.</p>
+                            </div>
+                        </div>
+                        <button onClick={() => { setEditingWeightRecord(null); setWeightForm({ weight: '', date: new Date().toISOString().split('T')[0] }); setIsWeightModalOpen(true); }} className="flex items-center gap-2 bg-sun text-forest px-4 py-2.5 rounded-2xl font-bold shadow-[0_3px_0_#d48a06]">
+                            <Scale className="w-4 h-4" /> Record weight
                         </button>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm ring-1 ring-gray-200">
                             <h4 className="font-bold text-gray-700 mb-4">Weight History</h4>
                             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden min-h-[300px]">
                                 {selectedAnimalForWeight ? (
@@ -3307,7 +2211,7 @@ const Livestock = () => {
                                 )}
                             </div>
                         </div>
-                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 max-h-[400px] overflow-y-auto">
+                        <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200 max-h-[400px] overflow-y-auto">
                             <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Select Animal</h4>
                             <div className="space-y-2">
                                 {selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry' ? (
@@ -3328,7 +2232,7 @@ const Livestock = () => {
                                     </>
                                 ) : (
                                     /* Individual Selectors for Others */
-                                    activeAnimals.map(animal => (
+                                    herdAnimals.map(animal => (
                                         <button key={animal.id} onClick={() => setSelectedAnimalForWeight(animal.id)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForWeight === animal.id ? 'bg-blue-50 text-blue-700 font-medium ring-2 ring-blue-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
                                             <div className="flex justify-between items-center"><span>{animal.id}</span><span className="text-sm text-gray-400">{animal.weight} kg</span></div>
                                         </button>
@@ -3343,10 +2247,10 @@ const Livestock = () => {
             {/* TAB: SOLD */}
             {batchTab === 'sold' && (
                 <div className="space-y-6">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-wrap gap-3 justify-between items-center">
                         <div>
-                            <h3 className="font-bold text-gray-800">Sold Animals</h3>
-                            <p className="text-gray-500 text-sm">Track financials and details of sold animals in this batch.</p>
+                            <h3 className="font-semibold text-gray-900 text-xl">Sales from this batch</h3>
+                            <p className="text-gray-500 text-sm">Tap a sale to see every animal in it.</p>
                         </div>
                         <button onClick={() => {
                             try {
@@ -3396,371 +2300,39 @@ const Livestock = () => {
                                 console.error("Error generating PDF:", error);
                                 alert("Failed to generate PDF. Check console for details.");
                             }
-                        }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
-                            Download PDF
+                        }} className="flex items-center gap-2 bg-sky-600 text-white px-4 py-2.5 rounded-2xl font-bold shadow-[0_3px_0_#075985]">
+                            <FileDown className="w-4 h-4" /> Download PDF
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Total Sold</p>
-                            <p className="text-2xl font-bold text-gray-800">{soldAnimals.length}</p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Revenue</p>
-                            <p className="text-2xl font-bold text-green-600">₹ {soldRevenue.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Animal Cost <span className="text-[10px] text-gray-400 lowercase">(inc. expenses)</span></p>
-                            <p className="text-2xl font-bold text-gray-800">
-                                ₹ {soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0).toLocaleString()}
-                            </p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                            <p className="text-xs text-gray-500 uppercase">Gross Profit</p>
-                            <p className={`text-2xl font-bold ${soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                ₹ {(soldRevenue - soldAnimals.reduce((s, a) => s + calculateAnimalBreakEven(a, selectedBatch).trueCost, 0)).toLocaleString()}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Poultry / Chicken: Grouped Sales Table */}
-                    {(selectedBatch.type === 'Poultry' || selectedBatch.type === 'Chicken') && (() => {
-                        // Filter soldAnimals by period
-                        const now = new Date();
-                        const filteredForTab = soldAnimals.filter(a => {
-                            const d = new Date(a.soldDate || 0);
-                            if (batchSoldFilter === 'All') return true;
-                            if (batchSoldFilter === '1M') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-                            const months = batchSoldFilter === '3M' ? 3 : batchSoldFilter === '6M' ? 6 : 12;
-                            const cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - months);
-                            return d >= cutoff;
-                        });
-                        const groups = {};
-                        filteredForTab.forEach(animal => {
-                            const key = `${animal.soldDate}_${animal.soldPrice}`;
-                            if (!groups[key]) groups[key] = { date: animal.soldDate, price: animal.soldPrice, count: 0, total: 0, cost: 0, ids: [] };
-                            groups[key].count += 1;
-                            groups[key].total += (Number(animal.soldPrice) || 0);
-                            groups[key].cost += calculateAnimalBreakEven(animal, selectedBatch).trueCost;
-                            groups[key].ids.push(animal.id);
-                        });
-                        const bulkSales = Object.values(groups).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-                        return (
-                            <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
-                                <div className="px-5 py-4 border-b border-blue-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <h4 className="font-bold text-gray-800">Sales History</h4>
-                                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full font-medium">{filteredForTab.length} birds</span>
-                                    </div>
-                                    <div className="flex bg-gray-100 p-1 rounded-lg gap-0.5">
-                                        {[{ k: '1M', l: 'This Month' }, { k: '3M', l: '3 Months' }, { k: '6M', l: '6 Months' }, { k: '1Y', l: 'Year' }, { k: 'All', l: 'All Time' }].map(f => (
-                                            <button
-                                                key={f.k}
-                                                onClick={() => setBatchSoldFilter(f.k)}
-                                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${batchSoldFilter === f.k ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                                            >
-                                                {f.l}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                {bulkSales.length > 0 ? (
-                                    <>
-                                        {/* Desktop Table */}
-                                        <div className="hidden md:block overflow-x-auto">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-blue-50 text-blue-700 text-xs uppercase tracking-wider">
-                                                    <tr>
-                                                        <th className="px-5 py-3 font-semibold">Date</th>
-                                                        <th className="px-5 py-3 font-semibold text-right">Qty (Birds)</th>
-                                                        <th className="px-5 py-3 font-semibold text-right">Price/Bird</th>
-                                                        <th className="px-5 py-3 font-semibold text-right">Revenue</th>
-                                                        <th className="px-5 py-3 font-semibold text-right">True Cost</th>
-                                                        <th className="px-5 py-3 font-semibold text-right">Actual Profit</th>
-                                                        {isSuperAdmin && <th className="px-5 py-3 font-semibold text-center">Action</th>}
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-50">
-                                                    {bulkSales.map((group, idx) => {
-                                                        const profit = group.total - group.cost;
-                                                        return (
-                                                            <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                                                                <td className="px-5 py-4 font-medium text-blue-800 whitespace-nowrap">{group.date || 'Unknown Date'}</td>
-                                                                <td className="px-5 py-4 text-right text-gray-700 font-semibold">{group.count}</td>
-                                                                <td className="px-5 py-4 text-right text-gray-700">₹{(Number(group.price) || 0).toLocaleString()}</td>
-                                                                <td className="px-5 py-4 text-right font-bold text-blue-600">₹{Math.round(group.total).toLocaleString()}</td>
-                                                                <td className="px-5 py-4 text-right font-medium text-red-500">₹{Math.round(group.cost).toLocaleString()}</td>
-                                                                <td className={`px-5 py-4 text-right font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
-                                                                </td>
-                                                                {isSuperAdmin && (
-                                                                    <td className="px-5 py-4 text-center">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                if (window.confirm(`Undo sale for all ${group.count} birds on ${group.date}?`)) {
-                                                                                    group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
-                                                                                }
-                                                                            }}
-                                                                            className="text-[10px] px-2 py-1 uppercase tracking-wider font-bold text-red-500 hover:bg-red-50 hover:text-red-600 rounded-md border border-transparent hover:border-red-200 whitespace-nowrap"
-                                                                        >
-                                                                            Undo
-                                                                        </button>
-                                                                    </td>
-                                                                )}
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                                <tfoot className="bg-blue-50/60 border-t-2 border-blue-100 text-xs font-bold">
-                                                    <tr>
-                                                        <td className="px-5 py-3 text-blue-900">Total</td>
-                                                        <td className="px-5 py-3 text-right text-blue-900">{bulkSales.reduce((s, g) => s + g.count, 0)}</td>
-                                                        <td className="px-5 py-3"></td>
-                                                        <td className="px-5 py-3 text-right text-blue-700">₹{Math.round(bulkSales.reduce((s, g) => s + g.total, 0)).toLocaleString()}</td>
-                                                        <td className="px-5 py-3 text-right text-red-500">₹{Math.round(bulkSales.reduce((s, g) => s + g.cost, 0)).toLocaleString()}</td>
-                                                        <td className={`px-5 py-3 text-right ${bulkSales.reduce((s, g) => s + (g.total - g.cost), 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                                            {bulkSales.reduce((s, g) => s + (g.total - g.cost), 0) >= 0 ? '+' : ''}₹{Math.round(bulkSales.reduce((s, g) => s + (g.total - g.cost), 0)).toLocaleString()}
-                                                        </td>
-                                                        {isSuperAdmin && <td></td>}
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-
-                                        {/* Mobile Cards */}
-                                        <div className="md:hidden divide-y divide-gray-50">
-                                            {bulkSales.map((group, idx) => {
-                                                const profit = group.total - group.cost;
-                                                return (
-                                                    <div key={idx} className="p-4">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <span className="font-bold text-blue-800 text-sm">{group.date || 'Unknown'}</span>
-                                                            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{group.count} birds</span>
-                                                        </div>
-                                                        <div className="grid grid-cols-3 gap-2 text-xs">
-                                                            <div className="bg-blue-50 rounded-lg p-2 text-center">
-                                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Revenue</p>
-                                                                <p className="font-bold text-blue-700">₹{Math.round(group.total).toLocaleString()}</p>
-                                                            </div>
-                                                            <div className="bg-red-50 rounded-lg p-2 text-center">
-                                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Cost</p>
-                                                                <p className="font-bold text-red-500">₹{Math.round(group.cost).toLocaleString()}</p>
-                                                            </div>
-                                                            <div className={`rounded-lg p-2 text-center ${profit >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                                                                <p className="text-[9px] text-gray-400 uppercase font-bold">Profit</p>
-                                                                <p className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                    {profit >= 0 ? '+' : ''}₹{Math.round(profit).toLocaleString()}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        {isSuperAdmin && (
-                                                            <div className="flex justify-end mt-2">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (window.confirm(`Undo sale for all ${group.count} birds on ${group.date}?`)) {
-                                                                            group.ids.forEach(id => revertSoldAnimal(selectedBatch.id, id));
-                                                                        }
-                                                                    }}
-                                                                    className="text-[10px] px-2 py-1 uppercase font-bold text-red-500 hover:bg-red-50 rounded-md border border-transparent hover:border-red-200"
-                                                                >
-                                                                    Undo Sale
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="p-12 text-center text-gray-400">
-                                        <p className="font-medium">{soldAnimals.length > 0 ? `No sales in this period. Try a wider filter.` : 'No sales recorded yet.'}</p>
-                                        {soldAnimals.length > 0 && <button onClick={() => setBatchSoldFilter('All')} className="mt-2 text-sm text-blue-600 hover:underline">Show all time</button>}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })()}
-
-                    {/* Non-Poultry: Individual animal list */}
-                    {selectedBatch.type !== 'Poultry' && selectedBatch.type !== 'Chicken' && (
-
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
-                            {soldAnimals.length > 0 ? (
-                                soldAnimals.map(animal => (
-                                    <div key={animal.id} className="border-b border-gray-50 last:border-0">
-                                        <div className={`p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer ${expandedSoldType === animal.id ? 'bg-gray-50' : ''}`} onClick={() => setExpandedSoldType(prev => prev === animal.id ? null : animal.id)}>
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${animal.gender === 'Male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
-                                                    {animal.gender === 'Male' ? 'M' : 'F'}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                        {animal.id}
-                                                        <span className="text-gray-300 text-xs font-normal">|</span>
-                                                        <span className="text-xs font-normal text-gray-500">{animal.age || 'N/A'}</span>
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 flex gap-2 items-center">
-                                                        <span>{animal.weight} kg</span>
-                                                        <span className="px-1.5 rounded bg-blue-100 text-blue-700">Sold</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4 text-right">
-                                                <div className="hidden sm:block">
-                                                    <p className="text-xs text-gray-400">Sold For</p>
-                                                    <p className="text-sm font-bold text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</p>
-                                                </div>
-                                                <div className="text-gray-400 group-hover:text-blue-600">
-                                                    {expandedSoldType === animal.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {expandedSoldType === animal.id && (
-                                            <div className="px-4 pb-4 pl-[4.5rem] bg-gray-50 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 mt-2">
-                                                    <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                                        <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Dates</div>
-                                                        <table className="w-full text-sm">
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Bought:</td>
-                                                                    <td className="font-medium text-right">{animal.boughtDate || 'N/A'}</td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Sold:</td>
-                                                                    <td className="font-medium text-right">{animal.soldDate || 'N/A'}</td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                                        <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Performance</div>
-                                                        <table className="w-full text-sm">
-                                                            <tbody>
-                                                                <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Bought Price:</td>
-                                                                    <td className="font-medium text-right text-gray-800">₹{calculateAnimalBreakEven(animal, selectedBatch).originalPrice.toLocaleString()}</td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Expenses Share:</td>
-                                                                    <td className="font-medium text-right text-gray-600">₹{calculateAnimalBreakEven(animal, selectedBatch).expenses.toLocaleString()}</td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Total Cost:</td>
-                                                                    <td className="font-medium text-right text-orange-600">₹{calculateAnimalBreakEven(animal, selectedBatch).trueCost.toLocaleString()}</td>
-                                                                </tr>
-                                                                <tr>
-                                                                    <td className="text-gray-500 whitespace-nowrap">Sale Price:</td>
-                                                                    <td className="font-medium text-right text-green-600">₹{(Number(animal.soldPrice) || 0).toLocaleString()}</td>
-                                                                </tr>
-                                                                <tr className="border-t border-gray-50">
-                                                                    <td className="text-gray-500 whitespace-nowrap pt-1">Net Profit:</td>
-                                                                    <td className={`font-bold text-right pt-1 ${(Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch).trueCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                        ₹{((Number(animal.soldPrice) || 0) - calculateAnimalBreakEven(animal, selectedBatch).trueCost).toLocaleString()}
-                                                                    </td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <div className="bg-white p-3 rounded-lg border border-gray-100 md:col-span-2">
-                                                        <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Weight History</div>
-                                                        {animal.weightHistory && animal.weightHistory.length > 0 ? (
-                                                            <div className="h-24">
-                                                                <ResponsiveContainer width="100%" height="100%">
-                                                                    <LineChart data={animal.weightHistory}>
-                                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                        <XAxis dataKey="date" hide />
-                                                                        <YAxis domain={['dataMin - 1', 'dataMax + 1']} hide />
-                                                                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                                                        <Line type="monotone" dataKey="weight" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3, fill: '#3B82F6' }} />
-                                                                    </LineChart>
-                                                                </ResponsiveContainer>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="text-sm text-gray-400 italic">No weight history recorded.</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* Medical Records for this sold animal */}
-                                                <div className="bg-white p-3 rounded-lg border border-gray-100 mt-2">
-                                                    <div className="text-xs text-gray-500 uppercase font-semibold mb-2">Medical Treatments</div>
-                                                    {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {(selectedBatch.medical || []).filter(m => (m.animalIds || []).includes(animal.id)).map(mr => (
-                                                                <div key={mr.id} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
-                                                                    <div>
-                                                                        <span className="font-bold text-gray-700">{mr.type}</span>: {mr.name}
-                                                                    </div>
-                                                                    <span className="text-gray-500">{mr.date}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-sm text-gray-400 italic">No medical treatments recorded.</p>
-                                                    )}
-                                                </div>
-
-                                                {/* Action Buttons */}
-                                                <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
-                                                    {canEdit && (
-                                                        <button onClick={() => {
-                                                            const p = prompt("Enter new sold price (₹):", animal.soldPrice);
-                                                            if (p !== null && !isNaN(p)) {
-                                                                const newAnimals = (selectedBatch.animals || []).map(a =>
-                                                                    a.id === animal.id ? { ...a, soldPrice: Number(p) } : a
-                                                                );
-                                                                updateBatch(selectedBatch.id, { animals: newAnimals });
-                                                            }
-                                                        }} className="px-3 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
-                                                            <Edit2 className="w-3 h-3" /> Edit Price
-                                                        </button>
-                                                    )}
-                                                    {isSuperAdmin && (
-                                                        <button onClick={() => {
-                                                            if (window.confirm(`Delete sold record for ${animal.id} completely? This will remove the animal.`)) {
-                                                                const newAnimals = (selectedBatch.animals || []).filter(a => a.id !== animal.id);
-                                                                updateBatch(selectedBatch.id, { animals: newAnimals });
-                                                            }
-                                                        }} className="px-3 py-1.5 text-red-600 bg-red-50 hover:bg-red-100 font-medium rounded-lg text-sm transition-colors flex items-center gap-1">
-                                                            <Trash2 className="w-3 h-3" /> Delete
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="p-12 text-center text-gray-400">
-                                    <Stethoscope className="w-12 h-12 mx-auto mb-3 opacity-20" /> {/* Reused icon for now */}
-                                    <p>No sold animals found in this batch.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    <SoldView
+                        animals={allSoldAnimals.filter(a => a.batchId === selectedBatch.id)}
+                        canUndo={isSuperAdmin}
+                        onUndo={handleUndoSale}
+                        hideBatch
+                    />
                 </div>
             )}
 
             {/* TAB: MEDICAL */}
             {batchTab === 'medical' && (
                 <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h3 className="font-bold text-gray-800">Medical History</h3>
-                            <p className="text-gray-500 text-sm">Track vaccinations and treatments.</p>
+                    <div className="flex flex-wrap gap-3 justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <span className="grid place-items-center w-12 h-12 rounded-2xl bg-white shadow-md text-2xl">💉</span>
+                            <div>
+                                <h3 className="font-semibold text-gray-900 text-xl">Medical history</h3>
+                                <p className="text-gray-500 text-sm">Vaccines, medicines and treatments for this batch.</p>
+                            </div>
                         </div>
-                        <button onClick={() => setIsMedicalModalOpen(true)} className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-xl transition-all font-medium">
-                            <Plus className="w-4 h-4" /> Add Record
+                        <button onClick={() => { setEditingMedicalRecordId(null); setIsMedicalModalOpen(true); }} className="flex items-center gap-2 bg-forest text-white px-4 py-2.5 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]">
+                            <Plus className="w-4 h-4" /> Add record
                         </button>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Left: Table */}
-                        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm ring-1 ring-gray-200 overflow-hidden">
                             <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                                 <h4 className="font-bold text-gray-700">
                                     {selectedAnimalForMedical ? `History: ${selectedAnimalForMedical}` : 'All Records'}
@@ -3831,7 +2403,7 @@ const Livestock = () => {
                         </div>
 
                         {/* Right: Animal List */}
-                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 max-h-[600px] overflow-y-auto">
+                        <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200 max-h-[600px] overflow-y-auto">
                             <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide">Filter by Animal</h4>
                             <div className="space-y-2">
                                 {selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry' ? (
@@ -3858,7 +2430,7 @@ const Livestock = () => {
                                         <button onClick={() => setSelectedAnimalForMedical(null)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${!selectedAnimalForMedical ? 'bg-orange-50 text-orange-700 font-medium ring-2 ring-orange-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
                                             <div className="flex justify-between items-center"><span>All Animals</span><span className="text-sm text-gray-400">View All</span></div>
                                         </button>
-                                        {activeAnimals.map(animal => (
+                                        {herdAnimals.map(animal => (
                                             <button key={animal.id} onClick={() => setSelectedAnimalForMedical(animal.id)} className={`w-full text-left px-4 py-3 rounded-xl transition-all ${selectedAnimalForMedical === animal.id ? 'bg-blue-50 text-blue-700 font-medium ring-2 ring-blue-500/20' : 'hover:bg-gray-50 text-gray-600'}`}>
                                                 <div className="flex justify-between items-center">
                                                     <span>{animal.id}</span>
@@ -3879,7 +2451,7 @@ const Livestock = () => {
 
             {/* --- MODALS --- */}
             {/* Animal Modal */}
-            <Modal isOpen={isAnimalModalOpen} onClose={() => setIsAnimalModalOpen(false)} title={editingAnimalId ? "Edit Animal" : "Add Animals"}>
+            <Modal isOpen={isAnimalModalOpen} onClose={() => setIsAnimalModalOpen(false)} title={editingAnimalId ? `Edit ${editingAnimalId}` : 'Add animals'} subtitle={selectedBatch?.name} emoji={editingAnimalId ? '✏️' : (ANIMAL_EMOJI[selectedBatch?.type] || '🐾')}>
                 <form onSubmit={handleAnimalSubmit} className="space-y-4">
                     {!editingAnimalId && (
                         <div>
@@ -3891,23 +2463,23 @@ const Livestock = () => {
                                 max={(selectedBatch?.type === 'Chicken' || selectedBatch?.type === 'Poultry') ? "10000" : "50"}
                                 value={animalForm.count}
                                 onChange={e => setAnimalForm({ ...animalForm, count: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20"
                             />
                         </div>
                     )}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-                            <select value={animalForm.gender} onChange={e => setAnimalForm({ ...animalForm, gender: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                            <select value={animalForm.gender} onChange={e => setAnimalForm({ ...animalForm, gender: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20">
                                 <option value="Female">Female</option>
                                 <option value="Male">Male</option>
-                                {selectedBatch?.type === 'Chicken' || selectedBatch?.type === 'Poultry' && <option value="Both">Both / Mixed</option>}
+                                {isPoultryType(selectedBatch?.type) && <option value="Both">Both / Mixed</option>}
                             </select>
                         </div>
                         {(selectedBatch?.type !== 'Chicken' && selectedBatch?.type !== 'Poultry') && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                                <select value={animalForm.category} onChange={e => setAnimalForm({ ...animalForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                                <select value={animalForm.category} onChange={e => setAnimalForm({ ...animalForm, category: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20">
                                     <option value="Kid">Kid</option>
                                     <option value="Adult">Adult</option>
                                     <option value="Parent">Parent</option>
@@ -3918,39 +2490,53 @@ const Livestock = () => {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
                             <div className="flex gap-2">
                                 <div className="flex-1">
-                                    <input type="number" min="0" value={animalForm.ageYears} onChange={e => setAnimalForm({ ...animalForm, ageYears: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Yrs" />
+                                    <input type="number" min="0" value={animalForm.ageYears} onChange={e => setAnimalForm({ ...animalForm, ageYears: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Yrs" />
                                 </div>
                                 <div className="flex-1">
-                                    <input type="number" min="0" max="11" value={animalForm.ageMonths} onChange={e => setAnimalForm({ ...animalForm, ageMonths: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Mos" />
+                                    <input type="number" min="0" max="11" value={animalForm.ageMonths} onChange={e => setAnimalForm({ ...animalForm, ageMonths: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Mos" />
                                 </div>
                                 <div className="flex-1">
-                                    <input type="number" min="0" max="31" value={animalForm.ageDays} onChange={e => setAnimalForm({ ...animalForm, ageDays: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Days" />
+                                    <input type="number" min="0" max="31" value={animalForm.ageDays} onChange={e => setAnimalForm({ ...animalForm, ageDays: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Days" />
                                 </div>
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
-                            <input required type="number" step="0.001" value={animalForm.weight} onChange={e => setAnimalForm({ ...animalForm, weight: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="e.g. 0.500" />
+                            <input required type="number" step="0.001" value={animalForm.weight} onChange={e => setAnimalForm({ ...animalForm, weight: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" placeholder="e.g. 0.500" />
                             <p className="text-[10px] text-gray-400 mt-1">Enter kg (e.g. 0.1 = 100g)</p>
                         </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date Acquired / Born</label>
-                        <input type="date" value={animalForm.date} onChange={e => setAnimalForm({ ...animalForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <input type="date" value={animalForm.date} onChange={e => setAnimalForm({ ...animalForm, date: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Cost per Animal</label>
-                        <input required type="number" value={animalForm.cost} onChange={e => setAnimalForm({ ...animalForm, cost: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <input required type="number" value={animalForm.cost} onChange={e => setAnimalForm({ ...animalForm, cost: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                        <select value={animalForm.status} onChange={e => setAnimalForm({ ...animalForm, status: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                        <select value={animalForm.status} onChange={e => setAnimalForm({ ...animalForm, status: e.target.value, deceasedDate: e.target.value === 'Deceased' ? (animalForm.deceasedDate || todayISO()) : animalForm.deceasedDate })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20">
                             <option value="Healthy">Healthy</option>
                             <option value="Sick">Sick</option>
                             <option value="Deceased">Deceased</option>
                             {animalForm.status === 'Sold' && <option value="Sold">Sold</option>}
                         </select>
                     </div>
+                    {animalForm.status === 'Deceased' && (
+                        <div className="grid grid-cols-2 gap-3 rounded-2xl bg-red-50 ring-1 ring-red-100 p-3 animate-in">
+                            <div>
+                                <label className="flex items-center gap-1 text-sm font-bold text-red-900 mb-1"><CalendarDays className="w-4 h-4" /> Date of death</label>
+                                <input required type="date" max={todayISO()} value={animalForm.deceasedDate || ''} onChange={e => setAnimalForm({ ...animalForm, deceasedDate: e.target.value })} className="w-full px-3 py-2 border border-red-200 rounded-lg bg-white" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-red-900 mb-1">Reason</label>
+                                <select value={animalForm.deathReason || 'Unknown'} onChange={e => setAnimalForm({ ...animalForm, deathReason: e.target.value })} className="w-full px-3 py-2 border border-red-200 rounded-lg bg-white">
+                                    {DEATH_REASONS.map(r => <option key={r.id} value={r.id}>{r.emoji} {r.id}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex justify-end gap-3 mt-6">
                         {editingAnimalId && animalForm.status === 'Sold' && isSuperAdmin && (
                             <button
@@ -3991,11 +2577,11 @@ const Livestock = () => {
             </Modal>
 
             {/* Expense Modal */}
-            <Modal isOpen={isExpenseModalOpen} onClose={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} title={editingBatchExpense ? "Edit Batch Expense" : "Add Batch Expense"}>
+            <Modal isOpen={isExpenseModalOpen} onClose={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} title={editingBatchExpense ? 'Edit batch expense' : 'Add batch expense'} subtitle={selectedBatch?.name} emoji="🧾">
                 <form onSubmit={handleExpenseSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Expense Type</label>
-                        <select value={expenseForm.type} onChange={e => setExpenseForm({ ...expenseForm, type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                        <select value={expenseForm.type} onChange={e => setExpenseForm({ ...expenseForm, type: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20">
                             <option value="Feed">Feed</option>
                             <option value="Medicine">Medicine</option>
                             <option value="Labor">Labor</option>
@@ -4005,15 +2591,15 @@ const Livestock = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <input required type="text" value={expenseForm.description} onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="e.g., Veterinary visit" />
+                        <input required type="text" value={expenseForm.description} onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" placeholder="e.g., Veterinary visit" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
-                        <input required type="number" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <input required type="number" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                        <input required type="date" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <input required type="date" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => { setIsExpenseModalOpen(false); setEditingBatchExpense(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
@@ -4025,11 +2611,11 @@ const Livestock = () => {
             </Modal>
 
             {/* Weight Modal */}
-            <Modal isOpen={isWeightModalOpen} onClose={() => { setIsWeightModalOpen(false); setEditingWeightRecord(null); }} title={editingWeightRecord ? "Edit Weight Record" : "Record Weight"}>
+            <Modal isOpen={isWeightModalOpen} onClose={() => { setIsWeightModalOpen(false); setEditingWeightRecord(null); }} title={editingWeightRecord ? 'Edit weight record' : 'Record weight'} subtitle={selectedBatch?.name} emoji="⚖️">
                 <form onSubmit={handleWeightSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Select Animal</label>
-                        <select required value={selectedAnimalForWeight || ''} onChange={e => setSelectedAnimalForWeight(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                        <select required value={selectedAnimalForWeight || ''} onChange={e => setSelectedAnimalForWeight(e.target.value)} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20">
                             <option value="">Select Target...</option>
                             {selectedBatch && (selectedBatch.type === 'Chicken' || selectedBatch.type === 'Poultry') ? (
                                 <>
@@ -4037,17 +2623,17 @@ const Livestock = () => {
                                     <option value="Sick">Sick Bay ({sickAnimals.length} birds)</option>
                                 </>
                             ) : (
-                                activeAnimals.map(a => <option key={a.id} value={a.id}>{a.id} (Curr: {a.weight}kg)</option>)
+                                herdAnimals.map(a => <option key={a.id} value={a.id}>{a.id} (Curr: {a.weight}kg){a.status === 'Sick' ? ' · sick' : ''}</option>)
                             )}
                         </select>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">New Weight (kg)</label>
-                        <input required type="number" step="0.1" value={weightForm.weight} onChange={e => setWeightForm({ ...weightForm, weight: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <input required type="number" step="0.1" value={weightForm.weight} onChange={e => setWeightForm({ ...weightForm, weight: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                        <input required type="date" value={weightForm.date} onChange={e => setWeightForm({ ...weightForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" />
+                        <input required type="date" value={weightForm.date} onChange={e => setWeightForm({ ...weightForm, date: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button type="button" onClick={() => setIsWeightModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
@@ -4058,71 +2644,16 @@ const Livestock = () => {
                 </form>
             </Modal>
 
-            {/* Sell Modal */}
-            <Modal isOpen={isSellModalOpen} onClose={() => setIsSellModalOpen(false)} title="Sell Animals">
-                <form onSubmit={handleSellSubmit} className="space-y-4">
-                    <p className="text-sm text-gray-500 mb-2">Select which animals to sell from this batch.</p>
-
-                    <div className="flex gap-2 mb-4">
-                        <button type="button" onClick={() => handleQuickSelect('Kids')} className="flex-1 py-1.5 text-xs font-semibold bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 border border-blue-200">
-                            Select Kids
-                        </button>
-                        <button type="button" onClick={() => handleQuickSelect('Adults')} className="flex-1 py-1.5 text-xs font-semibold bg-green-50 text-green-600 rounded-lg hover:bg-green-100 border border-green-200">
-                            Select Adults
-                        </button>
-                        <button type="button" onClick={() => handleQuickSelect('Both')} className="flex-1 py-1.5 text-xs font-semibold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border border-gray-300">
-                            Select All
-                        </button>
-                    </div>
-
-                    <div className="max-h-[200px] overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
-                        {activeAnimals.map(a => (
-                            <label key={a.id} className="flex items-center gap-3 p-2 bg-white rounded border border-gray-100 cursor-pointer hover:bg-gray-50">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedAnimalsToSell.includes(a.id)}
-                                    onChange={() => toggleAnimalSelection(a.id)}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                />
-                                <div>
-                                    <span className="font-medium text-gray-800">{a.id}</span>
-                                    <span className="text-gray-500 text-sm ml-2">({a.gender}, {a.weight}kg, {a.age || 'Unknown Age'})</span>
-                                </div>
-                            </label>
-                        ))}
-                    </div>
-
-                    <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <label className="block text-sm font-medium text-gray-700">Total Sale Price</label>
-                            {selectedAnimalsToSell.length > 0 && sellForm.totalPrice && (
-                                <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">
-                                    Avg: ₹ {Math.round(sellForm.totalPrice / selectedAnimalsToSell.length).toLocaleString()} / animal
-                                </span>
-                            )}
-                        </div>
-                        <input required type="number" value={sellForm.totalPrice} onChange={e => setSellForm({ ...sellForm, totalPrice: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20" placeholder="Enter total amount for all selected animals" />
-                    </div>
-
-                    <div className="flex justify-end gap-3 mt-6">
-                        <button type="button" onClick={() => setIsSellModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isSaving || Number(sellForm.totalPrice) === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
-                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</> : `Confirm Sale (${selectedAnimalsToSell.length})`}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
-
             {/* Edit Batch Modal */}
-            <Modal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} title="Edit Batch">
+            <Modal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} title="Edit batch" subtitle={selectedBatch?.name} emoji="🛠️">
                 <form onSubmit={handleBatchSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Batch Name</label>
-                        <input required type="text" value={batchForm.name} onChange={e => setBatchForm({ ...batchForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none" placeholder="e.g., Spring 2024 Goats" />
+                        <input required type="text" value={batchForm.name} onChange={e => setBatchForm({ ...batchForm, name: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-green-500/20 outline-none" placeholder="e.g., Spring 2024 Goats" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Livestock Type</label>
-                        <select value={batchForm.type} onChange={e => setBatchForm({ ...batchForm, type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none">
+                        <select value={batchForm.type} onChange={e => setBatchForm({ ...batchForm, type: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-green-500/20 outline-none">
                             <option value="Goat">Goat</option>
                             <option value="Sheep">Sheep</option>
                             <option value="Poultry">Poultry</option>
@@ -4132,11 +2663,11 @@ const Livestock = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                        <input required type="date" value={batchForm.startDate} onChange={e => setBatchForm({ ...batchForm, startDate: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 outline-none" />
+                        <input required type="date" value={batchForm.startDate} onChange={e => setBatchForm({ ...batchForm, startDate: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-green-500/20 outline-none" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                        <select value={batchForm.status} onChange={e => setBatchForm({ ...batchForm, status: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20">
+                        <select value={batchForm.status} onChange={e => setBatchForm({ ...batchForm, status: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20">
                             <option value="Raising">Raising</option>
                             <option value="Completed">Completed</option>
                             <option value="Archived">Archived</option>
@@ -4178,7 +2709,7 @@ const Livestock = () => {
                 </form>
             </Modal>
             {/* Medical Record Modal */}
-            <Modal isOpen={isMedicalModalOpen} onClose={() => setIsMedicalModalOpen(false)} title="Add Medical Record">
+            <Modal isOpen={isMedicalModalOpen} onClose={() => { setIsMedicalModalOpen(false); setEditingMedicalRecordId(null); }} title={editingMedicalRecordId ? 'Edit medical record' : 'Add medical record'} subtitle={selectedBatch?.name} emoji="💉">
                 <form onSubmit={handleMedicalSubmit} className="space-y-4">
                     <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 mb-4">
                         <label className="block text-sm font-medium text-gray-700 mb-2">Target Animals</label>
@@ -4232,7 +2763,7 @@ const Livestock = () => {
 
                                 {medicalTargetMode === 'Select' && (
                                     <div className="mt-3 bg-white border border-gray-200 rounded-lg max-h-40 overflow-y-auto p-2 space-y-1">
-                                        {activeAnimals.map(animal => (
+                                        {herdAnimals.map(animal => (
                                             <label key={animal.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
                                                 <input
                                                     type="checkbox"
@@ -4248,7 +2779,7 @@ const Livestock = () => {
                             </>
                         )}
                         <p className="text-xs text-orange-600 mt-2 font-medium">
-                            {medicalTargetMode === 'All' ? `${activeAnimals.length} Animals Selected` :
+                            {medicalTargetMode === 'All' ? `${herdAnimals.length} Animals Selected` :
                                 medicalTargetMode === 'ActiveFlock' ? `${activeAnimals.length} Animals Selected` :
                                     medicalTargetMode === 'SickBay' ? `${sickAnimals.length} Animals Selected` :
                                         `${selectedMedicalAnimals.length} Animals Selected`}
@@ -4258,11 +2789,11 @@ const Livestock = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                            <input required type="date" value={medicalForm.date} onChange={e => setMedicalForm({ ...medicalForm, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20" />
+                            <input required type="date" value={medicalForm.date} onChange={e => setMedicalForm({ ...medicalForm, date: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                            <select value={medicalForm.type} onChange={e => setMedicalForm({ ...medicalForm, type: e.target.value, name: '' })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20">
+                            <select value={medicalForm.type} onChange={e => setMedicalForm({ ...medicalForm, type: e.target.value, name: '' })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20">
                                 <option value="Vaccination">Vaccination</option>
                                 <option value="Medicine">Medicine</option>
                                 <option value="Scheduled Medication">Scheduled Medication</option>
@@ -4278,7 +2809,7 @@ const Livestock = () => {
                                 <select
                                     value={medicalForm.name}
                                     onChange={e => setMedicalForm({ ...medicalForm, name: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20"
+                                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20"
                                 >
                                     <option value="">Select Medication...</option>
                                     {(settings?.scheduledMedications || []).map((med, idx) => (
@@ -4312,7 +2843,7 @@ const Livestock = () => {
                             <select
                                 value={medicalForm.name}
                                 onChange={e => setMedicalForm({ ...medicalForm, name: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20 mb-2"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20 mb-2"
                             >
                                 <option value="">Select Name...</option>
                                 {(medicalForm.type === 'Vaccination' ? settings?.vaccineNames : settings?.medicineNames)?.map((opt, idx) => (
@@ -4336,7 +2867,7 @@ const Livestock = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Total Cost (₹)</label>
-                            <input required type="number" min="0" value={medicalForm.cost} onChange={e => setMedicalForm({ ...medicalForm, cost: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20" />
+                            <input required type="number" min="0" value={medicalForm.cost} onChange={e => setMedicalForm({ ...medicalForm, cost: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20" />
                         </div>
                         <div className="flex items-end mb-2">
                             <label className="flex items-center gap-2 cursor-pointer">
@@ -4353,7 +2884,7 @@ const Livestock = () => {
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <textarea rows="2" value={medicalForm.notes} onChange={e => setMedicalForm({ ...medicalForm, notes: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20" placeholder="Doctor name, dosage, etc." />
+                        <textarea rows="2" value={medicalForm.notes} onChange={e => setMedicalForm({ ...medicalForm, notes: e.target.value })} className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20" placeholder="Doctor name, dosage, etc." />
                     </div>
 
                     <div className="flex justify-end gap-3 mt-6">
@@ -4365,56 +2896,6 @@ const Livestock = () => {
                 </form>
             </Modal>
             {/* --- MODALS FOR FLOCK MANAGEMENT --- */}
-
-            {/* Bulk Deceased Modal */}
-            <Modal isOpen={isBulkDeceasedOpen} onClose={() => setIsBulkDeceasedOpen(false)} title="Record Flock Mortality">
-                <form onSubmit={handleBulkDeceased} className="space-y-4">
-                    <div className="bg-red-50 p-3 rounded-lg border border-red-100 text-sm text-red-700">
-                        <strong>Note:</strong> This will mark the next N active animals as Deceased.
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Number of Deaths</label>
-                        <input
-                            required
-                            type="number"
-                            min="1"
-                            value={bulkDeceasedForm.count}
-                            onChange={e => setBulkDeceasedForm({ ...bulkDeceasedForm, count: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500/20"
-                            placeholder="e.g. 5"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-                        <select
-                            value={bulkDeceasedForm.reason}
-                            onChange={e => setBulkDeceasedForm({ ...bulkDeceasedForm, reason: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500/20"
-                        >
-                            <option value="Sickness">Sickness</option>
-                            <option value="Natural Causes">Natural Causes</option>
-                            <option value="Accident">Accident</option>
-                            <option value="Predator">Predator</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <textarea
-                            value={bulkDeceasedForm.notes}
-                            onChange={e => setBulkDeceasedForm({ ...bulkDeceasedForm, notes: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-red-500/20"
-                            placeholder="Details..."
-                        />
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                        <button type="button" onClick={() => setIsBulkDeceasedOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isSaving} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
-                            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Confirming...</> : 'Confirm Deceased'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
 
             {/* Bulk Sale Modal */}
             <Modal isOpen={isBulkSaleOpen} onClose={() => setIsBulkSaleOpen(false)} title="Record Flock Sale">
@@ -4430,7 +2911,7 @@ const Livestock = () => {
                             min="1"
                             value={bulkSaleForm.count}
                             onChange={e => setBulkSaleForm({ ...bulkSaleForm, count: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
                             placeholder="e.g. 20"
                         />
                     </div>
@@ -4443,7 +2924,7 @@ const Livestock = () => {
                                 min="0"
                                 value={bulkSaleForm.pricePerAnimal}
                                 onChange={e => setBulkSaleForm({ ...bulkSaleForm, pricePerAnimal: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
                             />
                         </div>
                         <div>
@@ -4453,7 +2934,7 @@ const Livestock = () => {
                                 type="date"
                                 value={bulkSaleForm.soldDate}
                                 onChange={e => setBulkSaleForm({ ...bulkSaleForm, soldDate: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
                             />
                         </div>
                     </div>
@@ -4478,7 +2959,7 @@ const Livestock = () => {
                         <select
                             value={flockEditForm.status}
                             onChange={e => setFlockEditForm({ ...flockEditForm, status: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20"
                         >
                             <option value="Healthy">Healthy</option>
                             <option value="Sick">Sick</option>
@@ -4494,7 +2975,7 @@ const Livestock = () => {
                                 min="0"
                                 value={flockEditForm.avgWeight}
                                 onChange={e => setFlockEditForm({ ...flockEditForm, avgWeight: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20"
                             />
                         </div>
                         <div>
@@ -4504,7 +2985,7 @@ const Livestock = () => {
                                 min="0"
                                 value={flockEditForm.avgCost}
                                 onChange={e => setFlockEditForm({ ...flockEditForm, avgCost: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20"
                             />
                         </div>
                     </div>
@@ -4516,7 +2997,7 @@ const Livestock = () => {
                                 type="date"
                                 value={flockEditForm.boughtDate}
                                 onChange={e => setFlockEditForm({ ...flockEditForm, boughtDate: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20"
                             />
                         </div>
                     </div>
@@ -4527,7 +3008,7 @@ const Livestock = () => {
                             rows="2"
                             value={flockEditForm.notes}
                             onChange={e => setFlockEditForm({ ...flockEditForm, notes: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-green-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-500/20"
                         />
                     </div>
 
@@ -4558,7 +3039,7 @@ const Livestock = () => {
                             min="1"
                             value={sickTransitionForm.count}
                             onChange={e => setSickTransitionForm({ ...sickTransitionForm, count: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20"
                             placeholder="e.g. 5"
                         />
                         <p className="text-xs text-gray-400 mt-1">Next available {sickTransitionForm.fromStatus} animals will be selected automatically.</p>
@@ -4569,7 +3050,7 @@ const Livestock = () => {
                         <textarea
                             value={sickTransitionForm.notes}
                             onChange={e => setSickTransitionForm({ ...sickTransitionForm, notes: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500/20"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-orange-500/20"
                             placeholder="Reason for sickness, treatment plan, or recovery details..."
                         />
                     </div>

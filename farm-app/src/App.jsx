@@ -1,31 +1,36 @@
-import React from 'react';
+import React, { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
+import { useModules } from './lib/useSections';
 import Layout from './components/layout/Layout';
-import Dashboard from './pages/Dashboard';
-import Livestock from './pages/Livestock';
-import Vegetables from './pages/Agriculture';
-import Fruits from './pages/Fruits';
-import Expenses from './pages/Expenses';
-import Employees from './pages/Employees';
-import Inventory from './pages/Inventory';
-import Settings from './pages/Settings';
-import Invoices from './pages/Invoices';
-import Contacts from './pages/Contacts';
-import FarmContacts from './pages/FarmContacts';
+import FarmLoader from './components/ui/FarmLoader';
 import Login from './pages/Login';
 
+// Pages are split into their own chunks so the first screen loads fast on rural networks
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Livestock = lazy(() => import('./pages/Livestock'));
+const Vegetables = lazy(() => import('./pages/Agriculture'));
+const Fruits = lazy(() => import('./pages/Fruits'));
+const Expenses = lazy(() => import('./pages/Expenses'));
+const Employees = lazy(() => import('./pages/Employees'));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Invoices = lazy(() => import('./pages/Invoices'));
+const ContactsHub = lazy(() => import('./pages/ContactsHub'));
+const ProfitCalculator = lazy(() => import('./pages/ProfitCalculator'));
+
+// Crops / Fruits can be switched off in Settings; their pages then redirect home
+const ModuleRoute = ({ module, children }) => {
+  const modules = useModules();
+  return modules[module] ? children : <Navigate to="/" replace />;
+};
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
-      </div>
-    );
+    return <FarmLoader />;
   }
 
   if (!user) {
@@ -35,7 +40,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-function AppRoutes() {
+function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -49,26 +54,19 @@ function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="livestock" element={<Livestock />} />
-        <Route path="vegetables" element={<Vegetables />} />
-        <Route path="fruits" element={<Fruits />} />
+        <Route path="vegetables" element={<ModuleRoute module="crops"><Vegetables /></ModuleRoute>} />
+        <Route path="fruits" element={<ModuleRoute module="fruits"><Fruits /></ModuleRoute>} />
+        <Route path="calculator" element={<ProfitCalculator />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="employees" element={<Employees />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="invoices" element={<Invoices />} />
-        <Route path="contacts" element={<Contacts />} />
-        <Route path="farm-contacts" element={<FarmContacts />} />
+        <Route path="contacts" element={<ContactsHub />} />
+        <Route path="farm-contacts" element={<Navigate to="/contacts" replace />} />
         <Route path="settings" element={<Settings />} />
-
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
-  );
-}
-
-function App() {
-  return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
   );
 }
 
