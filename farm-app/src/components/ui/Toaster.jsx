@@ -23,7 +23,7 @@ const Toaster = () => {
     return (
         <div
             aria-live="polite"
-            className="fixed z-[300] inset-x-0 top-3 sm:top-auto sm:bottom-6 sm:right-6 sm:left-auto flex flex-col items-center sm:items-end gap-2 px-3 pointer-events-none"
+            className="fixed z-[300] inset-x-0 top-safe-3 sm:top-auto sm:bottom-6 sm:right-6 sm:left-auto flex flex-col items-center sm:items-end gap-2 px-3 pointer-events-none"
         >
             <AnimatePresence initial={false}>
                 {toasts.map(toast => {

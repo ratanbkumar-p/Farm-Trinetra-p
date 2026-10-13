@@ -116,7 +116,7 @@ const QuickJump = () => {
                         onClick={closeQuickJump}
                         className="absolute inset-0 bg-gray-900/45 backdrop-blur-[3px]"
                     />
-                    <div className="absolute inset-0 flex justify-center items-start p-3 sm:pt-[12vh] pointer-events-none">
+                    <div className="absolute inset-0 flex justify-center items-start p-3 pt-safe-3 sm:pt-[12vh] pointer-events-none">
                         <motion.div
                             initial={{ opacity: 0, y: -20, scale: 0.96 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}

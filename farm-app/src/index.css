@@ -187,6 +187,28 @@ main .cursor-pointer.rounded-2xl {
   padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
 }
 
+/* iPhone notch / status bar: installed PWAs draw under it, so anything pinned
+   to the top of the screen is pushed below the safe area */
+.pt-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@media (max-width: 639px) {
+  .top-safe-3 {
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  }
+
+  .pt-safe-3 {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  }
+}
+
+/* Side insets in landscape on notched phones */
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
 .scrollbar-none {
   scrollbar-width: none;
 }
