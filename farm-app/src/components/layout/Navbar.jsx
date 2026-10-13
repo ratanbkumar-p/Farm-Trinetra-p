@@ -60,7 +60,7 @@ const Navbar = () => {
     };
 
     return (
-        <nav className="sticky top-0 z-50 border-b border-gray-200/70 bg-cream/80 backdrop-blur-xl supports-[backdrop-filter]:bg-cream/70">
+        <nav className="sticky top-0 z-50 pt-safe-top border-b border-gray-200/70 bg-cream/95 backdrop-blur-xl lg:bg-cream/80">
             <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-3 px-4 md:px-6 h-16">
 
                 {/* Brand */}

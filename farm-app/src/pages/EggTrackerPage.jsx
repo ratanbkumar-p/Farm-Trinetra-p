@@ -133,7 +133,7 @@ export default function EggTrackerPage({ onClose }) {
     return (
         <div className="fixed inset-0 z-[90] flex flex-col bg-cream">
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+            <div className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0 pt-safe-top">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <button

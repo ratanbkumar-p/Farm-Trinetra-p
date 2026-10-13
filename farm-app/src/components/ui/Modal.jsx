@@ -82,7 +82,7 @@ const Modal = ({ isOpen, onClose, title, subtitle, emoji, size = 'md', children 
                                 if (info.offset.y > 120 || info.velocity.y > 600) onClose?.();
                             }}
                             className={`pointer-events-auto relative w-full ${width} bg-white shadow-xl overflow-hidden flex flex-col
-                                rounded-t-[1.75rem] sm:rounded-3xl max-h-[92dvh] sm:max-h-[88vh] ring-1 ring-black/5`}
+                                rounded-t-[1.75rem] sm:rounded-3xl max-h-[calc(100dvh-env(safe-area-inset-top,0px)-1rem)] sm:max-h-[88vh] ring-1 ring-black/5`}
                         >
                             {/* Decorative header wash */}
                             <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-straw/70 to-transparent" />
