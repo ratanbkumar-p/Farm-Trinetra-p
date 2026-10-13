@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PageHeader from '../components/ui/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { useData } from '../context/DataContext';
@@ -91,15 +92,10 @@ const Settings = () => {
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto pb-10">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-                    <p className="text-gray-500 mt-1">Manage users and app configuration.</p>
-                </div>
-            </div>
+            <PageHeader section="settings" />
 
             {/* Current User Info */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div className="bg-white p-6 rounded-3xl shadow-sm ring-1 ring-gray-200">
                 <h3 className="font-bold text-gray-800 mb-4">Your Account</h3>
                 <div className="flex items-center gap-4">
                     {user?.photoURL ? (
@@ -118,6 +114,41 @@ const Settings = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Farm sections - owner can hide modules the farm doesn't use */}
+            {(currentUserIsSuperAdmin || isSuperAdmin) && (
+                <div className="bg-white p-6 rounded-3xl shadow-sm ring-1 ring-gray-200">
+                    <h3 className="font-semibold text-gray-900 text-lg">Farm sections</h3>
+                    <p className="text-sm text-gray-500 mb-4">Switch off sections you don’t use. They disappear from every menu, search and the home page for everyone. Your data stays safe and comes back when you switch it on.</p>
+                    <div className="space-y-2">
+                        {[
+                            { key: 'crops', emoji: '🥬', label: 'Crops (Agriculture)', hint: 'Vegetable crops, labour, pesticides and harvest sales' },
+                            { key: 'fruits', emoji: '🥭', label: 'Fruits (Orchard)', hint: 'Fruit trees and harvest income' }
+                        ].map(m => {
+                            const on = settings?.modules?.[m.key] !== false;
+                            return (
+                                <button
+                                    key={m.key}
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={on}
+                                    onClick={() => updateSetting('modules', { ...(settings?.modules || {}), [m.key]: !on })}
+                                    className={`w-full flex items-center gap-3 rounded-2xl p-3 text-left ring-1 ${on ? 'ring-green-200 bg-green-50/60' : 'ring-gray-200 bg-gray-50'}`}
+                                >
+                                    <span className={`text-2xl ${on ? '' : 'grayscale opacity-50'}`}>{m.emoji}</span>
+                                    <span className="flex-1 min-w-0">
+                                        <span className="block font-bold text-gray-900">{m.label}</span>
+                                        <span className="block text-xs text-gray-500">{m.hint}</span>
+                                    </span>
+                                    <span className={`relative w-12 h-7 rounded-full transition-colors ${on ? 'bg-green-500' : 'bg-gray-300'}`}>
+                                        <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-6' : 'left-1'}`} />
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* User Management - Super Admin Only */}
             {currentUserIsSuperAdmin && (
@@ -275,7 +306,7 @@ const Settings = () => {
                                 type="text"
                                 id="newVaccine"
                                 placeholder="Add new vaccine..."
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         const val = e.target.value.trim();
@@ -324,7 +355,7 @@ const Settings = () => {
                                 type="text"
                                 id="newMedicine"
                                 placeholder="Add new medicine..."
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 outline-none"
+                                className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-purple-500/20 outline-none"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         const val = e.target.value.trim();
@@ -373,7 +404,7 @@ const Settings = () => {
                                 type="text"
                                 id="newPesticide"
                                 placeholder="Add new pesticide..."
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500/20 outline-none"
+                                className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-yellow-500/20 outline-none"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         const val = e.target.value.trim();
@@ -574,7 +605,7 @@ const Settings = () => {
                 </div>
             )}
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div className="bg-white p-6 rounded-3xl shadow-sm ring-1 ring-gray-200">
                 <h3 className="font-bold text-gray-800 mb-2">About</h3>
                 <div className="text-sm text-gray-500 space-y-1">
                     <p><strong>App:</strong> Trinetra Farms Management</p>
@@ -594,7 +625,7 @@ const Settings = () => {
                             placeholder="user@example.com"
                             value={inviteForm.email}
                             onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 outline-none"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-purple-500/20 outline-none"
                         />
                     </div>
                     <div>
@@ -604,7 +635,7 @@ const Settings = () => {
                             placeholder="John Doe"
                             value={inviteForm.name}
                             onChange={e => setInviteForm({ ...inviteForm, name: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 outline-none"
+                            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-purple-500/20 outline-none"
                         />
                     </div>
                     <div>

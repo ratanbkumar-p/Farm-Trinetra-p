@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
+import PageHeader from '../components/ui/PageHeader';
 import { Plus, UserCheck, Phone, ChevronDown, ChevronUp, Camera, Upload, CreditCard, Wallet, Calendar, DollarSign, Trash2, ShieldCheck, User, Edit2, Loader2 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { compressImage } from '../lib/utils';
+
+const AVATAR_GRADIENTS = ['from-green-400 to-green-700', 'from-amber-400 to-orange-600', 'from-sky-400 to-sky-700', 'from-violet-400 to-violet-700', 'from-rose-400 to-rose-600'];
 
 const Employees = () => {
     const { data, addEmployee, updateEmployee, deleteEmployee, addEmployeePayment, deleteEmployeePayment } = useData();
@@ -173,22 +176,21 @@ const Employees = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Employee Management</h1>
-                    <p className="text-gray-500 mt-1">Staff details and payroll.</p>
-                </div>
-                <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-medium"
-                >
-                    <Plus className="w-5 h-5" />
-                    Add Employee
-                </button>
-            </div>
+            <PageHeader
+                section="employees"
+                actions={
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="flex items-center gap-2 bg-forest hover:bg-green-900 text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Add team member
+                    </button>
+                }
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                     <div className="p-3 bg-blue-50 rounded-xl text-blue-600 font-bold text-lg">
                         {activeStaff}
                     </div>
@@ -197,7 +199,7 @@ const Employees = () => {
                         <h3 className="text-lg font-bold text-gray-800">Currently Working</h3>
                     </div>
                 </div>
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                     <div className="p-3 bg-green-50 rounded-xl text-green-600">
                         <DollarSign className="w-6 h-6" />
                     </div>
@@ -211,7 +213,7 @@ const Employees = () => {
             {/* Employee List - Summary Cards */}
             <div className="space-y-4">
                 {data.employees.map((employee) => (
-                    <div key={employee.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden transition-all">
+                    <div key={employee.id} className="bg-white rounded-3xl ring-1 ring-gray-200 shadow-sm overflow-hidden transition-all">
                         {/* Summary View */}
 
                         <div
@@ -223,8 +225,8 @@ const Employees = () => {
                                     {employee.photo ? (
                                         <img src={employee.photo} alt={employee.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-300 bg-gray-50 uppercase">
-                                            <User className="w-8 h-8 md:w-12 md:h-12" />
+                                        <div className={`w-full h-full flex items-center justify-center text-white font-display text-2xl md:text-4xl font-semibold uppercase bg-gradient-to-br ${AVATAR_GRADIENTS[(employee.name || '').length % AVATAR_GRADIENTS.length]}`}>
+                                            {(employee.name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')}
                                         </div>
                                     )}
                                 </div>
@@ -298,21 +300,21 @@ const Employees = () => {
                                                         {employee.photo ? (
                                                             <img src={employee.photo} alt={employee.name} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300">
-                                                                <User className="w-12 h-12" />
+                                                            <div className={`w-full h-full flex items-center justify-center text-white font-display text-4xl font-semibold uppercase bg-gradient-to-br ${AVATAR_GRADIENTS[(employee.name || '').length % AVATAR_GRADIENTS.length]}`}>
+                                                                {(employee.name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')}
                                                             </div>
                                                         )}
                                                     </div>
                                                 </div>
                                                 <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+                                                    <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm">
                                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Aadhar Card</p>
                                                         <p className="text-gray-800 font-bold text-lg flex items-center gap-2">
                                                             <ShieldCheck className="w-5 h-5 text-blue-500" />
                                                             {employee.aadhar || 'Not Provided'}
                                                         </p>
                                                     </div>
-                                                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+                                                    <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm">
                                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Primary Contact</p>
                                                         <a
                                                             href={`tel:${employee.phone}`}
@@ -322,7 +324,7 @@ const Employees = () => {
                                                             {employee.phone || 'N/A'}
                                                         </a>
                                                     </div>
-                                                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm md:col-span-2">
+                                                    <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm md:col-span-2">
                                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Employed Since</p>
                                                         <p className="text-gray-800 font-bold text-lg flex items-center gap-2">
                                                             <Calendar className="w-5 h-5 text-amber-500" />
@@ -505,7 +507,7 @@ const Employees = () => {
                         <p className="text-[10px] text-gray-400 mt-1 italic">* Salary will be split equally among selected categories.</p>
                     </div>
 
-                    <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
+                    <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
                         {isSaving ? (
                             <>
                                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -671,7 +673,7 @@ const Employees = () => {
                         <p className="text-[10px] text-gray-400 mt-1 italic">* Salary will be split equally among selected categories.</p>
                     </div>
 
-                    <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
+                    <button type="submit" disabled={isSaving} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-md hover:bg-blue-700 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2">
                         {isSaving ? (
                             <>
                                 <Loader2 className="w-6 h-6 animate-spin" />

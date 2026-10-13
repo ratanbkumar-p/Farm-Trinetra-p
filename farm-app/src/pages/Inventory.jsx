@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/ui/Modal';
+import PageHeader from '../components/ui/PageHeader';
 import {
     Package,
     Plus,
@@ -213,60 +214,56 @@ const Inventory = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-                        <Thermometer className="w-8 h-8 text-red-500" />
-                        Veterinary Inventory
-                    </h1>
-                    <p className="text-gray-500 mt-1">Manage medicines, vaccines, and farm supplies.</p>
-                </div>
-                <div className="flex gap-2">
-                    {canManageInventory && data.inventory.length < 5 && (
-                        <button
-                            onClick={loadStarterKit}
-                            disabled={loadingSeed}
-                            className="flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2.5 rounded-xl transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {loadingSeed ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                            {loadingSeed ? 'Loading...' : 'Load Starter Kit'}
-                        </button>
-                    )}
-                    {canManageInventory && (
-                        <button
-                            onClick={openAddModal}
-                            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-bold"
-                        >
-                            <Plus className="w-5 h-5" />
-                            Add Item
-                        </button>
-                    )}
-                </div>
-            </div>
+            <PageHeader
+                section="inventory"
+                actions={
+                    <>
+                        {canManageInventory && data.inventory.length < 5 && (
+                            <button
+                                onClick={loadStarterKit}
+                                disabled={loadingSeed}
+                                className="flex items-center gap-2 bg-white ring-1 ring-gray-200 text-gray-700 hover:ring-gray-300 px-4 py-3 rounded-2xl font-bold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {loadingSeed ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                                {loadingSeed ? 'Loading…' : 'Load starter kit'}
+                            </button>
+                        )}
+                        {canManageInventory && (
+                            <button
+                                onClick={openAddModal}
+                                className="flex items-center gap-2 bg-forest hover:bg-green-900 text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]"
+                            >
+                                <Plus className="w-5 h-5" />
+                                Add item
+                            </button>
+                        )}
+                    </>
+                }
+            />
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-3xl ring-1 ring-gray-200 shadow-sm flex flex-col justify-between">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Stock</p>
                     <div className="flex items-end justify-between mt-2">
                         <span className="text-3xl font-black text-gray-800">{totalItems}</span>
                         <Package className="w-8 h-8 text-gray-100" />
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-3xl ring-1 ring-gray-200 shadow-sm flex flex-col justify-between">
                     <p className="text-xs font-bold text-red-400 uppercase tracking-widest">Low Stock</p>
                     <div className="flex items-end justify-between mt-2">
                         <span className={`text-3xl font-black ${lowStockItems.length > 0 ? 'text-red-600' : 'text-gray-800'}`}>{lowStockItems.length}</span>
                         <AlertTriangle className={`w-8 h-8 ${lowStockItems.length > 0 ? 'text-red-100' : 'text-gray-100'}`} />
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-3xl ring-1 ring-gray-200 shadow-sm flex flex-col justify-between">
                     <p className="text-xs font-bold text-pink-400 uppercase tracking-widest">Vaccines</p>
                     <div className="flex items-end justify-between mt-2">
                         <span className="text-3xl font-black text-gray-800">{(data.inventory || []).filter(i => i.category === 'Vaccine').length}</span>
                         <Syringe className="w-8 h-8 text-pink-100" />
                     </div>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                <div className="bg-white p-4 rounded-3xl ring-1 ring-gray-200 shadow-sm flex flex-col justify-between">
                     <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">Medicines</p>
                     <div className="flex items-end justify-between mt-2">
                         <span className="text-3xl font-black text-gray-800">{(data.inventory || []).filter(i => i.category === 'Medicine').length}</span>
@@ -275,7 +272,7 @@ const Inventory = () => {
                 </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <div className="bg-white p-4 rounded-3xl ring-1 ring-gray-200 shadow-sm space-y-4">
                 <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <input
@@ -311,7 +308,7 @@ const Inventory = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredInventory.map(item => (
-                    <div key={item.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden flex flex-col h-full relative">
+                    <div key={item.id} className="bg-white rounded-3xl ring-1 ring-gray-200 shadow-sm hover:shadow-xl transition-all group overflow-hidden flex flex-col h-full relative">
                         {Number(item.quantity) <= Number(item.lowStockThreshold || 0) && (
                             <div className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl z-10 shadow-sm">
                                 LOW STOCK
@@ -468,7 +465,7 @@ const Inventory = () => {
                                 value={ailmentInput}
                                 onChange={e => setAilmentInput(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAilment())}
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                                className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white text-sm bg-white"
                             />
                             <button type="button" onClick={addAilment} className="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-bold">Add</button>
                         </div>
@@ -515,7 +512,7 @@ const Inventory = () => {
                     <button
                         type="submit"
                         disabled={isSaving}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-md transition-all transform hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                     >
                         {isSaving ? (
                             <>

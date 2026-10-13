@@ -1,4 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import PageHeader from '../components/ui/PageHeader';
+import CropCard from '../components/crops/CropCard';
+import EmptyState from '../components/ui/EmptyState';
 import { Plus, ArrowLeft, Edit2, Trash2, TrendingUp, Wallet, Shovel, Bug, Loader2 } from 'lucide-react';
 import Table from '../components/ui/Table';
 import { motion } from 'framer-motion';
@@ -55,6 +59,12 @@ const Agriculture = () => {
 
     // State
     const [selectedCropId, setSelectedCropId] = useState(null);
+    const location = useLocation();
+
+    // Quick Jump / dashboard links can open a crop directly
+    useEffect(() => {
+        if (location.state?.selectCropId) setSelectedCropId(location.state.selectCropId);
+    }, [location.state]);
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
     const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
@@ -322,26 +332,25 @@ const Agriculture = () => {
         return (
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Agriculture Management</h1>
-                        <p className="text-gray-500 mt-1">Track crops, labor costs, and revenue.</p>
-                    </div>
-                    <button
-                        onClick={() => openCropModal()}
-                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-green-200 transition-all font-medium"
-                    >
-                        <Plus className="w-5 h-5" />
-                        Add Crop
-                    </button>
-                </div>
+                <PageHeader
+                    section="vegetables"
+                    actions={
+                        <button
+                            onClick={() => openCropModal()}
+                            className="flex items-center gap-2 bg-forest hover:bg-green-900 text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#0b2416]"
+                        >
+                            <Plus className="w-5 h-5" />
+                            Add crop
+                        </button>
+                    }
+                />
 
                 {/* Dashboard Stats */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
+                        className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200"
                     >
                         <p className="text-xs text-gray-500 uppercase">Total Expenditure</p>
                         <p className="text-lg font-bold text-red-600">₹ {stats.totalExpenditure.toLocaleString()}</p>
@@ -350,7 +359,7 @@ const Agriculture = () => {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
+                        className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200"
                     >
                         <p className="text-xs text-gray-500 uppercase">Seeds Cost</p>
                         <p className="text-lg font-bold">₹ {stats.totalSeedCost.toLocaleString()}</p>
@@ -359,7 +368,7 @@ const Agriculture = () => {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
+                        className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200"
                     >
                         <p className="text-xs text-gray-500 uppercase">Labor Cost</p>
                         <p className="text-lg font-bold text-orange-600">₹ {stats.totalLaborCost.toLocaleString()}</p>
@@ -368,7 +377,7 @@ const Agriculture = () => {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3 }}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
+                        className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200"
                     >
                         <p className="text-xs text-gray-500 uppercase">Revenue</p>
                         <p className="text-lg font-bold text-green-600">₹ {stats.totalRevenue.toLocaleString()}</p>
@@ -377,7 +386,7 @@ const Agriculture = () => {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.4 }}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
+                        className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200"
                     >
                         <p className="text-xs text-gray-500 uppercase">Profit Margin</p>
                         <p className={`text-lg font-bold ${stats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -387,58 +396,30 @@ const Agriculture = () => {
                 </div>
 
                 {/* Crops Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
                     {data.crops.length > 0 ? (
                         data.crops.map(crop => {
-                            const cropStats = getCropStats(crop);
+                            const st = getCropStats(crop);
                             return (
-                                <motion.div
-                                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                                <CropCard
                                     key={crop.id}
+                                    emoji={getCropEmoji(crop.name)}
+                                    name={crop.name}
+                                    variety={crop.variety}
+                                    status={crop.status}
+                                    statusClass={getStatusColor(crop.status)}
+                                    plantedDate={crop.plantedDate}
+                                    totalCost={st.totalCost}
+                                    revenue={st.revenue}
+                                    profit={st.margin}
+                                    tone="green"
                                     onClick={() => setSelectedCropId(crop.id)}
-                                    className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md h-fit"
-                                >
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xl">{getCropEmoji(crop.name)}</span>
-                                            <div>
-                                                <h3 className="text-base font-bold text-gray-800">{crop.name}</h3>
-                                                <span className="text-xs text-gray-500 block min-h-[1rem]">{crop.variety || '\u00A0'}</span>
-                                            </div>
-                                        </div>
-                                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${getStatusColor(crop.status)}`}>
-                                            {crop.status}
-                                        </span>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs border-t border-gray-100 pt-2">
-                                        <div>
-                                            <p className="text-gray-400 text-xs">Planted</p>
-                                            <p className="font-bold text-gray-700 text-sm">{crop.plantedDate}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-gray-400 text-xs">Seed Cost</p>
-                                            <p className="font-bold text-gray-700 text-sm">₹{cropStats.seedCost.toLocaleString()}</p>
-                                        </div>
-
-                                        <div>
-                                            <p className="text-gray-400 text-xs">Revenue</p>
-                                            <p className="font-medium text-green-600 text-sm">₹{cropStats.revenue.toLocaleString()}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-gray-400 text-xs">Net Margin</p>
-                                            <p className={`font-bold ${cropStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                ₹ {cropStats.margin.toLocaleString()}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </motion.div>
+                                />
                             );
                         })
                     ) : (
-                        <div className="col-span-full text-center py-12 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                            <span className="text-5xl block mx-auto mb-4 opacity-50">🥬</span>
-                            <p>No crops found. Add one to get started!</p>
+                        <div className="col-span-full">
+                            <EmptyState emoji="🥬" title="Nothing planted yet" message="Add a crop when you plant it — then log labour, sprays and harvest sales to see its profit." />
                         </div>
                     )}
                 </div>
@@ -562,27 +543,27 @@ const Agriculture = () => {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200">
                     <p className="text-xs text-gray-500 uppercase">Seed Cost</p>
                     <p className="text-lg font-bold">₹ {cropStats.seedCost.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200">
                     <p className="text-xs text-gray-500 uppercase">Labor Cost</p>
                     <p className="text-lg font-bold text-orange-600">₹ {cropStats.laborCost.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200">
                     <p className="text-xs text-gray-500 uppercase">Pesticide Cost</p>
                     <p className="text-lg font-bold text-yellow-600">₹ {cropStats.pesticideCost.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200">
                     <p className="text-xs text-gray-500 uppercase">Total Cost</p>
                     <p className="text-lg font-bold text-red-600">₹ {cropStats.totalCost.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200">
                     <p className="text-xs text-gray-500 uppercase">Revenue</p>
                     <p className="text-lg font-bold text-green-600">₹ {cropStats.revenue.toLocaleString()}</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-3xl shadow-sm ring-1 ring-gray-200">
                     <p className="text-xs text-gray-500 uppercase">Margin</p>
                     <p className={`text-lg font-bold ${cropStats.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         ₹ {cropStats.margin.toLocaleString()}
@@ -626,7 +607,7 @@ const Agriculture = () => {
                             <Plus className="w-3 h-3" /> Add Sale
                         </button>
                     </div>
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-3xl shadow-sm ring-1 ring-gray-200 overflow-hidden">
                         {(selectedCrop.sales || []).length > 0 ? (
                             (selectedCrop.sales || []).map((sale, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
@@ -682,7 +663,7 @@ const Agriculture = () => {
                             <Plus className="w-3 h-3" /> Add Labor
                         </button>
                     </div>
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-3xl shadow-sm ring-1 ring-gray-200 overflow-hidden">
                         {cropExpenses.filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide' && e.category !== 'Pesticide Purchase').length > 0 ? (
                             cropExpenses.filter(e => e.category !== 'Pesticide Application' && e.paidTo !== 'Pesticide' && e.category !== 'Pesticide Purchase').map((exp, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">
@@ -738,7 +719,7 @@ const Agriculture = () => {
                             <Plus className="w-3 h-3" /> Add Pesticide
                         </button>
                     </div>
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-3xl shadow-sm ring-1 ring-gray-200 overflow-hidden">
                         {(selectedCrop.pesticides || []).length > 0 ? (
                             (selectedCrop.pesticides || []).map((pest, i) => (
                                 <div key={i} className="p-4 border-b border-gray-100 last:border-0 flex justify-between items-center">

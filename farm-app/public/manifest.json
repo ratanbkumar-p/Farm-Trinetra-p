@@ -1,18 +1,19 @@
 {
     "name": "Trinetra Farms",
     "short_name": "Trinetra",
-    "start_url": ".",
+    "start_url": "/",
+    "scope": "/",
     "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#2E7D32",
-    "description": "Farm Management Application",
+    "background_color": "#fbf7ee",
+    "theme_color": "#1f6b3a",
+    "description": "Livestock, crops, money and people — the whole farm in one app.",
     "orientation": "portrait",
     "icons": [
         {
-            "src": "/vite.svg",
-            "sizes": "any",
-            "type": "image/svg+xml",
-            "purpose": "any maskable"
+            "src": "/logo.png",
+            "sizes": "1024x1024",
+            "type": "image/jpeg",
+            "purpose": "any"
         }
     ]
 }

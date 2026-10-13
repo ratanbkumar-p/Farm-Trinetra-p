@@ -1,9 +1,16 @@
-import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, AlertTriangle, ChevronDown, ChevronUp, Sprout, DollarSign, Bell, Clock, Users, TrendingUp, Plus } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, ChevronRight, AlertTriangle, Clock, CalendarX, PackageX, Stethoscope, CheckCircle2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useSettings } from '../context/SettingsContext';
-import { getMonthsBetween, calculateMonthlyAllocations } from '../lib/allocationUtils';
+import { useAuth } from '../context/AuthContext';
+import { useUI } from '../context/UIContext';
+import { useModules } from '../lib/useSections';
+import { ANIMAL_EMOJI } from '../lib/navigation';
+import { batchOwnCosts } from '../lib/costing';
+import AnimatedNumber from '../components/ui/AnimatedNumber';
+import { formatDate, relativeDay, reasonEmoji, rupees } from '../components/livestock/livestockUtils';
 import EggTrackerPage from './EggTrackerPage';
 
 // --- Emoji Mappings ---
@@ -75,650 +82,478 @@ const renderCropEmoji = (name, type, sizeClass = 'text-2xl') => {
     return <span className={sizeClass}>{emojiStr}</span>;
 };
 
-// --- Helper Components ---
+// --- Small building blocks ---
 
-// 1. Operational Expenses Card
-const OpExpensesCard = ({ expenses }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const today = new Date();
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    const currentAmount = expenses[currentMonthKey] || 0;
-    const history = Object.entries(expenses).filter(([key]) => key !== currentMonthKey).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 4);
+const Card = ({ children, className = '' }) => (
+    <section className={`rounded-3xl bg-white ring-1 ring-gray-200 shadow-sm ${className}`}>{children}</section>
+);
 
+const CardHeader = ({ title, action, onAction }) => (
+    <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
+        <h2 className="font-semibold text-gray-900 text-lg">{title}</h2>
+        {action && (
+            <button onClick={onAction} className="flex items-center gap-0.5 text-sm font-bold text-forest">
+                {action} <ChevronRight className="w-4 h-4" />
+            </button>
+        )}
+    </div>
+);
+
+const Row = ({ emoji, title, subtitle, right, rightTone = 'text-gray-900', onClick }) => (
+    <button onClick={onClick} disabled={!onClick} className="w-full flex items-center gap-3 px-4 sm:px-5 py-3 text-left hover:bg-gray-50 disabled:hover:bg-transparent disabled:cursor-default">
+        <span className="grid place-items-center w-10 h-10 rounded-2xl bg-straw text-xl shrink-0">{emoji}</span>
+        <span className="min-w-0 flex-1">
+            <span className="block font-bold text-gray-900 truncate">{title}</span>
+            {subtitle && <span className="block text-xs text-gray-500 truncate">{subtitle}</span>}
+        </span>
+        {right !== undefined && <span className={`text-right font-bold whitespace-nowrap ${rightTone}`}>{right}</span>}
+        {onClick && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
+    </button>
+);
+
+const HERD_NAMES = { Goat: 'Goats', Sheep: 'Sheep', Cow: 'Cows', Poultry: 'Poultry' };
+const HERD_TONES = {
+    Goat: 'from-amber-50 ring-amber-200',
+    Sheep: 'from-violet-50 ring-violet-200',
+    Poultry: 'from-green-50 ring-green-200',
+    Cow: 'from-sky-50 ring-sky-200'
+};
+
+/** One animal type at a glance: headcount, health split, this month's sales/losses and money */
+const HerdCard = ({ herd, eggs, onOpen }) => {
+    const healthy = herd.alive - herd.sick;
+    const mortality = herd.total ? (herd.lost / herd.total) * 100 : 0;
+    const segments = [
+        { n: healthy, cls: 'bg-green-500', label: 'healthy' },
+        { n: herd.sick, cls: 'bg-orange-400', label: 'sick' },
+        { n: herd.sold, cls: 'bg-sky-400', label: 'sold' },
+        { n: herd.lost, cls: 'bg-red-400', label: 'lost' }
+    ];
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col hover:shadow-md">
-            <div className="p-5 flex-1">
-                <div className="flex justify-between items-start mb-3">
-                    <div>
-                        <p className="text-sm font-semibold text-gray-600">Op. Expenses</p>
-                        <p className="text-xs text-gray-400">This Month</p>
-                    </div>
-                    <div className="p-2 bg-red-100 text-red-600 rounded-lg">
-                        <Activity className="w-5 h-5" />
-                    </div>
+        <motion.button
+            type="button"
+            whileHover={{ y: -3 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onOpen}
+            className={`group h-full flex flex-col justify-between gap-3 text-left rounded-3xl bg-gradient-to-br ${HERD_TONES[herd.type] || 'from-gray-50 ring-gray-200'} to-white ring-1 shadow-sm hover:shadow-lg p-4`}
+        >
+            <div className="flex items-center gap-3">
+                <span className="grid place-items-center w-12 h-12 rounded-2xl bg-white shadow-sm text-3xl group-hover:animate-wiggle">{ANIMAL_EMOJI[herd.type] || '🐾'}</span>
+                <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-gray-900 text-lg leading-tight">{HERD_NAMES[herd.type] || herd.type}</h3>
+                    <p className="text-xs text-gray-500 truncate">{herd.batches.length === 1 ? herd.batches[0] : `${herd.batches.length} batches`}</p>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900">₹{Math.round(currentAmount).toLocaleString('en-IN')}</h3>
+                <div className="text-right">
+                    <p className="font-display text-3xl font-semibold text-forest leading-none"><AnimatedNumber value={herd.alive} /></p>
+                    <p className="text-[10px] font-bold uppercase text-gray-400">alive</p>
+                </div>
             </div>
-            <div className="border-t border-gray-100">
-                <button onClick={() => setIsOpen(!isOpen)} className="w-full px-5 py-3 flex items-center justify-between text-xs font-medium text-gray-500 hover:bg-gray-50">
-                    <span>Past 4 Months</span>
-                    {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
-                <AnimatePresence>
-                    {isOpen && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                            <div className="px-5 pb-4 space-y-2">
-                                {history.length > 0 ? history.map(([month, amount]) => {
-                                    const [y, m] = month.split('-');
-                                    const date = new Date(parseInt(y), parseInt(m) - 1);
-                                    return (
-                                        <div key={month} className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-500">{date.toLocaleString('default', { month: 'short', year: '2-digit' })}</span>
-                                            <span className="font-semibold text-gray-700">₹{Math.round(amount).toLocaleString('en-IN')}</span>
-                                        </div>
-                                    );
-                                }) : <p className="text-sm text-gray-400 text-center py-2">No history</p>}
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+
+            <div>
+                <div className="flex h-2.5 rounded-full overflow-hidden bg-white ring-1 ring-black/5" title={segments.map(sg => `${sg.n} ${sg.label}`).join(' · ')}>
+                    {segments.map(sg => sg.n > 0 && (
+                        <motion.span key={sg.label} className={sg.cls} initial={{ width: 0 }} animate={{ width: `${(sg.n / (herd.total || 1)) * 100}%` }} transition={{ type: 'spring', stiffness: 90, damping: 18, delay: 0.1 }} />
+                    ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold">
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-green-700">🌿 {healthy} healthy</span>
+                    {herd.sick > 0 && <span className="rounded-full bg-white/80 px-2 py-0.5 text-orange-700">🤒 {herd.sick} sick</span>}
+                    <span className={`rounded-full bg-white/80 px-2 py-0.5 ${mortality >= 7 ? 'text-red-600' : 'text-gray-600'}`}>🕊️ {mortality.toFixed(1)}% lost</span>
+                    {eggs !== undefined && <span className="rounded-full bg-white/80 px-2 py-0.5 text-amber-700">🥚 {eggs} eggs</span>}
+                </div>
             </div>
-        </div>
+
+            <div className="grid grid-cols-3 gap-1.5 no-entrance">
+                <div className="rounded-2xl bg-white/80 px-2.5 py-2">
+                    <p className="text-[9px] font-bold uppercase text-gray-400">Invested</p>
+                    <p className="text-sm font-bold text-gray-900">{rupees(herd.invested)}</p>
+                </div>
+                <div className="rounded-2xl bg-white/80 px-2.5 py-2">
+                    <p className="text-[9px] font-bold uppercase text-gray-400">Sold · month</p>
+                    <p className="text-sm font-bold text-green-700">{herd.soldThisMonth ? rupees(herd.salesThisMonth) : '—'}</p>
+                </div>
+                <div className="rounded-2xl bg-white/80 px-2.5 py-2">
+                    <p className="text-[9px] font-bold uppercase text-gray-400">Lost · month</p>
+                    <p className={`text-sm font-bold ${herd.lostThisMonth ? 'text-red-600' : 'text-gray-900'}`}>{herd.lostThisMonth}</p>
+                </div>
+            </div>
+            <p className="text-[11px] text-gray-500 truncate">
+                {herd.lastSale ? `Last sale ${relativeDay(herd.lastSale).toLowerCase()}` : 'No sales yet'}
+                {herd.lastDeath ? ` · last loss ${relativeDay(herd.lastDeath).toLowerCase()}` : ''}
+            </p>
+        </motion.button>
     );
 };
 
-// 2. Livestock Card
-const LivestockCard = ({ type, stats }) => {
-    const emoji = type === 'Goat' ? '🐐' : type === 'Sheep' ? '🐑' : type === 'Chicken' ? '🐔' : '🐾';
+// "Needs attention" is always the same checklist: each line is either a problem to tap or a green tick
+const CHECKS = [
+    { group: 'meds', ok: 'Vaccines & medicines on schedule' },
+    { group: 'sick', ok: 'No animals in the sick bay' },
+    { group: 'dates', ok: 'Every death has a date' },
+    { group: 'stock', ok: 'Medicine stock is fine' }
+];
 
-    return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md">
-            <div className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <span className="text-3xl">{emoji}</span>
-                        <div>
-                            <h4 className="font-bold text-gray-900">All {type === 'Chicken' ? 'Poultry' : `${type}s`}</h4>
-                            <p className="text-xs text-gray-500">{stats.activeCount} Active</p>
-                        </div>
-                    </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded ${stats.deceasedCount > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
-                        {stats.deceasedCount} Dead ({stats.mortalityRate}%)
-                    </span>
-                </div>
-
-                <div className="space-y-3">
-                    <div className="flex items-baseline justify-between">
-                        <span className="text-sm text-gray-500">Total Investment</span>
-                        <span className="text-xl font-bold text-gray-900">₹{Math.round(stats.totalInvestment).toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex gap-3">
-                        <div className="flex-1 bg-gray-50 rounded-lg p-3 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">Bought</p>
-                            <p className="text-sm font-bold text-gray-700">₹{Math.round(stats.boughtCost).toLocaleString('en-IN')}</p>
-                        </div>
-                        <div className="flex-1 bg-gray-50 rounded-lg p-3 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">Expenses</p>
-                            <p className="text-sm font-bold text-red-600">₹{Math.round(stats.totalExpenses).toLocaleString('en-IN')}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+const monthKeyNow = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-// 2.5 Egg Tracker Card (Summary only - click opens full tracker page)
-const EggTrackerCard = ({ eggLogs = [], onOpen }) => {
-    const totalCollected = eggLogs.filter(l => l.type === 'Collected').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
-    const totalHatched = eggLogs.filter(l => l.type === 'Hatched').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
-    const totalSpoiled = eggLogs.filter(l => l.type === 'Spoiled').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
-    const totalSold = eggLogs.filter(l => l.type === 'Sold').reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
-    const totalRevenue = eggLogs.filter(l => l.type === 'Sold').reduce((sum, l) => sum + (Number(l.revenue) || 0), 0);
-    const inStock = Math.max(0, totalCollected - totalHatched - totalSpoiled - totalSold);
-
-    return (
-        <div className="bg-white rounded-2xl shadow-sm border border-yellow-200 overflow-hidden hover:shadow-md cursor-pointer transition-all h-full flex flex-col" onClick={onOpen}>
-            <div className="p-5 flex-1 bg-gradient-to-br from-yellow-50 to-white">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <span className="text-2xl">🥚</span>
-                        <div>
-                            <h4 className="font-bold text-yellow-900 text-sm leading-tight">Egg Tracker</h4>
-                            <p className="text-[10px] text-yellow-600">Tap to manage</p>
-                        </div>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-yellow-100 text-yellow-700">
-                        {inStock} in stock
-                    </span>
-                </div>
-
-                <div className="border-b border-yellow-100 pb-2 mb-2">
-                    <div className="text-[10px] text-gray-500 uppercase font-bold">Revenue (All Profit)</div>
-                    <div className="text-lg font-bold text-green-600">₹{totalRevenue.toLocaleString('en-IN')}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1.5">
-                    <div className="bg-white rounded-lg p-2 text-center border border-yellow-100">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Collected</p>
-                        <p className="text-sm font-bold text-yellow-700">{totalCollected}</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-2 text-center border border-blue-100">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Hatched</p>
-                        <p className="text-sm font-bold text-blue-600">{totalHatched}</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-2 text-center border border-green-100">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Sold</p>
-                        <p className="text-sm font-bold text-green-600">{totalSold}</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-2 text-center border border-red-100">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold">Spoiled</p>
-                        <p className="text-sm font-bold text-red-500">{totalSpoiled}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// 3. Active Crop Card
-const ActiveCropCard = ({ type, item, stats }) => {
-    const emoji = renderCropEmoji(item.name, type, 'text-2xl');
-    const profit = stats.profit;
-
-    return (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md">
-            <div className="p-4">
-                <div className="flex items-center gap-3 mb-4">
-                    <span style={{ fontSize: '1.5rem', display: 'inline-flex', alignItems: 'center' }}>{emoji}</span>
-                    <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-gray-900 truncate">{item.name}</h4>
-                        <p className="text-xs text-gray-400">{item.plantedDate || 'No date'}</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold mb-0.5">Cost</p>
-                        <p className="text-xs font-bold text-gray-700">₹{parseInt(stats.totalCost).toLocaleString('en-IN')}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold mb-0.5">Sales</p>
-                        <p className="text-xs font-bold text-green-600">₹{parseInt(stats.revenue).toLocaleString('en-IN')}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <p className="text-[9px] text-gray-400 uppercase font-semibold mb-0.5">P/L</p>
-                        <p className={`text-xs font-bold ${profit >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                            {profit >= 0 ? '+' : ''}₹{parseInt(profit).toLocaleString('en-IN')}
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// 4. Alert Card
-const AlertCard = ({ alert }) => {
-    const isCritical = alert.severity === 'critical';
-    return (
-        <div className={`flex items-center gap-3 p-4 rounded-xl border ${isCritical ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-            <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${isCritical ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
-                {isCritical ? <AlertTriangle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-            </div>
-            <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center">
-                    <h4 className="font-semibold text-gray-900 text-sm truncate">{alert.type}</h4>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${isCritical ? 'bg-red-200 text-red-700' : 'bg-amber-200 text-amber-700'}`}>
-                        {alert.daysRemaining < 0 ? `${Math.abs(alert.daysRemaining)}d Late` : `${alert.daysRemaining}d`}
-                    </span>
-                </div>
-                <p className="text-xs text-gray-500 truncate">{alert.batchName}</p>
-            </div>
-        </div>
-    );
-};
-
-// --- Main Dashboard ---
+// --- Home ---
 
 const Dashboard = () => {
     const { data } = useData();
     const { settings } = useSettings();
-    const [soldFilter, setSoldFilter] = useState('Month');
-
-    // Egg Tracker Page State
+    const { user } = useAuth();
+    const { openSell } = useUI();
+    const modules = useModules();
+    const navigate = useNavigate();
     const [isEggTrackerOpen, setIsEggTrackerOpen] = useState(false);
 
+    const monthKey = monthKeyNow();
+    const inMonth = (iso) => (iso || '').slice(0, 7) === monthKey;
 
-
-    // --- Unified Expenses (excludes yearly and salaries - those are calculated separately) ---
-    const unifiedExpenses = useMemo(() => {
-        const all = [...(data.expenses || [])];
+    // --- This month's money: every rupee spent, no matter where it is booked ---
+    const month = useMemo(() => {
         const globalIds = new Set((data.expenses || []).map(e => e.id));
-
-        (data.batches || []).forEach(batch => {
-            (batch.expenses || []).forEach(localExp => {
-                if (!globalIds.has(localExp.id)) {
-                    all.push({
-                        ...localExp,
-                        batchId: batch.id,
-                        amount: Number(localExp.amount) || Number(localExp.cost) || 0,
-                        date: localExp.date || batch.date || batch.startDate
-                    });
-                }
-            });
+        let linked = 0;
+        let general = 0;
+        (data.expenses || []).forEach(e => {
+            if (!inMonth(e.date)) return;
+            const amt = Number(e.amount) || 0;
+            if (e.batchId || e.cropId || e.fruitId) linked += amt; else general += amt;
         });
-        return all;
-    }, [data.expenses, data.batches]);
+        // Older batch expenses that only live inside the batch document
+        (data.batches || []).forEach(b => (b.expenses || []).forEach(e => {
+            if (!globalIds.has(e.id) && inMonth(e.date)) linked += Number(e.amount) || Number(e.cost) || 0;
+        }));
 
-    // --- Monthly Expenses ---
-    const monthlyExpenses = useMemo(() => {
-        const history = {};
-        unifiedExpenses.forEach(e => {
-            if (!e.date) return;
-            const monthKey = e.date.substring(0, 7);
-            history[monthKey] = (history[monthKey] || 0) + (Number(e.amount) || 0);
-        });
-        return history;
-    }, [unifiedExpenses]);
+        const [y, m] = monthKey.split('-').map(Number);
+        const monthEnd = new Date(y, m, 0, 23, 59, 59);
+        const salaries = (data.employees || [])
+            .filter(e => e.status === 'Active' && new Date(e.employedSince || e.createdAt || 0) <= monthEnd)
+            .reduce((s, e) => s + (Number(e.salary) || 0), 0);
+        const yearly = (data.yearlyExpenses || [])
+            .filter(e => !e.startDate || new Date(e.startDate) <= monthEnd)
+            .reduce((s, e) => s + (Number(e.monthlyAmount) || (Number(e.amount) || 0) / 12), 0);
 
-    // --- Livestock Stats ---
-    const getAggregatedLivestock = (types) => {
-        // Accept single type or array of types (for Chicken/Poultry)
-        const typeArray = Array.isArray(types) ? types : [types];
-        const batches = (data.batches || []).filter(b => typeArray.includes(b.type) && b.status !== 'Completed' && b.status !== 'Archived');
-        let activeCount = 0, deceasedCount = 0, boughtCost = 0, directExpenses = 0, allocatedExpenses = 0, totalStartCount = 0;
+        let sales = 0;
+        (data.batches || []).forEach(b => (b.animals || []).forEach(a => {
+            if (a.status === 'Sold' && inMonth(a.soldDate)) sales += Number(a.soldPrice) || 0;
+        }));
+        if (modules.crops) (data.crops || []).forEach(c => (c.sales || []).forEach(s => { if (inMonth(s.date)) sales += Number(s.amount) || 0; }));
+        if (modules.fruits) (data.fruits || []).forEach(f => (f.sales || []).forEach(s => { if (inMonth(s.date)) sales += Number(s.amount) || 0; }));
+        (data.eggLogs || []).forEach(l => { if (l.type === 'Sold' && inMonth(l.date)) sales += Number(l.revenue) || 0; });
 
-        batches.forEach(batch => {
-            const animals = batch.animals || [];
-            const activeAnimals = animals.filter(a => a.status !== 'Sold' && a.status !== 'Deceased');
-            activeCount += activeAnimals.length;
-            deceasedCount += animals.filter(a => a.status === 'Deceased').length;
-            totalStartCount += animals.length;
-            activeAnimals.forEach(a => { boughtCost += (Number(a.purchasePrice) || Number(a.purchaseCost) || Number(a.cost) || 0); });
-            unifiedExpenses.filter(e => e.batchId === batch.id).forEach(e => { directExpenses += (Number(e.amount) || 0); });
-        });
+        const total = linked + general + salaries + yearly;
+        const topSpends = (data.expenses || [])
+            .filter(e => inMonth(e.date))
+            .sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0))
+            .slice(0, 3);
+        return { linked, general, salaries, yearly, total, sales, topSpends };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data, monthKey, modules.crops, modules.fruits]);
 
-        if (batches.length > 0) {
-            const dates = batches.map(b => new Date(b.startDate || b.date).getTime()).filter(t => !isNaN(t));
-            if (dates.length > 0) {
-                const earliest = new Date(Math.min(...dates));
-                getMonthsBetween(earliest.toISOString().slice(0, 10)).forEach(monthKey => {
-                    calculateMonthlyAllocations(data, monthKey, 'fullMonth').forEach(alloc => {
-                        if (batches.find(b => b.id === alloc.batchId)) allocatedExpenses += (Number(alloc.amount) || 0);
-                    });
-                });
-            }
-        }
-
-        const totalExpenses = directExpenses + allocatedExpenses;
-        const mortalityRate = totalStartCount > 0 ? ((deceasedCount / totalStartCount) * 100).toFixed(1) : 0;
-        return { activeCount, deceasedCount, mortalityRate, boughtCost, totalExpenses, totalInvestment: boughtCost + totalExpenses };
-    };
-
-    const goatStats = useMemo(() => getAggregatedLivestock('Goat'), [data, unifiedExpenses]);
-    const sheepStats = useMemo(() => getAggregatedLivestock('Sheep'), [data, unifiedExpenses]);
-    const chickenStats = useMemo(() => getAggregatedLivestock(['Chicken', 'Poultry']), [data, unifiedExpenses]);
-
-    // --- Active Agriculture ---
-    const activeAgriculture = useMemo(() => {
-        const items = [
-            ...(data.crops || []).filter(c => c.status === 'Growing').map(c => ({ id: c.id, name: c.name, plantedDate: c.plantedDate || c.date, seedCost: Number(c.seedCost) || 0, type: 'Vegetables', obj: c })),
-            ...(data.fruits || []).filter(f => f.status === 'Growing').map(f => ({ id: f.id, name: f.name, plantedDate: f.plantedDate || f.date, seedCost: Number(f.seedCost) || 0, type: 'Fruits', obj: f })),
-        ];
-
-        return items.map(item => {
-            let directExpenses = 0;
-            let allocatedExpenses = 0;
-
-            // 1. Direct Expenses
-            directExpenses = unifiedExpenses
-                .filter(e => (item.type === 'Vegetables' ? e.cropId === item.id : e.fruitId === item.id))
-                .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-            // 2. Allocated Expenses (Salaries)
-            const startDateStr = item.plantedDate;
-            if (startDateStr) {
-                const months = getMonthsBetween(startDateStr.substring(0, 10)); // YYYY-MM
-                months.forEach(monthKey => {
-                    const allocs = calculateMonthlyAllocations(data, monthKey, 'fullMonth');
-                    const myAlloc = allocs.find(a =>
-                        (item.type === 'Vegetables' ? a.targetType === 'Crop' : a.targetType === 'Fruit') &&
-                        a.targetId === item.id
-                    );
-                    if (myAlloc) {
-                        allocatedExpenses += (Number(myAlloc.amount) || 0);
-                    }
-                });
-            }
-
-            const revenue = (item.obj.sales || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-            const totalCost = item.seedCost + directExpenses + allocatedExpenses;
-
-            return {
-                item,
-                stats: {
-                    totalCost,
-                    revenue,
-                    profit: revenue - totalCost,
-                    directExpenses,
-                    allocatedExpenses
-                }
-            };
-        });
-    }, [data.crops, data.fruits, unifiedExpenses, data.employees, data.yearlyExpenses]);
-
-    // --- Date Filter ---
-    const isInFilter = (dateStr, filter) => {
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        const now = new Date();
-
-        if (filter === 'Month') {
-            return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-        }
-        if (filter === 'Quarter') {
-            const threeMonthsAgo = new Date(now);
-            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-            return d >= threeMonthsAgo && d <= now;
-        }
-        if (filter === 'Half Year') {
-            const sixMonthsAgo = new Date(now);
-            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-            return d >= sixMonthsAgo && d <= now;
-        }
-        if (filter === 'Year') {
-            const twelveMonthsAgo = new Date(now);
-            twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-            return d >= twelveMonthsAgo && d <= now;
-        }
-        if (filter === 'YTD') {
-            const jan1 = new Date(now.getFullYear(), 0, 1);
-            return d >= jan1 && d <= now;
-        }
-        return false;
-    };
-
-    // --- Sold Stats ---
-    const soldStats = useMemo(() => {
-        let soldCount = 0, investment = 0, revenue = 0;
-
-        (data.batches || []).forEach(b => {
+    // --- Animals by type ---
+    const herds = useMemo(() => {
+        const map = new Map();
+        (data.batches || []).filter(b => b.status !== 'Completed' && b.status !== 'Archived').forEach(b => {
+            const type = b.type === 'Chicken' ? 'Poultry' : b.type;
+            if (!map.has(type)) map.set(type, { type, batches: [], alive: 0, sick: 0, total: 0, sold: 0, lost: 0, lostThisMonth: 0, soldThisMonth: 0, salesThisMonth: 0, invested: 0, lastSale: '', lastDeath: '' });
+            const h = map.get(type);
+            h.batches.push(b.name);
+            h.invested += batchOwnCosts(b).totalInvested;
             (b.animals || []).forEach(a => {
-                if (a.status === 'Sold' && isInFilter(a.soldDate, soldFilter)) {
-                    soldCount++;
-                    investment += (Number(a.purchasePrice) || Number(a.purchaseCost) || 0);
-                    revenue += (Number(a.soldPrice) || 0);
+                h.total += 1;
+                if (a.status === 'Deceased') {
+                    h.lost += 1;
+                    if (inMonth(a.deceasedDate)) h.lostThisMonth += 1;
+                    if ((a.deceasedDate || '') > h.lastDeath) h.lastDeath = a.deceasedDate;
+                    return;
                 }
+                if (a.status === 'Sold') {
+                    h.sold += 1;
+                    if (inMonth(a.soldDate)) { h.soldThisMonth += 1; h.salesThisMonth += Number(a.soldPrice) || 0; }
+                    if ((a.soldDate || '') > h.lastSale) h.lastSale = a.soldDate;
+                    return;
+                }
+                h.alive += 1;
+                if (a.status === 'Sick') h.sick += 1;
             });
         });
+        const order = ['Sheep', 'Goat', 'Poultry', 'Cow'];
+        const rank = (t) => (order.indexOf(t) === -1 ? order.length : order.indexOf(t));
+        return Array.from(map.values()).sort((a, b) => rank(a.type) - rank(b.type));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data.batches, monthKey]);
 
-        (data.crops || []).forEach(c => { (c.sales || []).forEach(s => { if (isInFilter(s.date, soldFilter)) revenue += (Number(s.amount) || 0); }); });
-        (data.fruits || []).forEach(f => { (f.sales || []).forEach(s => { if (isInFilter(s.date, soldFilter)) revenue += (Number(s.amount) || 0); }); });
+    const eggsInStock = useMemo(() => {
+        const sum = (t) => (data.eggLogs || []).filter(l => l.type === t).reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+        return Math.max(0, sum('Collected') - sum('Hatched') - sum('Spoiled') - sum('Sold'));
+    }, [data.eggLogs]);
 
-        return { soldCount, investment, revenue, profit: revenue - investment };
-    }, [data, soldFilter]);
-
-    // --- Farm OpEx (DATE-AWARE - respects start dates) ---
-    const farmExpenses = useMemo(() => {
-        const now = new Date();
-
-        // Calculate period start date based on filter
-        let periodStart = new Date(now);
-        let periodMonths = 1;
-
-        if (soldFilter === 'Month') {
-            periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-            periodMonths = 1;
-        } else if (soldFilter === 'Quarter') {
-            periodStart.setMonth(periodStart.getMonth() - 3);
-            periodMonths = 3;
-        } else if (soldFilter === 'Half Year') {
-            periodStart.setMonth(periodStart.getMonth() - 6);
-            periodMonths = 6;
-        } else if (soldFilter === 'Year') {
-            periodStart.setMonth(periodStart.getMonth() - 12);
-            periodMonths = 12;
-        } else if (soldFilter === 'YTD') {
-            periodStart = new Date(now.getFullYear(), 0, 1);
-            periodMonths = now.getMonth() + 1;
-        }
-
-        // 1. Direct expenses within period
-        let directExpenses = 0;
-        unifiedExpenses.forEach(e => {
-            if (isInFilter(e.date, soldFilter)) {
-                directExpenses += (Number(e.amount) || 0);
-            }
-        });
-
-        // 2. Salaries - only count months employee was active during period
-        let salaryTotal = 0;
-        (data.employees || []).filter(e => e.status === 'Active').forEach(emp => {
-            const salary = Number(emp.salary) || 0;
-            if (salary === 0) return;
-
-            const empStart = new Date(emp.employedSince || emp.createdAt || now);
-
-            // Count full months between empStart and now, within the period
-            let monthsWorked = 0;
-            for (let m = 0; m < periodMonths; m++) {
-                const checkMonth = new Date(now);
-                checkMonth.setMonth(checkMonth.getMonth() - m);
-                const monthStart = new Date(checkMonth.getFullYear(), checkMonth.getMonth(), 1);
-
-                // Employee was working in this month if they started before end of month
-                if (empStart <= new Date(checkMonth.getFullYear(), checkMonth.getMonth() + 1, 0)) {
-                    // And this month is within our period
-                    if (monthStart >= periodStart) {
-                        monthsWorked++;
-                    }
-                }
-            }
-
-            salaryTotal += salary * monthsWorked;
-        });
-
-        // 3. Yearly expenses - only count months since startDate, within period
-        let yearlyTotal = 0;
-        (data.yearlyExpenses || []).forEach(exp => {
-            const yearlyAmount = Number(exp.amount) || 0;
-            if (yearlyAmount === 0) return;
-
-            const monthlyRate = Math.round(yearlyAmount / 12);
-            const expStart = new Date(exp.startDate || now);
-
-            // Count months this expense applies, within the period
-            let monthsApplied = 0;
-            for (let m = 0; m < periodMonths; m++) {
-                const checkMonth = new Date(now);
-                checkMonth.setMonth(checkMonth.getMonth() - m);
-                const monthStart = new Date(checkMonth.getFullYear(), checkMonth.getMonth(), 1);
-
-                // Expense applies to this month if it started before end of month
-                if (expStart <= new Date(checkMonth.getFullYear(), checkMonth.getMonth() + 1, 0)) {
-                    if (monthStart >= periodStart) {
-                        monthsApplied++;
-                    }
-                }
-            }
-
-            yearlyTotal += monthlyRate * monthsApplied;
-        });
-
-        const fixedCosts = salaryTotal + yearlyTotal;
-
-        return {
-            direct: directExpenses,
-            salaries: salaryTotal,
-            yearly: yearlyTotal,
-            fixed: fixedCosts,
-            total: directExpenses + fixedCosts,
-            months: periodMonths
-        };
-    }, [unifiedExpenses, data.employees, data.yearlyExpenses, soldFilter]);
-
-    // Alerts
-    const alerts = useMemo(() => {
-        const list = [];
-        const meds = settings?.scheduledMedications || [];
+    // --- Things that need attention ---
+    const todo = useMemo(() => {
+        const items = [];
         const today = new Date();
         (data.batches || []).forEach(batch => {
             if (batch.status === 'Completed' || batch.status === 'Archived') return;
-            meds.forEach(med => {
+            (settings?.scheduledMedications || []).forEach(med => {
                 if (!med.name || med.name === 'New Medication') return;
-                const scheduleDays = parseInt(med.schedules?.[batch.type] || 0);
-                if (!scheduleDays || scheduleDays <= 0) return;
-                const rec = (batch.medical || []).find(m => m.type === 'Scheduled Medication' && m.name === med.name) || (batch.medical || []).find(m => med.name === 'Deworming' && m.type === 'De-worming');
-                let dateStr = rec ? rec.date : (batch.startDate || batch.date);
-                if (!dateStr) return;
-                let next = new Date(dateStr); next.setDate(next.getDate() + scheduleDays);
-                const remaining = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
-                if (remaining <= (med.notificationDays || 7)) list.push({ id: `${batch.id}_${med.name}`, type: med.name, batchName: batch.name || `Batch ${batch.id}`, daysRemaining: remaining, severity: remaining < 0 ? 'critical' : 'warning', interval: scheduleDays });
+                const days = parseInt(med.schedules?.[batch.type] || 0);
+                if (!days) return;
+                const rec = (batch.medical || []).filter(m => m.name === med.name || (med.name === 'Deworming' && m.type === 'De-worming'))
+                    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+                const from = rec ? rec.date : (batch.startDate || batch.date);
+                if (!from) return;
+                const next = new Date(from);
+                next.setDate(next.getDate() + days);
+                const left = Math.ceil((next - today) / 86400000);
+                if (left <= (med.notificationDays || 7)) {
+                    items.push({ group: 'meds', key: `${batch.id}-${med.name}`, kind: left < 0 ? 'late' : 'soon', icon: left < 0 ? AlertTriangle : Clock, title: `${med.name} · ${batch.name}`, note: left < 0 ? `${-left} days late` : left === 0 ? 'due today' : `due in ${left} days`, to: '/livestock', state: { selectBatchId: batch.id } });
+                }
             });
         });
-        return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
-    }, [data.batches, settings]);
+        const undated = (data.batches || []).reduce((s, b) => s + (b.animals || []).filter(a => a.status === 'Deceased' && !a.deceasedDate).length, 0);
+        const sick = (data.batches || []).filter(b => b.status !== 'Completed').reduce((s, b) => s + (b.animals || []).filter(a => a.status === 'Sick').length, 0);
+        if (sick > 0) items.push({ group: 'sick', key: 'sick', kind: 'soon', icon: Stethoscope, title: `${sick} animal${sick === 1 ? '' : 's'} in the sick bay`, note: 'check treatment & record recoveries', to: '/livestock' });
+        if (undated > 0) items.push({ group: 'dates', key: 'undated', kind: 'soon', icon: CalendarX, title: `${undated} deaths have no date`, note: 'tap to add the dates', to: '/livestock', state: { tab: 'deceased' } });
+        (data.inventory || []).filter(i => Number(i.lowStockThreshold) > 0 && Number(i.quantity) <= Number(i.lowStockThreshold)).forEach(i => {
+            items.push({ group: 'stock', key: `inv-${i.id}`, kind: 'soon', icon: PackageX, title: `${i.name} running low`, note: `${i.quantity} ${i.unit || ''} left`, to: '/inventory' });
+        });
+        return items.sort((a, b) => (a.kind === 'late' ? -1 : 0) - (b.kind === 'late' ? -1 : 0));
+    }, [data.batches, data.inventory, settings]);
+
+    // --- Recent activity: sales + deaths ---
+    const activity = useMemo(() => {
+        const events = new Map();
+        (data.batches || []).forEach(b => (b.animals || []).forEach(a => {
+            if (a.status === 'Sold' && a.soldDate) {
+                const k = `s|${b.id}|${a.soldDate}`;
+                const e = events.get(k) || { key: k, date: a.soldDate, kind: 'sale', batch: b, count: 0, amount: 0 };
+                e.count += 1; e.amount += Number(a.soldPrice) || 0;
+                events.set(k, e);
+            } else if (a.status === 'Deceased' && a.deceasedDate) {
+                const k = `d|${b.id}|${a.deceasedDate}|${a.deathReason}`;
+                const e = events.get(k) || { key: k, date: a.deceasedDate, kind: 'death', batch: b, count: 0, reason: a.deathReason };
+                e.count += 1;
+                events.set(k, e);
+            }
+        }));
+        return Array.from(events.values()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+    }, [data.batches]);
+
+    const crops = useMemo(() => [
+        ...(modules.crops ? (data.crops || []).filter(c => c.status === 'Growing').map(c => ({ ...c, kind: 'Vegetables' })) : []),
+        ...(modules.fruits ? (data.fruits || []).filter(f => f.status === 'Growing').map(f => ({ ...f, kind: 'Fruits' })) : [])
+    ], [data.crops, data.fruits, modules.crops, modules.fruits]);
+
+    const firstName = (user?.displayName || '').split(' ')[0];
+    const totalAlive = herds.reduce((s, h) => s + h.alive, 0);
+    const actions = [
+        { emoji: '💰', label: 'Sell', hint: 'animals or birds', onClick: () => openSell(), primary: true },
+        { emoji: '💸', label: 'Add expense', hint: 'feed, medicine…', onClick: () => navigate('/expenses', { state: { openAdd: true } }) },
+        { emoji: '🥚', label: 'Eggs', hint: `${eggsInStock} in stock`, onClick: () => setIsEggTrackerOpen(true) },
+        { emoji: '🧮', label: 'Price check', hint: 'profit calculator', onClick: () => navigate('/calculator') }
+    ];
+    // Grid recipe for the "At a glance" row, picked by how many cards there are (month card + herds)
+    const glanceCount = 1 + Math.max(1, herds.length);
+    const glanceLayout = {
+        2: 'md:grid-cols-2',
+        3: 'md:grid-cols-2 xl:grid-cols-3 md:[&>*:first-child]:col-span-2 xl:[&>*:first-child]:col-span-1',
+        4: 'md:grid-cols-2 xl:grid-cols-4',
+        5: 'md:grid-cols-2 xl:grid-cols-3 md:[&>*:first-child]:col-span-2 xl:[&>*:first-child]:col-span-1 xl:[&>*:first-child]:row-span-2'
+    }[Math.min(glanceCount, 5)];
+
+    const parts = [
+        [modules.crops || modules.fruits ? 'Batch & crop expenses' : 'Batch expenses', month.linked, 'bg-orange-400'],
+        ['General expenses', month.general, 'bg-red-400'],
+        ['Salaries', month.salaries, 'bg-sky-400'],
+        ['Yearly bills ÷ 12', month.yearly, 'bg-violet-400']
+    ];
 
     return (
-        <div className="pb-20 max-w-[1920px] mx-auto">
-            {/* Header */}
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-                <p className="text-gray-500 mt-1">Operations & Asset Overview</p>
+        <div className="max-w-7xl mx-auto space-y-5">
+            {/* Greeting */}
+            <div className="flex items-end justify-between gap-3">
+                <div>
+                    <p className="text-sm font-semibold text-gray-500">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                    <h1 className="text-[1.75rem] sm:text-4xl text-forest leading-tight">Hi{firstName ? ` ${firstName}` : ''} 👋</h1>
+                </div>
+                <p className="text-sm font-bold text-gray-500 text-right">{totalAlive} animals<br className="sm:hidden" /> on the farm</p>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                {/* LEFT CONTENT */}
-                <div className="xl:col-span-3 space-y-8">
-
-                    {/* ROW 1: Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-                        <OpExpensesCard expenses={monthlyExpenses} />
-                        <LivestockCard type="Goat" stats={goatStats} />
-                        <LivestockCard type="Sheep" stats={sheepStats} />
-                        <LivestockCard type="Chicken" stats={chickenStats} />
-                        <EggTrackerCard eggLogs={data.eggLogs || []} onOpen={() => setIsEggTrackerOpen(true)} />
-                    </div>
-
-                    {/* ROW 2: Crops */}
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <Sprout className="w-5 h-5 text-green-600" />
-                            <h2 className="text-lg font-bold text-gray-900">Active Crops</h2>
-                        </div>
-                        {activeAgriculture.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {activeAgriculture.map((item, i) => <ActiveCropCard key={i} type={item.item.type} item={item.item} stats={item.stats} />)}
-                            </div>
-                        ) : (
-                            <div className="text-center p-10 bg-gray-50 rounded-2xl border border-dashed border-gray-300 text-gray-400">
-                                <Sprout className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                                <p>No active crops</p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* ROW 3: Financials */}
-                    <div className="space-y-4 pt-6 border-t border-gray-200">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <div className="flex items-center gap-2">
-                                <DollarSign className="w-5 h-5 text-blue-600" />
-                                <h2 className="text-lg font-bold text-gray-900">Financial Breakdown</h2>
-                            </div>
-                            <div className="flex bg-gray-100 p-1 rounded-lg">
-                                {['Month', 'Quarter', 'Half Year', 'Year', 'YTD'].map(f => (
-                                    <button key={f} onClick={() => setSoldFilter(f)} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${soldFilter === f ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{f}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Sales Card */}
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                            <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wide mb-4">Sales Performance</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-                                <div>
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Sold Count</p>
-                                    <p className="text-2xl font-bold text-gray-900">{soldStats.soldCount}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Revenue</p>
-                                    <p className="text-xl font-bold text-green-600">₹{Math.round(soldStats.revenue).toLocaleString('en-IN')}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Investment</p>
-                                    <p className="text-xl font-bold text-gray-700">₹{Math.round(soldStats.investment).toLocaleString('en-IN')}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Gross Profit</p>
-                                    <p className={`text-xl font-bold ${soldStats.profit >= 0 ? 'text-blue-600' : 'text-orange-500'}`}>₹{Math.round(soldStats.profit).toLocaleString('en-IN')}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* OpEx Card - with detailed breakdown */}
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Users className="w-5 h-5 text-red-600" />
-                                    <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wide">Total Operational Expenses</h3>
-                                </div>
-                                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">{farmExpenses.months} month{farmExpenses.months > 1 ? 's' : ''}</span>
-                            </div>
-
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="bg-gray-50 rounded-lg p-4 text-center">
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Direct</p>
-                                    <p className="text-lg font-bold text-gray-700">₹{Math.round(farmExpenses.direct).toLocaleString('en-IN')}</p>
-                                    <p className="text-[10px] text-gray-400">Feed, Meds etc.</p>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-4 text-center">
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Salaries</p>
-                                    <p className="text-lg font-bold text-gray-700">₹{Math.round(farmExpenses.salaries).toLocaleString('en-IN')}</p>
-                                    <p className="text-[10px] text-gray-400">From hire date</p>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-4 text-center">
-                                    <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Yearly ÷12</p>
-                                    <p className="text-lg font-bold text-gray-700">₹{Math.round(farmExpenses.yearly).toLocaleString('en-IN')}</p>
-                                    <p className="text-[10px] text-gray-400">From start date</p>
-                                </div>
-                                <div className="bg-red-50 rounded-lg p-4 text-center border border-red-100">
-                                    <p className="text-xs text-red-500 uppercase font-semibold mb-1">Total</p>
-                                    <p className="text-xl font-bold text-red-600">₹{Math.round(farmExpenses.total).toLocaleString('en-IN')}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* RIGHT SIDEBAR */}
-                <div className="xl:col-span-1">
-                    <div className="sticky top-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Bell className="w-5 h-5 text-gray-500" />
-                                <h2 className="font-bold text-gray-900">Notifications</h2>
-                            </div>
-                            <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{alerts.length}</span>
-                        </div>
-                        {alerts.length > 0 ? (
-                            <div className="space-y-3 max-h-[75vh] overflow-y-auto">
-                                {alerts.map((alert, i) => <AlertCard key={i} alert={alert} />)}
-                            </div>
-                        ) : (
-                            <div className="py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300 text-center text-gray-400">
-                                <Bell className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                                <p>All clear!</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
+            {/* Quick actions */}
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                {actions.map(a => (
+                    <motion.button
+                        key={a.label}
+                        whileTap={{ scale: 0.94 }}
+                        whileHover={{ y: -2 }}
+                        onClick={a.onClick}
+                        className={`flex flex-col items-center sm:flex-row sm:items-center gap-1 sm:gap-3 rounded-3xl p-3 sm:p-4 text-center sm:text-left ring-1 shadow-sm ${a.primary ? 'bg-forest text-white ring-forest' : 'bg-white ring-gray-200'}`}
+                    >
+                        <span className={`grid place-items-center w-11 h-11 rounded-2xl text-2xl ${a.primary ? 'bg-white/15' : 'bg-straw'}`}>{a.emoji}</span>
+                        <span className="min-w-0">
+                            <span className={`block text-xs sm:text-base font-bold leading-tight ${a.primary ? '' : 'text-gray-900'}`}>{a.label}</span>
+                            <span className={`hidden sm:block text-xs ${a.primary ? 'text-green-100' : 'text-gray-500'}`}>{a.hint}</span>
+                        </span>
+                    </motion.button>
+                ))}
             </div>
 
-            {/* Egg Tracker Full Page */}
-            {isEggTrackerOpen && (
-                <EggTrackerPage onClose={() => setIsEggTrackerOpen(false)} />
-            )}
+            {/* At a glance: this month + one card per animal type. Columns follow the number
+                of cards so every row is full — no empty holes. */}
+            <section>
+                <div className="flex items-center justify-between mb-2 px-1">
+                    <h2 className="font-semibold text-gray-900 text-lg">At a glance</h2>
+                    <button onClick={() => navigate('/livestock')} className="flex items-center gap-0.5 text-sm font-bold text-forest">All batches <ChevronRight className="w-4 h-4" /></button>
+                </div>
+                <div className={`grid grid-cols-1 gap-4 ${glanceLayout}`}>
+                <Card className="h-full flex flex-col">
+                    <CardHeader title={`${new Date().toLocaleDateString('en-IN', { month: 'long' })} so far`} action="Expenses" onAction={() => navigate('/expenses')} />
+                    <div className="px-4 sm:px-5 pb-4 flex-1 flex flex-col">
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-2xl bg-red-50 p-3">
+                                <p className="text-[11px] font-bold uppercase text-red-700/70">Total expenses</p>
+                                <p className="font-display text-2xl sm:text-3xl font-semibold text-red-600"><AnimatedNumber value={Math.round(month.total)} prefix="₹" /></p>
+                            </div>
+                            <div className="rounded-2xl bg-green-50 p-3">
+                                <p className="text-[11px] font-bold uppercase text-green-700/70">Sales</p>
+                                <p className="font-display text-2xl sm:text-3xl font-semibold text-green-700"><AnimatedNumber value={Math.round(month.sales)} prefix="₹" /></p>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex h-2.5 rounded-full overflow-hidden bg-gray-100">
+                            {parts.map(([label, value, cls]) => value > 0 && (
+                                <motion.span key={label} className={cls} initial={{ width: 0 }} animate={{ width: `${(value / (month.total || 1)) * 100}%` }} transition={{ type: 'spring', stiffness: 90, damping: 20 }} />
+                            ))}
+                        </div>
+                        <ul className="mt-3 space-y-1.5">
+                            {parts.map(([label, value, cls]) => (
+                                <li key={label} className="flex items-center justify-between text-sm">
+                                    <span className="flex items-center gap-2 text-gray-600"><span className={`w-2.5 h-2.5 rounded-full ${cls}`} />{label}</span>
+                                    <span className="font-bold text-gray-900">{rupees(value)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        {herds.length >= 4 && month.topSpends.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-gray-100">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Biggest spends</p>
+                                <ul className="space-y-2">
+                                    {month.topSpends.map(e => (
+                                        <li key={e.id} className="flex items-center gap-2.5">
+                                            <span className="grid place-items-center w-8 h-8 rounded-xl bg-red-50 text-sm">🧾</span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-sm font-semibold text-gray-800 truncate">{e.description || e.category}</span>
+                                                <span className="block text-[11px] text-gray-500">{e.category} · {formatDate(e.date, { day: 'numeric', month: 'short' })}</span>
+                                            </span>
+                                            <span className="text-sm font-bold text-red-600">{rupees(e.amount)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        <div className={`mt-auto pt-3 flex items-center justify-between rounded-2xl px-3 py-2.5 ${month.sales - month.total >= 0 ? 'bg-sky-50 text-sky-800' : 'bg-amber-50 text-amber-900'}`}>
+                            <span className="text-sm font-bold whitespace-nowrap">{month.sales - month.total >= 0 ? '📈 Net profit' : '📉 Net'}</span>
+                            <span className="font-display text-lg font-semibold">{month.sales - month.total >= 0 ? '+' : '−'}{rupees(Math.abs(month.sales - month.total))}</span>
+                        </div>
+                    </div>
+                </Card>
+
+
+                    {herds.length === 0 ? (
+                        <Card className="h-full">
+                            <div className="h-full p-6 flex flex-col items-center justify-center text-center">
+                                <span className="text-5xl animate-float">🐣</span>
+                                <p className="mt-3 font-bold text-gray-900">No animals yet</p>
+                                <p className="text-sm text-gray-500">Start a batch in Animals and it will show up here.</p>
+                                <button onClick={() => navigate('/livestock')} className="mt-4 rounded-2xl bg-forest text-white px-4 py-2.5 text-sm font-bold">Go to Animals</button>
+                            </div>
+                        </Card>
+                    ) : herds.map(h => (
+                        <HerdCard key={h.type} herd={h} eggs={h.type === 'Poultry' ? eggsInStock : undefined} onOpen={() => navigate('/livestock')} />
+                    ))}
+                </div>
+            </section>
+
+            {/* To do, activity and crops — same idea: rows always filled */}
+            <div className={`grid grid-cols-1 gap-4 ${crops.length > 0 ? 'md:grid-cols-2 xl:grid-cols-3 md:[&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1' : 'md:grid-cols-2'}`}>
+                <Card className="h-full">
+                    <CardHeader title="Needs attention" />
+                    <ul className="px-3 pb-3 space-y-2">
+                        {CHECKS.flatMap(check => {
+                            const issues = todo.filter(t => t.group === check.group);
+                            if (issues.length === 0) {
+                                return [(
+                                    <li key={check.group} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 bg-green-50/70 ring-1 ring-green-100">
+                                        <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600" />
+                                        <span className="text-sm font-semibold text-green-900">{check.ok}</span>
+                                    </li>
+                                )];
+                            }
+                            return issues.map(t => (
+                                <li key={t.key}>
+                                    <button
+                                        onClick={() => navigate(t.to, t.state ? { state: { ...t.state, nonce: Date.now() } } : undefined)}
+                                        className={`w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left ring-1 ${t.kind === 'late' ? 'bg-red-50 ring-red-200' : 'bg-amber-50 ring-amber-200'}`}
+                                    >
+                                        <t.icon className={`w-5 h-5 shrink-0 ${t.kind === 'late' ? 'text-red-600' : 'text-amber-600'}`} />
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block text-sm font-bold text-gray-900 truncate">{t.title}</span>
+                                            <span className="block text-xs text-gray-600">{t.note}</span>
+                                        </span>
+                                        <ArrowRight className="w-4 h-4 text-gray-400" />
+                                    </button>
+                                </li>
+                            ));
+                        })}
+                    </ul>
+                </Card>
+
+                <Card className="h-full">
+                    <CardHeader title="Recent activity" />
+                    {activity.length === 0 ? (
+                        <p className="px-5 pb-5 text-sm text-gray-500">Sales and losses will show up here.</p>
+                    ) : (
+                        <div className="divide-y divide-gray-100 pb-2">
+                            {activity.map(e => (
+                                <Row
+                                    key={e.key}
+                                    emoji={e.kind === 'sale' ? '💰' : reasonEmoji(e.reason)}
+                                    title={e.kind === 'sale' ? `Sold ${e.count} · ${e.batch.name}` : `${e.count} lost · ${e.batch.name}`}
+                                    subtitle={`${formatDate(e.date, { day: 'numeric', month: 'short' })} · ${relativeDay(e.date)}${e.kind === 'death' ? ` · ${e.reason || 'Unknown'}` : ''}`}
+                                    right={e.kind === 'sale' ? `+${rupees(e.amount)}` : undefined}
+                                    rightTone="text-green-700"
+                                    onClick={() => navigate('/livestock', { state: { selectBatchId: e.batch.id, nonce: Date.now() } })}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </Card>
+
+                {crops.length > 0 && (
+                    <Card className="h-full">
+                        <CardHeader title="Growing now" action="Crops" onAction={() => navigate(modules.crops ? '/vegetables' : '/fruits')} />
+                        <div className="divide-y divide-gray-100 pb-2">
+                            {crops.map(c => {
+                                const revenue = (c.sales || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+                                return (
+                                    <Row
+                                        key={c.id}
+                                        emoji={renderCropEmoji(c.name, c.kind, 'text-xl')}
+                                        title={c.name}
+                                        subtitle={c.plantedDate ? `Planted ${formatDate(c.plantedDate, { day: 'numeric', month: 'short' })}` : c.kind}
+                                        right={revenue ? `+${rupees(revenue)}` : undefined}
+                                        rightTone="text-green-700"
+                                        onClick={() => navigate(c.kind === 'Vegetables' ? '/vegetables' : '/fruits', { state: c.kind === 'Vegetables' ? { selectCropId: c.id } : { selectFruitId: c.id } })}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </Card>
+                )}
+            </div>
+
+            {isEggTrackerOpen && <EggTrackerPage onClose={() => setIsEggTrackerOpen(false)} />}
         </div>
     );
 };

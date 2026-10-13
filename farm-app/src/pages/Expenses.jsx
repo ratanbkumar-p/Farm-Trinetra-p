@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import PageHeader from '../components/ui/PageHeader';
 import { Plus, TrendingDown, Filter, Calendar, Trash2, Users, Edit2, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import { useData } from '../context/DataContext';
@@ -20,6 +21,15 @@ const Expenses = () => {
     const [editingExpense, setEditingExpense] = useState(null);
     const [editingYearlyExpense, setEditingYearlyExpense] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const location = useLocation();
+
+    // "Add expense" shortcut from the dashboard opens the form straight away
+    useEffect(() => {
+        if (location.state?.openAdd) {
+            setEditingExpense(null);
+            setIsModalOpen(true);
+        }
+    }, [location.state]);
 
     const [newExpense, setNewExpense] = useState({
         date: new Date().toISOString().split('T')[0],
@@ -208,12 +218,13 @@ const Expenses = () => {
     // Navigate to batch or crop detail
     const handleBatchClick = (expense, e) => {
         e.stopPropagation();
+        // Open the exact fruit / crop / batch the expense belongs to
         if (expense.fruitId) {
-            navigate('/fruits'); // Or specific fruit detail if route exists
+            navigate('/fruits', { state: { selectFruitId: expense.fruitId } });
         } else if (expense.cropId) {
-            navigate('/agriculture');
+            navigate('/vegetables', { state: { selectCropId: expense.cropId } });
         } else if (expense.batchId) {
-            navigate('/livestock');
+            navigate('/livestock', { state: { selectBatchId: expense.batchId } });
         }
     };
 
@@ -225,28 +236,27 @@ const Expenses = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Expense Tracking</h1>
-                    <p className="text-gray-500 mt-1">Manage farm operational costs.</p>
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => { setIsYearlyModalOpen(true); setEditingYearlyExpense(null); }}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all font-medium"
-                    >
-                        <Calendar className="w-5 h-5" />
-                        Add Yearly
-                    </button>
-                    <button
-                        onClick={() => { setIsModalOpen(true); setEditingExpense(null); }}
-                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-red-200 transition-all font-medium"
-                    >
-                        <Plus className="w-5 h-5" />
-                        Add Expense
-                    </button>
-                </div>
-            </div>
+            <PageHeader
+                section="expenses"
+                actions={
+                    <>
+                        <button
+                            onClick={() => { setIsYearlyModalOpen(true); setEditingYearlyExpense(null); }}
+                            className="flex items-center gap-2 bg-white ring-1 ring-gray-200 text-gray-700 hover:ring-gray-300 px-4 py-3 rounded-2xl font-bold shadow-sm"
+                        >
+                            <Calendar className="w-5 h-5" />
+                            Yearly bill
+                        </button>
+                        <button
+                            onClick={() => { setIsModalOpen(true); setEditingExpense(null); }}
+                            className="flex items-center gap-2 bg-barn hover:brightness-95 text-white px-5 py-3 rounded-2xl font-bold shadow-[0_3px_0_#b23d1b]"
+                        >
+                            <Plus className="w-5 h-5" />
+                            Add expense
+                        </button>
+                    </>
+                }
+            />
 
             {/* Tabs */}
             <div className="flex gap-2 border-b border-gray-200">
@@ -267,7 +277,7 @@ const Expenses = () => {
             {activeTab === 'regular' ? (
                 <>
                     {/* Filters Bar */}
-                    <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-wrap items-end gap-4">
+                    <div className="bg-white p-4 rounded-3xl ring-1 ring-gray-200 shadow-sm flex flex-wrap items-end gap-4">
                         <div>
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Month Range</label>
                             <div className="flex items-center gap-2">
@@ -355,7 +365,7 @@ const Expenses = () => {
                             </div>
                         </div>
 
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                        <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                             <div className="p-3 bg-red-50 rounded-xl text-red-600">
                                 <TrendingDown className="w-6 h-6" />
                             </div>
@@ -365,7 +375,7 @@ const Expenses = () => {
                             </div>
                         </div>
 
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                        <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                             <div className="p-3 bg-orange-50 rounded-xl text-orange-600">
                                 <Users className="w-6 h-6" />
                             </div>
@@ -375,7 +385,7 @@ const Expenses = () => {
                             </div>
                         </div>
 
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                        <div className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm flex items-center gap-4">
                             <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
                                 <Calendar className="w-6 h-6" />
                             </div>
@@ -454,7 +464,7 @@ const Expenses = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {(data.yearlyExpenses || []).length > 0 ? (
                             (data.yearlyExpenses || []).map(expense => (
-                                <div key={expense.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative group">
+                                <div key={expense.id} className="bg-white p-5 rounded-3xl ring-1 ring-gray-200 shadow-sm relative group">
                                     <div className="flex justify-between items-start mb-3">
                                         <div>
                                             <h3 className="font-bold text-gray-800">{expense.name}</h3>

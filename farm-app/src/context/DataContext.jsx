@@ -5,15 +5,16 @@ import {
     collection,
     doc,
     onSnapshot,
-    setDoc,
-    updateDoc,
-    deleteDoc,
-    writeBatch,
-    getDocs
+    setDoc as firestoreSetDoc,
+    updateDoc as firestoreUpdateDoc,
+    deleteDoc as firestoreDeleteDoc,
+    getDocs,
+    query,
+    where
 } from 'firebase/firestore';
+import { buildDemoFarm } from '../lib/demoFarm';
 import {
     calculateMonthlyAllocations,
-    getPreviousMonthKey,
     getCurrentMonthKey,
     getMonthsBetween,
     ALLOCATION_ELIGIBLE_TYPES
@@ -23,18 +24,6 @@ const DataContext = createContext();
 
 export const useData = () => {
     return useContext(DataContext);
-};
-
-// Helper to generate simple IDs
-const generateSimpleId = (type, name) => {
-    const typeCodes = { Goat: 'go', Sheep: 'sh', Chicken: 'ch', Cow: 'co', Poultry: 'pl' };
-    const typeCode = typeCodes[type] || 'xx';
-    const cleanName = (name || 'batch').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6);
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = String(now.getFullYear()).slice(-2);
-    const rand = Math.random().toString(36).slice(2, 6);
-    return `${typeCode}${cleanName}${month}${year}${rand}`;
 };
 
 // Modified to support shorter IDs for Expenses as requested (3 letters + 2 numbers -> e.g. EXP-12)
@@ -69,6 +58,20 @@ if (useTestCollections) {
     console.log('[QA] Data isolation enabled - using qa_* collections');
 }
 
+// LOCAL QA MODE (dev server + ?qa_test=true): the fake QA user cannot write to Firestore,
+// so writes are applied to in-memory state instead. Add &demo=1 to load a sample farm.
+const isLocalQA = import.meta.env.DEV && typeof window !== 'undefined' && window.location.search.includes('qa_test=true');
+const isDemoFarm = isLocalQA && window.location.search.includes('demo=1');
+let localWriter = null;
+
+const localWrite = (kind, ref, payload) => {
+    localWriter?.(kind, ref.parent.id.replace(/^qa_/, ''), ref.id, payload);
+    return Promise.resolve();
+};
+const updateDoc = (ref, payload) => (isLocalQA ? localWrite('update', ref, payload) : firestoreUpdateDoc(ref, payload));
+const setDoc = (ref, payload, options) => (isLocalQA ? localWrite('set', ref, payload) : firestoreSetDoc(ref, payload, options));
+const deleteDoc = (ref) => (isLocalQA ? localWrite('delete', ref) : firestoreDeleteDoc(ref));
+
 export const DataProvider = ({ children }) => {
     const [data, setData] = useState({
         batches: [],
@@ -87,6 +90,18 @@ export const DataProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Apply local QA writes to state (see isLocalQA above)
+    useEffect(() => {
+        if (!isLocalQA) return;
+        localWriter = (kind, coll, id, payload) => setData(prev => {
+            const list = prev[coll] || [];
+            if (kind === 'delete') return { ...prev, [coll]: list.filter(item => item.id !== id) };
+            if (kind === 'set') return { ...prev, [coll]: [...list.filter(item => item.id !== id), { ...payload, id }] };
+            return { ...prev, [coll]: list.map(item => (item.id === id ? { ...item, ...payload } : item)) };
+        });
+        return () => { localWriter = null; };
+    }, []);
+
     // Real-time sync with Firestore
     const { user, loading: authLoading } = useAuth();
     useEffect(() => {
@@ -100,6 +115,12 @@ export const DataProvider = ({ children }) => {
             setLoading(false);
             return;
         }
+        if (isDemoFarm) {
+            setData(prev => ({ ...prev, ...buildDemoFarm() }));
+            setLoading(false);
+            return;
+        }
+
         const unsubscribes = [];
 
         const baseCollections = ['batches', 'expenses', 'yearlyExpenses', 'employees', 'crops', 'fruits', 'invoices', 'inventory', 'contacts', 'farmContacts', 'contactGroups', 'eggLogs'];
@@ -525,8 +546,8 @@ export const DataProvider = ({ children }) => {
         }
     };
 
-    // Sell selected animals with specific price
-    const sellSelectedAnimals = async (batchId, animalIds, pricePerAnimal) => {
+    // Sell selected animals with specific price (soldDate defaults to today)
+    const sellSelectedAnimals = async (batchId, animalIds, pricePerAnimal, soldDate, extra = {}) => {
         const batch = data.batches.find(b => b.id === batchId);
         if (batch) {
             const updatedAnimals = batch.animals.map(a => {
@@ -535,13 +556,67 @@ export const DataProvider = ({ children }) => {
                         ...a,
                         status: 'Sold',
                         soldPrice: pricePerAnimal,
-                        soldDate: new Date().toISOString().split('T')[0]
+                        soldDate: soldDate || new Date().toISOString().split('T')[0],
+                        ...(extra.soldTo ? { soldTo: extra.soldTo } : {})
                     };
                 }
                 return a;
             });
             await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
         }
+    };
+
+    // --- MORTALITY ---
+    // Every death keeps when it happened (deceasedDate), why (deathReason) and any
+    // notes (deathNotes), plus who/when it was entered, so losses can be reported by date.
+    const recordDeaths = async (batchId, animalIds, { date, reason, notes } = {}) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (!batch || animalIds.length === 0) return;
+        const ids = new Set(animalIds);
+        const updatedAnimals = (batch.animals || []).map(a => {
+            if (!ids.has(a.id)) return a;
+            return {
+                ...a,
+                statusBeforeDeath: a.status || 'Healthy',
+                status: 'Deceased',
+                deceasedDate: date || new Date().toISOString().split('T')[0],
+                deathReason: reason || 'Unknown',
+                deathNotes: notes || '',
+                deathRecordedAt: new Date().toISOString()
+            };
+        });
+        await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
+    };
+
+    // Edit the date / reason / notes of deaths already recorded (also used to fill in missing dates)
+    const updateDeathDetails = async (batchId, animalIds, { date, reason, notes }) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (!batch) return;
+        const ids = new Set(animalIds);
+        const updatedAnimals = (batch.animals || []).map(a => {
+            if (!ids.has(a.id) || a.status !== 'Deceased') return a;
+            return {
+                ...a,
+                ...(date !== undefined ? { deceasedDate: date } : {}),
+                ...(reason !== undefined ? { deathReason: reason } : {}),
+                ...(notes !== undefined ? { deathNotes: notes } : {})
+            };
+        });
+        await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
+    };
+
+    // Undo a death entered by mistake: animal goes back to the herd/flock
+    const reviveAnimals = async (batchId, animalIds) => {
+        const batch = data.batches.find(b => b.id === batchId);
+        if (!batch) return;
+        const ids = new Set(animalIds);
+        const updatedAnimals = (batch.animals || []).map(a => {
+            if (!ids.has(a.id) || a.status !== 'Deceased') return a;
+            // eslint-disable-next-line no-unused-vars
+            const { deceasedDate, deathReason, deathNotes, deathRecordedAt, statusBeforeDeath, ...rest } = a;
+            return { ...rest, status: statusBeforeDeath === 'Sick' ? 'Sick' : 'Healthy' };
+        });
+        await updateDoc(doc(db, getCollectionName('batches'), batchId), { animals: updatedAnimals });
     };
 
     // Global Egg Logs (Dashboard Tracker)
@@ -568,6 +643,7 @@ export const DataProvider = ({ children }) => {
         if (batch) {
             const updatedAnimals = batch.animals.map(a => {
                 if (a.id === animalId) {
+                    // eslint-disable-next-line no-unused-vars
                     const { soldPrice, soldDate, ...rest } = a; // Remove sold fields
                     return {
                         ...rest,
@@ -1176,6 +1252,9 @@ export const DataProvider = ({ children }) => {
             addWeightRecord,
             updateWeightRecord,
             sellSelectedAnimals,
+            recordDeaths,
+            updateDeathDetails,
+            reviveAnimals,
             processSale,
             revertSoldAnimal,
             deleteCropSale,
