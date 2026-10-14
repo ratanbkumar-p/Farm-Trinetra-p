@@ -173,8 +173,12 @@ const HerdCard = ({ herd, eggs, onOpen }) => {
                     <p className="text-sm font-bold text-green-700">{herd.soldThisMonth ? rupees(herd.salesThisMonth) : '—'}</p>
                 </div>
                 <div className="rounded-2xl bg-white/80 px-2.5 py-2">
-                    <p className="text-[9px] font-bold uppercase text-gray-400">Lost · month</p>
-                    <p className={`text-sm font-bold ${herd.lostThisMonth ? 'text-red-600' : 'text-gray-900'}`}>{herd.lostThisMonth}</p>
+                    {/* All deaths in active batches (completed/archived batches are excluded upstream) */}
+                    <p className="text-[9px] font-bold uppercase text-gray-400">Lost</p>
+                    <p className={`text-sm font-bold ${herd.lost ? 'text-red-600' : 'text-gray-900'}`}>
+                        {herd.lost}
+                        {herd.lostThisMonth > 0 && <span className="ml-1 text-[10px] font-semibold text-gray-500">({herd.lostThisMonth} this month)</span>}
+                    </p>
                 </div>
             </div>
             <p className="text-[11px] text-gray-500 truncate">
